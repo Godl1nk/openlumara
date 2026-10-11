@@ -438,7 +438,13 @@ class Webui(core.channel.Channel):
                 token = partial.get("content")
                 token_type = token.get("type")
                 match token_type:
+                    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                    # the backend derives the stream state from the token
+                    # stream itself and broadcasts stream_state transitions.
+                    # the frontend used to run this state machine off raw
+                    # tokens; now it only mirrors what we announce.
                     case "user_message":
+                        await self.websocket_manager.set_stream_state("message_sending")
                         try:
                             user_msg_payload = token.copy()
                             user_msg_payload['index'] = index
@@ -450,6 +456,9 @@ class Webui(core.channel.Channel):
                             self.log(self.name, f"error sending user message: {core.detail_error(e)}")
                             return
                     case "error":
+                        # an error ends the turn: go straight back to idle
+                        await self.websocket_manager.set_stream_state("idle")
+
                         await self.websocket_manager.broadcast({
                             "type": "user_message_confirmed",
                             "index": index
@@ -473,6 +482,28 @@ class Webui(core.channel.Channel):
                                 "type": "user_message_confirmed",
                                 "index": index
                             })
+                            await self.websocket_manager.set_stream_state("message_received")
+
+                        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                        # backend-side state machine for the token types that
+                        # drive the UI's "what is the AI doing" indicator.
+                        # set_stream_state is deduped, so hitting it on every
+                        # streamed token costs nothing beyond the transition.
+                        match token_type:
+                            case "prompt_progress":
+                                # prompt eval between tool rounds: keep the
+                                # processing_tools state if it's been set
+                                # (matches the old frontend's behavior)
+                                if self.websocket_manager.stream_state != "processing_tools":
+                                    await self.websocket_manager.set_stream_state("processing")
+                            case "model_load_progress":
+                                await self.websocket_manager.set_stream_state("processing")
+                            case "tool":
+                                await self.websocket_manager.set_stream_state("processing_tools")
+                            case "tool_call_delta":
+                                await self.websocket_manager.set_stream_state("calling_tools")
+                            case "tool_calls":
+                                await self.websocket_manager.set_stream_state("calling_tools")
 
                         await self.websocket_manager.broadcast({
                             "type": "token",
@@ -480,6 +511,15 @@ class Webui(core.channel.Channel):
                         })
 
             elif partial.get("type") == "turn":
+                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                # the turncollector groups tokens into typed segments; the
+                # live segment type is what the UI shows (thinking/streaming)
+                segment_type = (payload.get("content") or {}).get("type")
+                if segment_type == "reasoning":
+                    await self.websocket_manager.set_stream_state("thinking")
+                elif segment_type == "content":
+                    await self.websocket_manager.set_stream_state("streaming")
+
                 await self.websocket_manager.broadcast({
                     "type": "turn_stream",
                     "turn": payload.get("content")
@@ -1328,6 +1368,14 @@ async def create_fastapi(channel):
         # field, so the context pill can never disagree with the popup
         chat["token_usage"] = await channel.context.get_total_tokens()
         return api_result(chat)
+
+    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+    # the backend owns the stream state machine now; this lets clients
+    # (or anything else) read the authoritative state on demand.
+    @app.get("/api/stream/state")
+    async def stream_state_get():
+        """Returns the current stream state as tracked by the backend"""
+        return api_result({"state": channel.websocket_manager.stream_state})
 
     @app.get("/api/chat/export")
     async def chat_export():
@@ -2189,6 +2237,22 @@ class WebSocketManager:
         self.active_stream_task = None
         self.webui_ready = False
 
+        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        # the backend is now the single source of truth for stream state.
+        # the frontend used to infer it from ~10 different websocket events,
+        # which drifted whenever a client missed a message or reconnected
+        # mid-stream. states: idle, message_sending, message_received,
+        # processing, thinking, streaming, calling_tools, processing_tools
+        self.stream_state = "idle"
+
+    async def set_stream_state(self, state: str):
+        """update the authoritative stream state and notify all clients.
+        deduped, so high-frequency token paths can set it every token for free."""
+        if state == self.stream_state:
+            return
+        self.stream_state = state
+        await self.broadcast({"type": "stream_state", "state": state})
+
     async def connect(self, websocket: fastapi.WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
@@ -2199,6 +2263,15 @@ class WebSocketManager:
             await websocket.send_json({
                 "type": "ready"
             })
+
+        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        # push the current stream state to the freshly connected client, so
+        # a page reload or reconnect mid-stream lands in the right state
+        # instead of assuming idle
+        await websocket.send_json({
+            "type": "stream_state",
+            "state": self.stream_state
+        })
 
         asyncio.create_task(self.queue_ready_signal())
 
@@ -2241,14 +2314,25 @@ class WebSocketManager:
                 )
             )
         finally:
-            # always finalize the stream, no matter what
+            # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+            # always finalize the stream, no matter what: the state returns
+            # to idle here (also on cancellation), so clients can never get
+            # stuck in a streaming state. broadcast first, state second:
+            # stream_complete does UI handoff work that still reads the state.
             await self.broadcast({
                 "type": "stream_complete"
             })
+            await self.set_stream_state("idle")
 
     async def start_stream(self, channel, chat_id: str, message: str, files: list = None):
         if self.active_stream_task and not self.active_stream_task.done():
             self.active_stream_task.cancel()
+
+        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        # a new stream begins: the backend announces it right away, so every
+        # connected client (not just the one that sent the message) shows
+        # the typing indicator immediately
+        await self.set_stream_state("message_sending")
 
         next_index = len(await channel.context.chat.messages.get())
 
