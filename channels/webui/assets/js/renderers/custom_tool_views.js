@@ -651,7 +651,7 @@ document.addEventListener('alpine:init', () => {
     // sandboxed shell: terminal-style view, command streams in with a
     // blinking cursor, output lands below it once the call completes
     registerToolDisplay({
-        match: /^sandboxed_shell_run$/,
+        match: /^shell_run$/,
         view: 'shell',
         summary: (res, tool, cacheKey) => {
             if (!res) return '';
