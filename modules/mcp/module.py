@@ -73,20 +73,6 @@ def _flatten_error(exc, depth=0):
     return text
 
 
-def _new_server(cfg):
-    """Everything we track about one MCP server lives in this single record."""
-    return {
-        "cfg": cfg,               # parsed config: type + command/args or url
-        "task": None,             # asyncio task owning the connection
-        "session": None,          # live ClientSession while connected
-        "stop": asyncio.Event(),  # signals the task to shut down
-        "ready": asyncio.Event(), # signals startup finished (success or failure)
-        "state": "connecting",    # connecting / connected / timeout / error / stopped
-        "tools": [],              # catalog names of the tools currently injected
-        "error": None,            # last error, flattened to readable text
-    }
-
-
 class Mcp(core.module.Module):
     """Connects to MCP (Model Context Protocol) servers and exposes their tools to your AI as if they were native tools. Supports stdio, streamable HTTP and SSE transports."""
 
@@ -120,7 +106,7 @@ class Mcp(core.module.Module):
     # -------------------------
 
     async def on_ready(self):
-        self._servers = {}                  # server name -> record (see _new_server)
+        self._servers = {}                  # server name -> record (built in _start_servers)
         self._parse_error = None
         self._used_names = {"mcp_status"}   # tool names already claimed
 
@@ -138,10 +124,6 @@ class Mcp(core.module.Module):
 
     # package runners: for these, the package name is more telling than the runner
     _RUNNERS = ("uvx", "npx", "pnpx", "bunx", "deno", "node", "python", "python3", "py")
-
-    def _set_parse_error(self, message):
-        self._parse_error = message
-        self.manager.log(self.name, message)
 
     def _build_server_configs(self):
         """
@@ -163,46 +145,38 @@ class Mcp(core.module.Module):
             if isinstance(entries, str):
                 entries = [entries] if entries.strip() else []
             if not isinstance(entries, list):
-                self._set_parse_error(f"'{setting_name}' must be a list")
+                self._parse_error = f"'{setting_name}' must be a list"
+                self.manager.log(self.name, self._parse_error)
                 continue
 
             for entry in entries:
-                parsed = self._parse_entry(entry, transport, setting_name)
-                if parsed is None:
+                if not isinstance(entry, str) or not entry.strip():
                     continue
-                name, cfg = parsed
-                configs[self._unique_name(name, configs)] = cfg
+                entry = entry.strip()
+
+                if transport == "stdio":
+                    try:
+                        argv = shlex.split(entry)
+                    except ValueError as e:
+                        self._parse_error = f"invalid command in '{setting_name}': '{entry}' ({e})"
+                        self.manager.log(self.name, self._parse_error)
+                        continue
+                    if not argv:
+                        continue
+                    name = self._derive_stdio_name(argv)
+                    cfg = {"type": "stdio", "command": argv[0], "args": argv[1:]}
+                else:
+                    name = self._derive_url_name(entry)
+                    cfg = {"type": transport, "url": entry}
+
+                # append _2, _3, ... until the name no longer clashes
+                unique, counter = name, 2
+                while unique in configs:
+                    unique = f"{name}_{counter}"
+                    counter += 1
+                configs[unique] = cfg
 
         return configs
-
-    def _parse_entry(self, entry, transport, setting_name):
-        """Turn one config line into a (name, cfg) tuple, or None if invalid."""
-        if not isinstance(entry, str) or not entry.strip():
-            return None
-        entry = entry.strip()
-
-        if transport == "stdio":
-            try:
-                argv = shlex.split(entry)
-            except ValueError as e:
-                self._set_parse_error(f"invalid command in '{setting_name}': '{entry}' ({e})")
-                return None
-            if not argv:
-                return None
-            cfg = {"type": "stdio", "command": argv[0], "args": argv[1:]}
-            return self._derive_stdio_name(argv), cfg
-
-        cfg = {"type": transport, "url": entry}
-        return self._derive_url_name(entry), cfg
-
-    @staticmethod
-    def _unique_name(name, taken):
-        """Append _2, _3, ... until the name no longer clashes."""
-        unique, counter = name, 2
-        while unique in taken:
-            unique = f"{name}_{counter}"
-            counter += 1
-        return unique
 
     @staticmethod
     def _sanitize(text):
@@ -243,12 +217,23 @@ class Mcp(core.module.Module):
 
     async def _start_servers(self):
         configs = self._build_server_configs()
-        for name, cfg in configs.items():
-            self._servers[name] = _new_server(cfg)
 
-        # launch one connection task per server
-        for name, srv in self._servers.items():
+        # launch one connection task per server; the record holds everything
+        # we track about the server: config, task, live session, control
+        # events and status.
+        for name, cfg in configs.items():
+            srv = {
+                "cfg": cfg,               # parsed config: type + command/args or url
+                "task": None,             # asyncio task owning the connection
+                "session": None,          # live ClientSession while connected
+                "stop": asyncio.Event(),  # signals the task to shut down
+                "ready": asyncio.Event(), # signals startup finished (success or failure)
+                "state": "connecting",    # connecting / connected / timeout / error / stopped
+                "tools": [],              # catalog names of the tools currently injected
+                "error": None,            # last error, flattened to readable text
+            }
             srv["task"] = asyncio.create_task(self._connection_lifecycle(name))
+            self._servers[name] = srv
 
         # ...then wait for them to settle
         timeout = float(self.config.get("connect_timeout", default=30))
@@ -285,12 +270,28 @@ class Mcp(core.module.Module):
         stop event fires, then unwinds cleanly.
         """
         srv = self._servers[name]
+        cfg = srv["cfg"]
+
+        # servers may announce that their tool list changed: re-sync when they do
+        async def on_message(message):
+            if type(message).__name__ == "ToolListChangedNotification":
+                self.manager.log(self.name, f"server '{name}' announced a tool list change")
+                asyncio.create_task(self._resync_tools(name))
+
         try:
             async with contextlib.AsyncExitStack() as stack:
-                read, write = await stack.enter_async_context(self._open_transport(srv["cfg"]))
+                # open the transport this entry asks for
+                if cfg["type"] == "stdio":
+                    params = mcp.client.stdio.StdioServerParameters(command=cfg["command"], args=cfg["args"])
+                    transport = mcp.client.stdio.stdio_client(params)
+                elif cfg["type"] == "sse":
+                    transport = mcp.client.sse.sse_client(cfg["url"])
+                else:
+                    transport = mcp.client.streamable_http.streamable_http_client(cfg["url"])
+                read, write = await stack.enter_async_context(transport)
 
                 session = await stack.enter_async_context(
-                    mcp.ClientSession(read, write, message_handler=self._make_message_handler(name))
+                    mcp.ClientSession(read, write, message_handler=on_message)
                 )
                 await session.initialize()
 
@@ -317,24 +318,6 @@ class Mcp(core.module.Module):
             if srv["state"] not in ("error", "timeout"):
                 srv["state"] = "stopped"
                 srv["tools"] = []
-
-    @staticmethod
-    def _open_transport(cfg):
-        """Return the SDK's async context manager for this entry's transport."""
-        if cfg["type"] == "stdio":
-            params = mcp.client.stdio.StdioServerParameters(command=cfg["command"], args=cfg["args"])
-            return mcp.client.stdio.stdio_client(params)
-        if cfg["type"] == "sse":
-            return mcp.client.sse.sse_client(cfg["url"])
-        return mcp.client.streamable_http.streamable_http_client(cfg["url"])
-
-    def _make_message_handler(self, name):
-        """Servers may announce that their tool list changed: re-sync when they do."""
-        async def handler(message):
-            if type(message).__name__ == "ToolListChangedNotification":
-                self.manager.log(self.name, f"server '{name}' announced a tool list change")
-                asyncio.create_task(self._resync_tools(name))
-        return handler
 
     # -------------------------
     #   TOOL INJECTION
@@ -419,7 +402,41 @@ class Mcp(core.module.Module):
 
         # the core executor calls getattr(module, entry["method"]), so this
         # closure is what runs when the AI invokes the tool
-        setattr(self, tool_name, self._make_call(server, tool.name))
+        async def call(**kwargs):
+            target = self._servers.get(server)
+            session = target["session"] if target else None
+            if session is None:
+                return self.result(f"MCP server '{server}' is not connected. Check mcp_status.", success=False)
+            try:
+                result = await session.call_tool(tool.name, kwargs)
+            except Exception as e:
+                return self.result(f"MCP call '{tool.name}' failed: {_flatten_error(e)}", success=False)
+
+            # turn the CallToolResult into plain text for the AI
+            # (attribute names are snake_case per the mcp SDK v2 protocol types)
+            parts = []
+            for block in getattr(result, "content", None) or []:
+                if block.type == "text":
+                    parts.append(block.text)
+                elif block.type in ("image", "audio"):
+                    parts.append(f"[{block.type} content omitted: {block.mime_type}]")
+                elif block.type == "resource":
+                    text = getattr(block.resource, "text", None)
+                    parts.append(text or f"[binary resource: {getattr(block.resource, 'uri', 'unknown')}]")
+                elif block.type == "resource_link":
+                    parts.append(f"[resource link: {block.uri}]")
+                else:
+                    parts.append(f"[unsupported content: {block.type}]")
+
+            # no text at all: fall back to structured output, if any
+            if not any(str(part).strip() for part in parts):
+                structured = getattr(result, "structured_content", None)
+                text = json.dumps(structured) if structured is not None else "(empty result)"
+            else:
+                text = "\n".join(str(part) for part in parts)
+            return self.result(text, success=not getattr(result, "is_error", False))
+
+        setattr(self, tool_name, call)
 
         for loader in self._loaders():
             loader.catalog[tool_name] = {
@@ -434,43 +451,6 @@ class Mcp(core.module.Module):
                 loader.active_names.append(tool_name)
 
         srv["tools"].append(tool_name)
-
-    def _make_call(self, server, tool_name):
-        """Build the dispatcher closure that executes one MCP tool call."""
-        async def call(**kwargs):
-            srv = self._servers.get(server)
-            session = srv["session"] if srv else None
-            if session is None:
-                return self.result(f"MCP server '{server}' is not connected. Check mcp_status.", success=False)
-            try:
-                result = await session.call_tool(tool_name, kwargs)
-            except Exception as e:
-                return self.result(f"MCP call '{tool_name}' failed: {_flatten_error(e)}", success=False)
-            return self.result(self._render_result(result), success=not getattr(result, "is_error", False))
-        return call
-
-    def _render_result(self, result):
-        """Turn an MCP CallToolResult into plain text for the AI.
-        (Attribute names are snake_case per the mcp SDK v2 protocol types.)"""
-        parts = []
-        for block in getattr(result, "content", None) or []:
-            if block.type == "text":
-                parts.append(block.text)
-            elif block.type in ("image", "audio"):
-                parts.append(f"[{block.type} content omitted: {block.mime_type}]")
-            elif block.type == "resource":
-                text = getattr(block.resource, "text", None)
-                parts.append(text or f"[binary resource: {getattr(block.resource, 'uri', 'unknown')}]")
-            elif block.type == "resource_link":
-                parts.append(f"[resource link: {block.uri}]")
-            else:
-                parts.append(f"[unsupported content: {block.type}]")
-
-        # no text at all: fall back to structured output, if any
-        if not any(str(part).strip() for part in parts):
-            structured = getattr(result, "structured_content", None)
-            return json.dumps(structured) if structured is not None else "(empty result)"
-        return "\n".join(str(part) for part in parts)
 
     # -------------------------
     #   USER-FACING COMMANDS
