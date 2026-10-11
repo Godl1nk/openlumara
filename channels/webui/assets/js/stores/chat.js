@@ -751,7 +751,10 @@ CHAT_STORE = {
         // record the sent text in the input history before clearing the box
         this.pushInputHistory(text);
 
-        Alpine.store("stream").state = "message_sending";
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // no optimistic state write: the backend announces message_sending
+        // via stream_state the moment it accepts the stream, so all open
+        // tabs flip together instead of only this one.
         await this.clearInput();
 
         // handle any files the user may have attached
@@ -830,7 +833,9 @@ CHAT_STORE = {
                 "index": turn.first_message_index
             });
 
-            Alpine.store('stream').state = 'message_sending';
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+            // no state write: the backend's start_stream announces
+            // message_sending over websocket once the regenerate begins.
         });
     },
 

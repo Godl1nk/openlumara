@@ -87,6 +87,15 @@ async function handleWebSocketMessage(data) {
 
     // process based on broadcast type
     switch (data_type) {
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // the backend now owns the stream state machine and announces every
+        // transition here; the frontend is a pure mirror. this also arrives
+        // on websocket connect, so reconnects and page reloads mid-stream
+        // resync automatically instead of guessing.
+        case "stream_state":
+            stream.state = data.state;
+            break;
+
         case "sync_state":
             /*
              * use the token buffer from the backend
@@ -113,11 +122,12 @@ async function handleWebSocketMessage(data) {
             // force scroll to bottom
             await ui.forceScrollToBottom();
 
-            stream.state = 'message_sending';
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+            // state transitions removed: the backend announces them via
+            // stream_state. this handler only keeps the UI side effects.
             break;
 
         case "user_message_confirmed":
-            stream.state = 'message_received';
             break;
 
         case "turn_stream":
@@ -159,7 +169,6 @@ async function handleWebSocketMessage(data) {
 
             switch (segment_type) {
                 case "reasoning":
-                    stream.state = 'thinking';
                     stream.processing = {};
                     stream.modelLoad = null;
                     AudioManager.stopProcessingSound();
@@ -170,7 +179,6 @@ async function handleWebSocketMessage(data) {
                     }
                     break;
                 case "content":
-                    stream.state = 'streaming';
                     stream.processing = {};
                     stream.modelLoad = null;
                     AudioManager.stopProcessingSound();
@@ -244,16 +252,15 @@ async function handleWebSocketMessage(data) {
                     }
                     await chat.reloadChat();
                     break;
+                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                // all state assignments removed from the token handler: the
+                // backend derives the state from these same tokens and
+                // announces it via stream_state. kept: audio cues and the
+                // processing/modelLoad payload bookkeeping.
                 case "tool":
-                    stream.state = 'processing_tools';
                     AudioManager.playProcessingSound();
                     break;
                 case "prompt_progress":
-                    if (stream.state != "processing_tools") {
-                        // let it stay in that state if it's been set
-                        stream.state = 'processing';
-                    }
-
                     // prompt eval started, so any model-load progress is done
                     stream.modelLoad = null;
 
@@ -268,22 +275,16 @@ async function handleWebSocketMessage(data) {
                     // stream starts (cleared on prompt_progress/content below)
                     stream.modelLoad = token_content;
 
-                    if (stream.state != "processing_tools") {
-                        stream.state = 'processing';
-                    }
-
                     AudioManager.playProcessingSound();
                     break;
                 case "token_usage":
                     chat.currentTokenUsage = token_content;
                     break;
                 case "tool_call_delta":
-                    stream.state = 'calling_tools';
                     stream.processing = {};
                     stream.modelLoad = null;
                     break;
                 case "tool_calls":
-                    stream.state = 'calling_tools';
                     break;
             }
 
@@ -409,7 +410,9 @@ async function handleWebSocketMessage(data) {
             // end up at the true bottom (no-op if the user scrolled up)
             await ui.scrollToBottom('messages');
 
-            stream.state = 'idle';
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+            // no state write here: the backend broadcasts stream_state idle
+            // right after stream_complete, including on cancelled streams.
 
             break;
     }
