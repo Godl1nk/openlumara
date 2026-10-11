@@ -321,6 +321,38 @@ async function handleWebSocketMessage(data) {
              * this prevents UI flicker that comes from re-rendering the entire turn history
              */
 
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+            // smooth fold: the history chain is collapsed by design, so the
+            // streaming chain folds away (animated height, matching the
+            // history x-collapse's 250ms) BEFORE the handoff instead of
+            // snap-collapsing in the swap frame. the scroll is pinned to the
+            // bottom every frame while it folds, so the final answer stays
+            // exactly where it is and the chain shrinks behind it. a
+            // wheel/touch or a scroll-away cancels the pin; reduced-motion
+            // users keep the instant fold.
+            const foldEl = document.querySelector('.agent-chain.is-streaming .agent-chain-body');
+            if (foldEl && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                const foldMsgs = document.getElementById('messages');
+                foldEl.style.overflow = 'hidden';
+                const fold = foldEl.animate(
+                    [{ height: foldEl.offsetHeight + 'px' }, { height: '0px' }],
+                    { duration: 250, easing: 'ease-in-out', fill: 'forwards' }
+                );
+                let foldCancelled = false;
+                const cancelFoldPin = () => { foldCancelled = true; };
+                foldMsgs.addEventListener('wheel', cancelFoldPin, { passive: true });
+                foldMsgs.addEventListener('touchstart', cancelFoldPin, { passive: true });
+                const pinBottom = () => {
+                    if (foldCancelled || !ui.shouldScroll) return;
+                    foldMsgs.scrollTo({ top: foldMsgs.scrollHeight - foldMsgs.clientHeight, behavior: 'instant' });
+                    if (fold.playState === 'running') requestAnimationFrame(pinBottom);
+                };
+                requestAnimationFrame(pinBottom);
+                try { await fold.finished; } catch (err) { /* cancelled or gone: fine */ }
+                foldMsgs.removeEventListener('wheel', cancelFoldPin);
+                foldMsgs.removeEventListener('touchstart', cancelFoldPin);
+            }
+
             // push the user message + the fully collected assistant turn to the history.
             // user_message_added already reloads the chat, so the user turn is usually
             // already displayed - only push it if it's missing, otherwise we render a
@@ -332,6 +364,19 @@ async function handleWebSocketMessage(data) {
             if (!userAlreadyShown) {
                 chat.turnHistory.push({"role": "user", "messages": [stream.userMsg]});
             }
+
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+            // shape the streamed turn into the history format BEFORE pushing:
+            // a raw stream turn carries neither steps nor final_messages, so
+            // the pushed copy rendered as an empty bubble for the whole
+            // reloadChat round-trip below - the reply visibly collapsed and
+            // popped back in. streamSteps()/streamTurnSplit() are the exact
+            // folds the streaming templates use, so the history DOM mounts
+            // with identical content and the handoff frame is invisible.
+            const handoffSplit = streamTurnSplit(stream.turn);
+            stream.turn.steps = streamSteps(handoffSplit.chain);
+            stream.turn.final_messages = handoffSplit.final;
+
             chat.turnHistory.push(stream.turn);
 
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
@@ -346,19 +391,23 @@ async function handleWebSocketMessage(data) {
             // finalize the stream
             responseSoundPlayed = false;
             AudioManager.play("completion");
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) (23:30)
-            // instant: a forced chat reload after the stream ends must never
-            // smooth-scroll across the whole chat
-            await ui.scrollToBottom('messages', true);
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+            // the handoff now mounts the history turn with the same content
+            // the streaming DOM had, so the remaining distance is only the
+            // action-row/finish-flag delta: glide it with the lerp chase
+            // instead of snapping. the chase re-reads the target every frame
+            // and survives content swaps via its MutationObserver, so the
+            // finalized-turn reload landing mid-chase just extends the glide.
+            await ui.scrollToBottom('messages');
 
             // and finally, sync back up with the backend
             await chat.reloadChat();
             await chat.reloadChats();
 
-            // the reload can swap in finalized turn objects after the earlier
-            // scroll fired, which changes content heights - scroll once more so
-            // we end up at the true bottom (no-op if the user scrolled up)
-            await ui.scrollToBottom('messages', true);
+            // the reload can swap in finalized turn objects after the chase
+            // settled, which changes content heights - chase once more so we
+            // end up at the true bottom (no-op if the user scrolled up)
+            await ui.scrollToBottom('messages');
 
             stream.state = 'idle';
 
