@@ -1,28 +1,11 @@
+# AI Disclaimer: most of the MCP module is AI generated
+# though i did a lot of manual vetting and editing
+#
+# like with many other AI things (i'm sensing a pattern here..),
+# the docs were terrible and it was hard to figure out how to
+# plug remote MCP tools into my own tool system
+
 # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-11
-"""
-MCP (Model Context Protocol) client module.
-
-How it works:
-- Every configured server gets its own asyncio task that opens the transport,
-  keeps the connection alive and cleans it up on shutdown. This is required:
-  the MCP SDK's transports use anyio scopes that MUST be entered and exited
-  from the same task.
-- Each server's tools (via tools/list) are injected straight into every
-  channel's ToolLoader catalog as normal OpenAI-format tool definitions.
-  Execution works because the core tool executor resolves a catalog entry
-  through getattr(module_instance, entry["method"]) - so for every MCP tool we
-  simply attach a generated async closure to this module instance under the
-  entry's method name. No core changes needed: injected tools behave exactly
-  like class-scanned ones (dynamic loading via tools_load, disabled_tools,
-  per-chat persistence, timeouts, all inherited for free).
-- Tool names follow the pattern mcp_<server>_<tool>, sanitized to
-  [a-zA-Z0-9_-] and capped at 64 characters.
-
-State:
-- self._servers maps a server name to a single record holding everything
-  about that server: its config, connection task, live session, control
-  events and status.
-"""
 import core
 import asyncio
 import contextlib
@@ -35,7 +18,6 @@ import mcp
 import mcp.client.stdio
 import mcp.client.streamable_http
 import mcp.client.sse
-
 
 def _flatten_error(exc, depth=0):
     """
@@ -59,6 +41,7 @@ def _flatten_error(exc, depth=0):
     rpc_error = getattr(exc, "error", None)
     if rpc_error is not None and getattr(rpc_error, "code", None) is not None:
         text = f"{type(exc).__name__} [{rpc_error.code}] {getattr(rpc_error, 'message', '')}".strip()
+
         if getattr(rpc_error, "data", None):
             text += f" | data: {rpc_error.data}"
     else:
@@ -72,10 +55,11 @@ def _flatten_error(exc, depth=0):
             text += f" <- {inner}"
     return text
 
-
 class Mcp(core.module.Module):
     """Connects to MCP (Model Context Protocol) servers and exposes their tools to your AI as if they were native tools. Supports stdio, streamable HTTP and SSE transports."""
 
+    # pin the version of the MCP library..
+    # some versions use very different syntax and would throw errors
     dependencies = ["mcp>=2"]
 
     settings = {
@@ -108,7 +92,7 @@ class Mcp(core.module.Module):
     async def on_ready(self):
         self._servers = {}                  # server name -> record (built in _start_servers)
         self._parse_error = None
-        self._used_names = {"mcp_status"}   # tool names already claimed
+        self._used_names = {}   # tool names already claimed
 
         await self._start_servers()
 
@@ -141,18 +125,10 @@ class Mcp(core.module.Module):
             ("servers_stdio", "stdio"),
         )
         for setting_name, transport in sources:
-            entries = self.config.get(setting_name, default=[])
-            if isinstance(entries, str):
-                entries = [entries] if entries.strip() else []
-            if not isinstance(entries, list):
-                self._parse_error = f"'{setting_name}' must be a list"
-                self.manager.log(self.name, self._parse_error)
-                continue
-
-            for entry in entries:
-                if not isinstance(entry, str) or not entry.strip():
-                    continue
+            for entry in self.config.get(setting_name, default=[]):
                 entry = entry.strip()
+                if not entry:
+                    continue
 
                 if transport == "stdio":
                     try:
@@ -406,7 +382,7 @@ class Mcp(core.module.Module):
             target = self._servers.get(server)
             session = target["session"] if target else None
             if session is None:
-                return self.result(f"MCP server '{server}' is not connected. Check mcp_status.", success=False)
+                return self.result(f"MCP server '{server}' is not connected. Check /mcp.", success=False)
             try:
                 result = await session.call_tool(tool.name, kwargs)
             except Exception as e:
