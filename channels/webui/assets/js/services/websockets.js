@@ -301,9 +301,11 @@ async function handleWebSocketMessage(data) {
             if (ui.scrollToTurnIndex) {
                 await ui.scrollToTurn(ui.scrollToTurnIndex);
             } else {
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-                // turnHistory was just wiped and rebuilt, so every turn is an
-                // unmounted placeholder again - needs the iterative scroll.
+                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+                // turnHistory was wiped and rebuilt; reloadChat's
+                // syncMountWindows remounted the tail, but estimated
+                // placeholder heights above still settle the scrollHeight -
+                // the iterative jump converges on the true bottom fast.
                 await ui.forceScrollToBottom();
             }
 
@@ -331,7 +333,13 @@ async function handleWebSocketMessage(data) {
                 chat.turnHistory.push({"role": "user", "messages": [stream.userMsg]});
             }
             chat.turnHistory.push(stream.turn);
-            
+
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+            // mount the pushed turns synchronously: they land exactly where
+            // the viewport is about to be, so they must never render as
+            // placeholders first
+            Alpine.store('ui').syncMountWindows();
+
             // then clear the user message placeholder and the current turn
             await stream.clear();
 

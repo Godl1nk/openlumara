@@ -121,7 +121,7 @@ UI_STORE = {
      * - _turnHeights remembers the real rendered height of a turn so its
      *   placeholder is exact when it remounts (WeakMap keyed by the turn
      *   object, which mergeTurnHistory keeps identity-stable).
-     * - adjustScroll() manually compensates scrollTop when a turn's height
+     * - _mountPass() manually compensates scrollTop when a turn's height
      *   changes above the viewport, replacing chrome's scroll anchoring
      *   (disabled via overflow-anchor: none), which fights user scroll and
      *   causes the "skipping past messages" jump.
@@ -134,7 +134,7 @@ UI_STORE = {
         const cached = _turnHeights.get(turn);
         if (cached) return cached;
 
-        // rough first-visit estimate; adjustScroll() compensates the error
+        // rough first-visit estimate; _mountPass() compensates the error
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         // null-guard: a malformed/null message shouldn't kill the whole
         // lazy-mount placeholder computation
@@ -144,23 +144,144 @@ UI_STORE = {
         return Math.min(400, Math.max(40, Math.round(chars / 6)));
     },
 
-    async adjustScroll(el, toggle) {
+    /*
+     * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+     * bottom-up lazy mount controller.
+     *
+     * why this replaced the x-intersect approach: the old code stored
+     * `rendered` in each turn element's x-data and toggled it on observer
+     * EDGE events. two ways that lost messages: (1) x-for keys turns by
+     * index, so replacing turnHistory (chat switch, or a reload where a
+     * turn's hash changed) reuses the old elements WITHOUT re-running
+     * their x-data - a stale rendered=false stranded turns as invisible
+     * placeholders inside the viewport, and with no new intersection
+     * transition the enter handler never re-fired; (2) an instant
+     * programmatic jump (scrollTo behavior:'instant') can carry an element
+     * through the mount zone between IO deliveries - no net transition,
+     * no mount, same stranded placeholder.
+     *
+     * the new approach is LEVEL-triggered: turnMounted (the single source
+     * of truth, in the store so element reuse can never strand it) is
+     * recomputed from live geometry on every rAF-coalesced pass. a pass
+     * always sees the current truth, so nothing can stay stuck unmounted.
+     */
+    turnMounted: {},
+    mountMargin: 800,      // px: mount turns approaching the viewport
+    unmountMargin: 2500,   // px: recycle mounted dom that drifted far outside
+    _mountRaf: null,
+
+    isTurnMounted(turnIndex) {
+        return Boolean(this.turnMounted[turnIndex]);
+    },
+
+    resetTurnMounts() {
+        this.turnMounted = {};
+    },
+
+    /*
+     * bottom-up initial render: mount the newest turn first, then walk
+     * upward until the cumulative estimated height covers ~2 viewports.
+     * opening a chat then shows the tail with real (stable) heights right
+     * where the viewport lands, so scrollToBottom is a single landing
+     * instead of an aggressive timed autoscroll sweeping the whole chat.
+     */
+    prepareBottomWindow() {
         const container = document.getElementById('messages');
+        const turns = Alpine.store('chat').turnHistory;
+        if (!container || !turns || turns.length === 0) return;
 
-        const prev = el.offsetHeight;
-        const above = container
-            ? el.getBoundingClientRect().top <= container.getBoundingClientRect().top + 1
-            : false;
-
-        toggle();
-
-        await Alpine.nextTick();
-
-        if (container && above) {
-            const delta = el.offsetHeight - prev;
-            // instant: a smooth-animated compensation would visibly drift
-            if (delta) container.scrollTo({ top: container.scrollTop + delta, behavior: 'instant' });
+        const budget = Math.max(container.clientHeight * 2, 600);
+        let total = 0;
+        for (let i = turns.length - 1; i >= 0; i--) {
+            this.turnMounted[i] = true;
+            total += this.turnPlaceholderHeight(turns[i]);
+            if (total >= budget) break;
         }
+    },
+
+    /*
+     * called after every turnHistory mutation: prune mount entries for
+     * turns that no longer exist, keep the newest turns mounted (a fresh
+     * message must never flash in as a placeholder), schedule a pass.
+     */
+    syncMountWindows() {
+        const turns = Alpine.store('chat').turnHistory;
+        const n = (turns || []).length;
+
+        for (const k of Object.keys(this.turnMounted)) {
+            if (Number(k) >= n) delete this.turnMounted[k];
+        }
+        for (let i = Math.max(0, n - 2); i < n; i++) this.turnMounted[i] = true;
+
+        this.updateMounts();
+    },
+
+    updateMounts() {
+        if (this._mountRaf !== null) return;
+        this._mountRaf = requestAnimationFrame(() => {
+            this._mountRaf = null;
+            this._mountPass();
+        });
+    },
+
+    _mountPass() {
+        const container = document.getElementById('messages');
+        if (!container) return;
+        const turns = Alpine.store('chat').turnHistory;
+        if (!turns || turns.length === 0) return;
+
+        const cRect = container.getBoundingClientRect();
+        const mountTop = cRect.top - this.mountMargin;
+        const mountBottom = cRect.bottom + this.mountMargin;
+        const farTop = cRect.top - this.unmountMargin;
+        const farBottom = cRect.bottom + this.unmountMargin;
+
+        const mounts = [];
+
+        container.querySelectorAll('[data-turn-index]').forEach(el => {
+            const i = Number(el.dataset.turnIndex);
+            const turn = turns[i];
+            if (!turn) return;
+
+            const r = el.getBoundingClientRect();
+            if (this.turnMounted[i]) {
+                if (r.bottom < farTop || r.top > farBottom) {
+                    // capture first: the placeholder then has the exact
+                    // height, so unmounting never shifts the document
+                    this.captureTurnHeight(turn, el);
+                    delete this.turnMounted[i];
+                }
+            } else if (r.bottom > mountTop && r.top < mountBottom) {
+                // 'above' = fully above the viewport: only those get a
+                // scroll compensation when they grow. an element that
+                // straddles the top edge is (partly) what the user is
+                // looking at: compensating it would jump the view, so we
+                // let it visibly fill in instead.
+                mounts.push({ i, above: r.bottom <= cRect.top, h: el.offsetHeight });
+            }
+        });
+
+        if (mounts.length === 0) return;
+
+        (async () => {
+            for (const m of mounts) this.turnMounted[m.i] = true;
+
+            await Alpine.nextTick();
+
+            // turns mounting above the viewport push the visible content
+            // down: compensate scrollTop by their growth (placeholder to
+            // real height). instant: a smooth compensation would drift.
+            let shift = 0;
+            for (const m of mounts) {
+                const el = container.querySelector(`[data-turn-index="${m.i}"]`);
+                if (el && m.above) shift += el.offsetHeight - m.h;
+            }
+            if (shift) container.scrollTo({ top: container.scrollTop + shift, behavior: 'instant' });
+
+            // heights may have moved the window: re-evaluate once more.
+            // safe: a pass with nothing to mount does not reschedule.
+            this.updateMounts();
+        })();
     },
 
     windowWidth: window.innerWidth,
@@ -179,6 +300,10 @@ UI_STORE = {
         this.showSidebar = !this.isMobile;
 
         this.expandReasoning = localStorage.getItem("expandReasoning") !== 'false';
+
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+        // a resize moves the mount window: re-evaluate lazily-mounted turns
+        window.addEventListener('resize', () => this.updateMounts());
     },
 
     async toggleSidebar() {
@@ -217,6 +342,11 @@ UI_STORE = {
         const el = document.getElementById(containerId);
         if (!el) return;
 
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+        // every scroll moves the mount window: schedule a (rAF-coalesced)
+        // lazy-mount pass alongside the bottom-tracking
+        this.updateMounts();
+
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) (02:25)
         // ignore the intermediate positions of our own smooth autoscroll;
         // the resting position is evaluated when the animation settles.
@@ -244,6 +374,11 @@ UI_STORE = {
 
         let lastHeight = -1;
         for (let i = 0; i < 24; i++) {
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+            // keep the lazy-mount window in sync with each jump: with the
+            // bottom window pre-mounted (prepareBottomWindow) this settles
+            // in a couple of iterations instead of sweeping the whole chat
+            this.updateMounts();
             await Alpine.nextTick();
             // scrollTo with behavior:'instant' overrides the global
             // scroll-behavior:smooth. with smooth, each jump animated through
@@ -310,6 +445,10 @@ UI_STORE = {
 
         let lastTop = -1;
         for (let i = 0; i < 24; i++) {
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+            // mount the turns the jumps sweep through, so heights along the
+            // way (and the target itself) are real while re-centering
+            this.updateMounts();
             await Alpine.nextTick();
 
             const el = document.querySelector(`[data-turn-index="${turnIndex}"]`);

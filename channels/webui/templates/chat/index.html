@@ -11,7 +11,7 @@
 
 <!-- the main message view -->
 <div id="messages" x-ref="messages" x-cloak
-    @scroll.throttle="$store.ui.onScroll()"
+    @scroll.throttle.100ms="$store.ui.onScroll()"
 >
     <!--
         a "turn" is:
@@ -40,34 +40,40 @@
 
     <!-- historical turns -->
     <!--
-        -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-        lazy-mounted turns: long-running chats were hoarding ~1gb of tab ram
-        because every turn's full markdown/hljs dom was mounted permanently.
-        turns now only mount once they approach the viewport (one-way, so no
-        unmount-jank when scrolling back up), with a rough height estimate as
-        placeholder to keep the scrollbar sane. the last few turns always
-        mount immediately so new messages never flash.
+        -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+        bottom-up lazy mount (controller lives in the ui store: turnMounted,
+        prepareBottomWindow, _mountPass). long-running chats were hoarding
+        ~1gb of tab ram because every turn's full markdown/hljs dom was
+        mounted permanently, so turns are placeholders until they near the
+        viewport and get recycled once they drift far outside it.
 
-        -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-        hard cap: turns now also UNMOUNT once they drift >2500px outside the
-        viewport, so mounted dom stays bounded no matter how long the chat
-        gets. the 800px mount / 2500px unmount margins give hysteresis, so a
-        turn can never oscillate between the two states at the same scroll
-        position. remounting is cheap: the markdown cache serves the html.
-        chrome's scroll anchoring absorbs the height change when unmounting
-        above the viewport.
+        this replaced the old x-intersect approach, which stored `rendered`
+        per turn element and toggled it on observer edge events: x-for keys
+        by index, so replacing turnHistory reused elements WITHOUT
+        re-evaluating their x-data, and a stale rendered=false stranded turns
+        as invisible placeholders in plain view (no new intersection = no
+        remount). instant programmatic scroll jumps could also cross the mount
+        zone between observer deliveries with the same stranded result.
+        mount state now lives in the store and a rAF-coalesced pass
+        recomputes it from live geometry - level-triggered, so nothing can
+        stay stuck.
+
+        opening a chat mounts the NEWEST turn first, then walks upward until
+        ~2 viewports of real dom exist (prepareBottomWindow), so the bottom
+        lands with stable heights instead of needing an aggressive timed
+        autoscroll. the 800px mount / 2500px unmount margins keep the
+        hysteresis; unmounts capture the exact height first (no document
+        shift), mounts above the viewport are compensated manually
+        (overflow-anchor: none). remounting is cheap: markdown is cached.
     -->
     <template x-for="(turn, turnIndex) in $store.chat.turnHistory" :key="turnIndex">
-        <div class="fullwidth turn" :data-turn-index="turnIndex"
-            x-data="{ rendered: turnIndex > ($store.chat.turnHistory.length - 2) }"
-            x-intersect:enter.parent.margin.800px="$store.ui.adjustScroll($el, () => rendered = true)"
-            x-intersect:leave.parent.margin.2500px="$store.ui.captureTurnHeight(turn, $el); $store.ui.adjustScroll($el, () => rendered = false)">
+        <div class="fullwidth turn" :data-turn-index="turnIndex">
 
-            <template x-if="!rendered">
+            <template x-if="!$store.ui.isTurnMounted(turnIndex)">
                 <div class="turn-lazy" :style="`min-height: ${$store.ui.turnPlaceholderHeight(turn)}px`"></div>
             </template>
 
-            <template x-if="rendered">
+            <template x-if="$store.ui.isTurnMounted(turnIndex)">
                 <div>
             <!-- user turn (always one message) -->
             <template x-if="turn.role === 'user'">

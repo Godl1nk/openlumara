@@ -20,8 +20,8 @@
         background-size: var(--bg-pattern-size);
         */
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-           lazy-mounted turns adjust scrollTop manually (ui.adjustScroll)
+        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+           lazy-mounted turns adjust scrollTop manually (ui._mountPass)
            when their height changes above the viewport. chrome's built-in
            scroll anchoring fights that compensation and causes the
            "skipping past messages" jump when scrolling up. */

@@ -142,6 +142,11 @@ CHAT_STORE = {
         this.turnHistory = result.turn_history;
         this.currentTokenUsage = result.token_usage;
 
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+        // bottom-up: mount the tail of the chat before the initial
+        // scroll-to-bottom lands on it
+        Alpine.store('ui').prepareBottomWindow();
+
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
         // only fetch the chat list AFTER selectedCategory is known: it
         // used to load first (scoped to 'general'), then the category
@@ -165,13 +170,25 @@ CHAT_STORE = {
         const result = await simpleApiFetch(`/api/chat/load/${chatId}`);
         if (!result) { return; }
 
+        const ui = Alpine.store('ui');
+
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+        // full reset before the swap: x-for keys turns by index, so
+        // assigning straight away would reuse the previous chat's turn
+        // elements (and their per-turn dom state). clear, flush, then
+        // build the new chat from scratch.
+        this.turnHistory = [];
+        ui.resetTurnMounts();
+        await Alpine.nextTick();
+
         this.chat = result;
         this.selectedChat = chatId;
         this.selectedCategory = result.category;
         this.turnHistory = result.turn_history;
-
-        ui = Alpine.store('ui');
         this.currentTokenUsage = result.token_usage;
+
+        // bottom-up: mount the tail of the chat before scrolling to it
+        ui.prepareBottomWindow();
 
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
         // the open chat's day group must be expanded (and the chat
@@ -655,6 +672,13 @@ CHAT_STORE = {
         // change, so alpine doesn't re-render (and re-parse the markdown of)
         // the entire conversation on every single reload
         this.turnHistory = mergeTurnHistory(this.turnHistory, result.turn_history);
+
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+        // keep the lazy-mount windows in sync with the (possibly shifted)
+        // history: prune stale indices, mount the newest turns so a fresh
+        // message never flashes in as a placeholder, re-evaluate the
+        // near-viewport window
+        Alpine.store('ui').syncMountWindows();
 
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
         // if the backend switched us to a chat in another category, the
