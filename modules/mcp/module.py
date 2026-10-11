@@ -10,7 +10,7 @@ import core
 import asyncio
 import contextlib
 import json
-import re
+import regex as re
 import shlex
 import urllib.parse
 
@@ -154,38 +154,35 @@ class Mcp(core.module.Module):
 
         return configs
 
-    @staticmethod
-    def _sanitize(text):
+    def _sanitize(self, text):
         """Reduce arbitrary text to characters that are legal in tool names."""
         text = re.sub(r"[^a-zA-Z0-9_-]", "_", str(text))
         return text.strip("_-") or "unnamed"
 
-    @classmethod
-    def _derive_url_name(cls, url):
+    def _derive_url_name(self, url):
         """Name a remote server after the first meaningful hostname label:
         mcp.exa.ai -> exa (not mcp, which would double up with the tool prefix)."""
         hostname = urllib.parse.urlparse(url).hostname or ""
         labels = [label for label in hostname.split(".") if label]
         for label in labels:
-            if label.lower() not in cls._GENERIC_HOST_LABELS:
-                return cls._sanitize(label)
+            if label.lower() not in self._GENERIC_HOST_LABELS:
+                return self._sanitize(label)
         return "unnamed"
 
-    @classmethod
-    def _derive_stdio_name(cls, argv):
+    def _derive_stdio_name(self, argv):
         """Name a stdio server after the package it runs, not the runner:
         'uvx mcp-server-time' -> mcp-server-time."""
         command = argv[0].replace("\\", "/").rsplit("/", 1)[-1]
         args = argv[1:]
 
-        if command in cls._RUNNERS:
+        if command in self._RUNNERS:
             if args and args[0] in ("-m", "--module") and len(args) > 1:
-                return cls._sanitize(args[1].rsplit(".", 1)[-1])
+                return self._sanitize(args[1].rsplit(".", 1)[-1])
             for arg in args:
                 if not arg.startswith("-"):
-                    return cls._sanitize(arg)
+                    return self._sanitize(arg)
 
-        return cls._sanitize(command)
+        return self._sanitize(command)
 
     # -------------------------
     #   CONNECTIONS
