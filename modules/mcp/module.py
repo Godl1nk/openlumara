@@ -37,9 +37,9 @@ def _flatten_error(exc, depth=0):
 
     # MCPError: show the server's JSON-RPC error code, message and data
     rpc = getattr(exc, "error", None)
-    if rpc is not None and getattr(rpc, "code", None) is not None:
-        text = f"{type(exc).__name__} [{rpc.code}] {getattr(rpc, 'message', '')}".strip()
-        if getattr(rpc, "data", None):
+    if rpc is not None:
+        text = f"{type(exc).__name__} [{rpc.code}] {rpc.message}".strip()
+        if rpc.data:
             text += f" | data: {rpc.data}"
     else:
         text = f"{type(exc).__name__}: {exc}"
@@ -336,25 +336,24 @@ class Mcp(core.module.Module):
             # turn the CallToolResult into plain text for the AI
             # (attribute names are snake_case per the mcp SDK v2 protocol types)
             parts = []
-            for block in getattr(result, "content", None) or []:
+            for block in result.content:
                 if block.type == "text":
                     parts.append(block.text)
                 elif block.type in ("image", "audio"):
                     parts.append(f"[{block.type} content omitted: {block.mime_type}]")
                 elif block.type == "resource":
-                    parts.append(getattr(block.resource, "text", None) or f"[binary resource: {getattr(block.resource, 'uri', 'unknown')}]")
+                    parts.append(getattr(block.resource, "text", None) or f"[binary resource: {block.resource.uri}]")
                 elif block.type == "resource_link":
                     parts.append(f"[resource link: {block.uri}]")
                 else:
                     parts.append(f"[unsupported content: {block.type}]")
 
             # no text at all: fall back to structured output, if any
-            if not any(str(part).strip() for part in parts):
-                structured = getattr(result, "structured_content", None)
-                text = json.dumps(structured) if structured is not None else "(empty result)"
+            if not any(part.strip() for part in parts):
+                text = json.dumps(result.structured_content) if result.structured_content is not None else "(empty result)"
             else:
-                text = "\n".join(str(part) for part in parts)
-            return self.result(text, success=not getattr(result, "is_error", False))
+                text = "\n".join(parts)
+            return self.result(text, success=not result.is_error)
 
         setattr(self, tool_name, call)
 
