@@ -26,7 +26,7 @@ def _is_running_in_container():
         pass
     return False
 
-class SandboxedShell(core.module.Module):
+class Shell(core.module.Module):
     """
     Lets your AI safely run shell commands in a persistent sandboxed docker/podman container
     """
@@ -82,7 +82,7 @@ class SandboxedShell(core.module.Module):
             }
         },
         "dockerfile_path": {
-            "default": "modules/sandboxed_shell/Dockerfile",
+            "default": "modules/shell/Dockerfile",
             "description": "Path to a Dockerfile to build a custom image from.",
             "depends": {"method": "dockerfile"}
         },
@@ -493,7 +493,7 @@ class SandboxedShell(core.module.Module):
         self.container_name = "openlumara_shell"
 
         # hash tracking file location
-        self.image_hash_path = core.get_data_path(os.path.join("sandboxed_shell", "docker_image_hash"))
+        self.image_hash_path = core.get_data_path(os.path.join("shell", "docker_image_hash"))
 
         if shutil.which("podman"):
             self.runtime = "podman"
