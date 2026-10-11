@@ -5,7 +5,7 @@
 # the docs were terrible and it was hard to figure out how to
 # plug remote MCP tools into my own tool system
 
-# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-11
+# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-12
 import core
 import asyncio
 import contextlib
@@ -22,10 +22,8 @@ import mcp.client.sse
 def _flatten_error(exc, depth=0):
     """
     The mcp SDK hides the real cause of failures twice over: anyio wraps
-    transport errors in ExceptionGroups ("unhandled errors in a TaskGroup"),
-    and MCPError keeps the server's actual JSON-RPC error on .error.
-    This digs everything out, including the exception cause chain, so status
-    reports say what actually went wrong.
+    transport errors in ExceptionGroups, and MCPError keeps the server's
+    JSON-RPC error on .error. Dig everything out, cause chain included.
     """
     # anyio ExceptionGroup: collect the sub-exceptions
     subexceptions = getattr(exc, "exceptions", None)
@@ -38,12 +36,11 @@ def _flatten_error(exc, depth=0):
         return "; ".join(messages)
 
     # MCPError: show the server's JSON-RPC error code, message and data
-    rpc_error = getattr(exc, "error", None)
-    if rpc_error is not None and getattr(rpc_error, "code", None) is not None:
-        text = f"{type(exc).__name__} [{rpc_error.code}] {getattr(rpc_error, 'message', '')}".strip()
-
-        if getattr(rpc_error, "data", None):
-            text += f" | data: {rpc_error.data}"
+    rpc = getattr(exc, "error", None)
+    if rpc is not None and getattr(rpc, "code", None) is not None:
+        text = f"{type(exc).__name__} [{rpc.code}] {getattr(rpc, 'message', '')}".strip()
+        if getattr(rpc, "data", None):
+            text += f" | data: {rpc.data}"
     else:
         text = f"{type(exc).__name__}: {exc}"
 
@@ -53,6 +50,7 @@ def _flatten_error(exc, depth=0):
         inner = _flatten_error(cause, depth + 1)
         if inner and inner not in text:
             text += f" <- {inner}"
+
     return text
 
 class Mcp(core.module.Module):
@@ -63,37 +61,22 @@ class Mcp(core.module.Module):
     dependencies = ["mcp>=2"]
 
     settings = {
-        "http": {
-            "type": "list",
-            "description": "MCP servers reachable over streamable HTTP. One URL per entry, e.g. http://localhost:8000/mcp",
-            "default": []
-        },
-        "SSE": {
-            "type": "list",
-            "description": "MCP servers reachable over legacy SSE. One URL per entry, e.g. http://localhost:9000/sse",
-            "default": []
-        },
-        "stdio": {
-            "type": "list",
-            "description": "MCP servers launched as local processes. One command line per entry, e.g. uvx mcp-server-time",
-            "default": []
-        },
-        "connect_timeout": {
-            "type": "number",
-            "description": "Seconds to wait for each MCP server to connect and initialize at startup.",
-            "default": 30
-        }
+        "http":  {"type": "list", "default": [], "description": "MCP servers reachable over streamable HTTP. One URL per entry, e.g. http://localhost:8000/mcp"},
+        "SSE":   {"type": "list", "default": [], "description": "MCP servers reachable over legacy SSE. One URL per entry, e.g. http://localhost:9000/sse"},
+        "stdio": {"type": "list", "default": [], "description": "MCP servers launched as local processes. One command line per entry, e.g. uvx mcp-server-time"},
+        "connect_timeout": {"type": "number", "default": 30, "description": "Seconds to wait for each MCP server to connect and initialize at startup."}
     }
 
-    # -------------------------
-    #   LIFECYCLE
-    # -------------------------
+    # hostname labels that say nothing about who runs the server
+    _GENERIC_HOST_LABELS = ("mcp", "api", "www", "app", "server", "gateway")
+
+    # package runners: for these, the package name is more telling than the runner
+    _RUNNERS = ("uvx", "npx", "pnpx", "bunx", "deno", "node", "python", "python3", "py")
 
     async def on_ready(self):
         self._servers = {}                  # server name -> record (built in _start_servers)
         self._parse_error = None
-        self._used_names = set()   # tool names already claimed
-
+        self._used_names = set()            # tool names already claimed
         await self._start_servers()
 
     async def on_shutdown(self):
@@ -103,25 +86,16 @@ class Mcp(core.module.Module):
     #   CONFIG PARSING
     # -------------------------
 
-    # hostname labels that say nothing about who runs the server
-    _GENERIC_HOST_LABELS = ("mcp", "api", "www", "app", "server", "gateway")
-
-    # package runners: for these, the package name is more telling than the runner
-    _RUNNERS = ("uvx", "npx", "pnpx", "bunx", "deno", "node", "python", "python3", "py")
-
     def _build_server_configs(self):
-        """
-        Read the three server lists from settings and turn them into
-        {name: cfg} entries, where cfg has a "type" plus either
-        command/args (stdio) or url (http/sse).
-        Malformed entries set self._parse_error but don't block the rest.
-        """
+        """Turn the three setting lists into {name: cfg}; cfg has a "type"
+        plus command/args (stdio) or url (http/sse). Bad entries set
+        self._parse_error but don't block the rest."""
         self._parse_error = None
         configs = {}
 
-        sources = ("http", "sse", "stdio")
-        for transport in sources:
-            for entry in self.config.get(transport, default=[]):
+        for setting in ("http", "SSE", "stdio"):
+            transport = setting.lower()
+            for entry in self.config.get(setting, default=[]):
                 entry = entry.strip()
                 if not entry:
                     continue
@@ -130,7 +104,7 @@ class Mcp(core.module.Module):
                     try:
                         argv = shlex.split(entry)
                     except ValueError as e:
-                        self._parse_error = f"invalid command in '{setting_name}': '{entry}' ({e})"
+                        self._parse_error = f"invalid command in '{setting}': '{entry}' ({e})"
                         self.manager.log(self.name, self._parse_error)
                         continue
                     if not argv:
@@ -139,7 +113,7 @@ class Mcp(core.module.Module):
                     cfg = {"type": "stdio", "command": argv[0], "args": argv[1:]}
                 else:
                     name = self._derive_url_name(entry)
-                    cfg = {"type": transport.lower(), "url": entry}
+                    cfg = {"type": transport, "url": entry}
 
                 # append _2, _3, ... until the name no longer clashes
                 unique, counter = name, 2
@@ -159,10 +133,10 @@ class Mcp(core.module.Module):
         """Name a remote server after the first meaningful hostname label:
         mcp.exa.ai -> exa (not mcp, which would double up with the tool prefix)."""
         hostname = urllib.parse.urlparse(url).hostname or ""
-        labels = [label for label in hostname.split(".") if label]
-        for label in labels:
-            if label.lower() not in self._GENERIC_HOST_LABELS:
+        for label in hostname.split("."):
+            if label and label.lower() not in self._GENERIC_HOST_LABELS:
                 return self._sanitize(label)
+
         return "unnamed"
 
     def _derive_stdio_name(self, argv):
@@ -170,7 +144,6 @@ class Mcp(core.module.Module):
         'uvx mcp-server-time' -> mcp-server-time."""
         command = argv[0].replace("\\", "/").rsplit("/", 1)[-1]
         args = argv[1:]
-
         if command in self._RUNNERS:
             if args and args[0] in ("-m", "--module") and len(args) > 1:
                 return self._sanitize(args[1].rsplit(".", 1)[-1])
@@ -187,9 +160,7 @@ class Mcp(core.module.Module):
     async def _start_servers(self):
         configs = self._build_server_configs()
 
-        # launch one connection task per server; the record holds everything
-        # we track about the server: config, task, live session, control
-        # events and status.
+        # one connection task per server; the record holds everything we track
         for name, cfg in configs.items():
             srv = {
                 "cfg": cfg,               # parsed config: type + command/args or url
@@ -215,7 +186,7 @@ class Mcp(core.module.Module):
                 self.manager.log(self.name, f"server '{name}' timed out while connecting")
 
     async def _stop_servers(self):
-        # ask every connection task to shut down, give them time, then force
+        # signal every task to shut down, give them time, then force
         for srv in self._servers.values():
             srv["stop"].set()
         for srv in self._servers.values():
@@ -228,16 +199,12 @@ class Mcp(core.module.Module):
 
         for name in list(self._servers):
             self._purge_server(name)
-
         self._servers = {}
 
     async def _connection_lifecycle(self, name):
-        """
-        Owns one server connection from birth to death. Because the SDK's
-        transports must be entered and exited by the same task, this whole
-        coroutine IS the connection: it opens everything, serves until the
-        stop event fires, then unwinds cleanly.
-        """
+        """Owns one server connection from birth to death: opens everything,
+        serves until the stop event fires, then unwinds. The SDK's transports
+        use anyio scopes that MUST be entered and exited by this same task."""
         srv = self._servers[name]
         cfg = srv["cfg"]
 
@@ -257,11 +224,9 @@ class Mcp(core.module.Module):
                     transport = mcp.client.sse.sse_client(cfg["url"])
                 else:
                     transport = mcp.client.streamable_http.streamable_http_client(cfg["url"])
-                read, write = await stack.enter_async_context(transport)
 
-                session = await stack.enter_async_context(
-                    mcp.ClientSession(read, write, message_handler=on_message)
-                )
+                read, write = await stack.enter_async_context(transport)
+                session = await stack.enter_async_context(mcp.ClientSession(read, write, message_handler=on_message))
                 await session.initialize()
 
                 srv["session"] = session
@@ -271,15 +236,13 @@ class Mcp(core.module.Module):
                 self.manager.log(self.name, f"server '{name}' connected ({len(srv['tools'])} tools)")
                 srv["ready"].set()
 
-                # stay connected until shutdown is requested
-                await srv["stop"].wait()
+                await srv["stop"].wait()  # stay connected until shutdown is requested
 
         except Exception as e:
             if srv["state"] != "timeout":
                 srv["state"] = "error"
                 srv["error"] = _flatten_error(e)
             self.manager.log(self.name, f"server '{name}' stopped: {core.detail_error(e)}")
-
         finally:
             # always release the startup wait, even on early failure
             srv["ready"].set()
@@ -299,7 +262,6 @@ class Mcp(core.module.Module):
     def _tool_name(self, server, tool):
         """Build a unique, legal tool name for a server's tool."""
         name = f"mcp_{self._sanitize(server)}_{self._sanitize(tool)}"[:64].rstrip("_-")
-
         base, counter = name, 2
         while name in self._used_names:
             name = f"{base[:61]}_{counter}"
@@ -329,18 +291,14 @@ class Mcp(core.module.Module):
         srv = self._servers.get(name)
         if srv is None or srv["session"] is None:
             return
-
         try:
             listing = await srv["session"].list_tools()
         except Exception as e:
             self.manager.log(self.name, f"could not list tools for '{name}': {_flatten_error(e)}")
             return
 
-        # remember which tool names chats currently have loaded, to restore that
-        was_active = set()
-        for loader in self._loaders():
-            was_active.update(loader.active_names)
-
+        # remember which tools chats currently have loaded, to restore that
+        was_active = {n for loader in self._loaders() for n in loader.active_names}
         self._purge_server(name)
 
         for tool in listing.tools:
@@ -352,25 +310,19 @@ class Mcp(core.module.Module):
             loader.refresh_meta_tool_descriptions()
 
     def _inject_tool(self, server, tool, was_active, srv):
-        """
-        Register one MCP tool: build an OpenAI-format definition from the
-        server's own JSON Schema, attach a dispatcher closure to this module
-        instance, and add a catalog entry to every channel.
-        """
+        """Register one MCP tool: an OpenAI-format definition built from the
+        server's own JSON Schema, plus a dispatcher closure attached to this
+        instance (the core executor calls getattr(module, entry["method")])."""
         tool_name = self._tool_name(server, tool.name)
         description = tool.description or f"MCP tool '{tool.name}' from server '{server}'."
         definition = {
             "type": "function",
-            "function": {
-                "name": tool_name,
-                "description": description,
-                # the server provides a ready-made JSON Schema for its input
-                "parameters": tool.input_schema or {"type": "object", "properties": {}}
-            }
+            # the server provides a ready-made JSON Schema for its input
+            "function": {"name": tool_name, "description": description,
+                         "parameters": tool.input_schema or {"type": "object", "properties": {}}}
         }
 
-        # the core executor calls getattr(module, entry["method"]), so this
-        # closure is what runs when the AI invokes the tool
+        # this closure is what runs when the AI invokes the tool
         async def call(**kwargs):
             target = self._servers.get(server)
             session = target["session"] if target else None
@@ -390,8 +342,7 @@ class Mcp(core.module.Module):
                 elif block.type in ("image", "audio"):
                     parts.append(f"[{block.type} content omitted: {block.mime_type}]")
                 elif block.type == "resource":
-                    text = getattr(block.resource, "text", None)
-                    parts.append(text or f"[binary resource: {getattr(block.resource, 'uri', 'unknown')}]")
+                    parts.append(getattr(block.resource, "text", None) or f"[binary resource: {getattr(block.resource, 'uri', 'unknown')}]")
                 elif block.type == "resource_link":
                     parts.append(f"[resource link: {block.uri}]")
                 else:
@@ -408,17 +359,11 @@ class Mcp(core.module.Module):
         setattr(self, tool_name, call)
 
         for loader in self._loaders():
-            loader.catalog[tool_name] = {
-                "tool": definition,
-                "module": self.name,
-                "method": tool_name,
-                "description": description
-            }
+            loader.catalog[tool_name] = {"tool": definition, "module": self.name, "method": tool_name, "description": description}
             # if a chat had this tool loaded before the resync, load it again
             if tool_name in was_active and tool_name not in loader.active_names:
                 loader.active_tools.append(definition)
                 loader.active_names.append(tool_name)
-
         srv["tools"].append(tool_name)
 
     # -------------------------
@@ -439,7 +384,6 @@ class Mcp(core.module.Module):
 
         if not self._servers:
             lines.append("  (none configured)")
-
         for name, srv in self._servers.items():
             line = f"  {name}: {srv['state']}"
             if srv["state"] == "connected":
@@ -447,7 +391,6 @@ class Mcp(core.module.Module):
             if srv["error"]:
                 line += f" - {srv['error']}"
             lines.append(line)
-
         if self._parse_error:
             lines.append(f"  config error: {self._parse_error}")
         return "\n".join(lines)
