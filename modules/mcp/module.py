@@ -63,17 +63,17 @@ class Mcp(core.module.Module):
     dependencies = ["mcp>=2"]
 
     settings = {
-        "servers_http": {
+        "http": {
             "type": "list",
             "description": "MCP servers reachable over streamable HTTP. One URL per entry, e.g. http://localhost:8000/mcp",
             "default": []
         },
-        "servers_sse": {
+        "SSE": {
             "type": "list",
             "description": "MCP servers reachable over legacy SSE. One URL per entry, e.g. http://localhost:9000/sse",
             "default": []
         },
-        "servers_stdio": {
+        "stdio": {
             "type": "list",
             "description": "MCP servers launched as local processes. One command line per entry, e.g. uvx mcp-server-time",
             "default": []
@@ -92,7 +92,7 @@ class Mcp(core.module.Module):
     async def on_ready(self):
         self._servers = {}                  # server name -> record (built in _start_servers)
         self._parse_error = None
-        self._used_names = {}   # tool names already claimed
+        self._used_names = set()   # tool names already claimed
 
         await self._start_servers()
 
@@ -119,13 +119,9 @@ class Mcp(core.module.Module):
         self._parse_error = None
         configs = {}
 
-        sources = (
-            ("servers_http", "http"),
-            ("servers_sse", "sse"),
-            ("servers_stdio", "stdio"),
-        )
-        for setting_name, transport in sources:
-            for entry in self.config.get(setting_name, default=[]):
+        sources = ("http", "sse", "stdio")
+        for transport in sources:
+            for entry in self.config.get(transport, default=[]):
                 entry = entry.strip()
                 if not entry:
                     continue
@@ -143,7 +139,7 @@ class Mcp(core.module.Module):
                     cfg = {"type": "stdio", "command": argv[0], "args": argv[1:]}
                 else:
                     name = self._derive_url_name(entry)
-                    cfg = {"type": transport, "url": entry}
+                    cfg = {"type": transport.lower(), "url": entry}
 
                 # append _2, _3, ... until the name no longer clashes
                 unique, counter = name, 2
