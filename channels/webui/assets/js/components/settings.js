@@ -49,7 +49,7 @@ function settingsModal() {
         },
 
         // --- Init & Load ---
-        init() {
+        async init() {
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
             // the resize + theme-changed listeners used to be attached here
             // with raw addEventListener. the modal is x-if now, so it
@@ -62,6 +62,17 @@ function settingsModal() {
             this.themeMode = Alpine.store('theme').mode;
 
             this.activeCategory = "appearance";
+
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
+            // always pull fresh settings from the backend on every open:
+            // the store's page-init copy goes stale the moment anything
+            // else touches the config (another tab, an instance restart,
+            // a module registering new settings). the modal mounts per
+            // open (x-if), so this init is the natural refresh hook.
+            // skipped under the admin lockdown, same as the store init.
+            if (!window.ADMIN_SETTINGS_DISABLED) {
+                await Alpine.store('settings').load();
+            }
         },
 
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
