@@ -523,6 +523,12 @@ class Manager:
         module = self.modules[module_name]
         self.log("core", f"Reloading module: {module_name}")
 
+        prefix = f"{module.name}_"
+        was_active = {
+            ch_name: any(n.startswith(prefix) for n in ch.tool_loader.active_names)
+            for ch_name, ch in self.channels.items()
+        }
+
         # remove old tools for this module
         await self.unregister_module_tools(module)
 
@@ -543,9 +549,10 @@ class Manager:
         await self.register_module_tools(module)
 
         # re-activate the module's tools in all channels
-        for ch in self.channels.values():
+        for ch_name, ch in self.channels.items():
             chat = ch.context.chat
-            if chat is not None and module.name in chat.get_loaded_modules():
+            persisted = chat is not None and module.name in chat.get_loaded_modules()
+            if was_active.get(ch_name) or persisted:
                 ch.tool_loader.activate_module_tools(module.name)
 
         # make sure any hardcoded default tools belonging to this module get re-preloaded
