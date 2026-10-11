@@ -4,7 +4,7 @@ import yaml
 
 class Skills(core.module.Module):
     """
-    Lets your AI use Skill files, as made popular by other harnesses. Use with either the shell module or modules like the HTTP module and custom user modules. Never let skills use the system shell or you will compromise your security.
+    Lets your AI use Skill files, as made popular by other harnesses. Use with either the shell module (which is sandboxed) or modules like the HTTP module (to replace `curl`) and custom user modules.
     """
 
     settings = {
