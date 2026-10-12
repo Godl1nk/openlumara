@@ -31,38 +31,10 @@
             flex-shrink: 0;
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-           numbered step marker: filled circle with the step counter,
-           replaces the old gear icon + "Step N" label. em sizing keeps
-           it aligned with the other header icons/nodes */
-        .step-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            /* rem so the circle never changes size with nested em scaling
-               and stays predictable against the node-dot */
-            width: 1.05rem;
-            height: 1.05rem;
-            border-radius: 50%;
-            flex-shrink: 0;
-            margin-left: 0;
-            /* outline style: transparent fill + muted ring, matches the
-               chain's node-dot look */
-            background: transparent;
-            border: 1px solid var(--text-secondary);
-            color: var(--text-secondary);
-            box-sizing: border-box;
-            font-size: 0.65rem;
-            font-weight: 600;
-            line-height: 1;
-        }
-
-        /* every tool call in the step failed: red ring + number, scannable
-           even collapsed (mirrors the red node ring on failed tool cards) */
-        .step-badge.step-failed {
-            border-color: var(--error, #f87171);
-            color: var(--error, #f87171);
-        }
+        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+           numbered step badge removed from the template: the timeline
+           status dot already marks the node, the second circle was noise.
+           failed steps still read red via the dot's dot-failed state */
 
         .text {
             display: flex;
@@ -134,6 +106,64 @@
             flex: 0 0 auto;
             white-space: nowrap;
         }
+
+        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+           thought-snippet header: the step's reasoning first line replaces
+           the tool-name list (single line, ellipsis eats the overflow),
+           tool provenance shrinks to "Module ×N" chips pinned right. the
+           chips are derived counts, so they cost no ink to repeat */
+        .thought-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6em;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .step-thought {
+            font-size: 0.92em;
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .step-modules {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5em;
+            flex: 0 0 auto;
+            margin-left: auto;
+            font-size: 0.75em;
+            opacity: 0.75;
+
+            .module-chip {
+                white-space: nowrap;
+            }
+
+            .module-chip + .module-chip::before {
+                content: ' · ';
+                opacity: 0.6;
+            }
+
+            .chip-count {
+                margin-left: 0.15em;
+                opacity: 0.75;
+                font-size: 0.9em;
+            }
+        }
+
+        /* thought-less steps keep the classic header layout, wrapped in a
+           span so both header branches share the same flex behaviour */
+        .bare-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+        }
     }
 
     .header:hover {
@@ -145,8 +175,9 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 4px;
         margin-top: 4px;
+        margin-bottom: 4px;
     }
 
     /* thoughts get their own row inside the step: bubble icon + text */
@@ -232,11 +263,77 @@
     .dots span:nth-child(3) { animation-delay: 0.4s; }
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-   live step: while this is the newest streaming station the badge pulses,
-   same statusPulse the chain nodes use (dies when the step auto-collapses) */
-.agent-chain.is-streaming .chain-station:last-child .combined-block:not(.collapsed) .step-badge {
-    animation: statusPulse 1.5s ease-in-out infinite;
+/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+   status node: the step's timeline dot is a small filled status light -
+   green done, accent + glow while live, red failed. chevron removed, so
+   the dot reads as state, not disclosure; hover scale keeps the click
+   affordance alive. .agent-chain-prefixed to beat the base node-dot
+   ring styling regardless of stylesheet load order */
+.agent-chain .combined-block > .node-dot {
+    width: 0.6em;
+    height: 0.6em;
+    /* recenter the smaller dot on the spine (was sized for 1em). the
+       -0.5px splits the difference between the dot rendering 1px right
+       at 0px and 1px left at -1px (subpixel rounding between the 1px
+       line and the dot box) */
+    left: calc(-1.27em - 0.5px);
+    top: 0.5em;
+    border: none;
+    /* muted via a SOLID mixed color, never element opacity: opacity would
+       fade the masking ring too and the spine would shine through the dot */
+    background: var(--text-secondary);
+    background: color-mix(in srgb, var(--text-secondary) 45%, var(--bg-primary));
+    transition: transform 0.15s ease;
+}
+
+/* finished dots always rest in the muted secondary - the live step is
+   the ONLY accent dot on the rail, streaming turn or not */
+.agent-chain .combined-block > .node-dot.dot-done {
+    background: var(--text-secondary);
+}
+
+/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+   quiet scan: finished step headers recede so the chain reads as a
+   glanceable list; full brightness returns on hover and on the LIVE
+   streaming row (the last station while the chain runs) - the thing
+   happening now is the only row that demands attention */
+.combined-block > .header .text {
+    opacity: 0.55;
+    transition: opacity 0.15s ease;
+}
+
+.combined-block > .header:hover .text {
+    opacity: 1;
+}
+
+/* the live step is by definition the one whose node dot is dot-live -
+   far sturdier than :last-child, which the transient tool-wait station
+   and the finish flag keep stealing from the real live step */
+.agent-chain.is-streaming .combined-block:has(.node-dot.dot-live) > .header .text {
+    opacity: 1;
+}
+
+.agent-chain .combined-block > .node-dot.dot-failed {
+    background: var(--error, #f87171);
+    opacity: 1;
+}
+
+.agent-chain .combined-block > .node-dot.dot-live {
+    background: var(--accent);
+    opacity: 1;
+    /* tiny glow: the station clips its paint, so a fat halo gets sliced
+       at the edges - a tight 3px bloom fits beside the spine */
+    box-shadow: 0 0 3px var(--accent);
+    animation: nodeDotPulse 1.5s ease-in-out infinite;
+}
+
+/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+   live node pulse: breathes the dot's COLOR between the muted secondary
+   and the accent instead of fading opacity - the dot never goes ghost,
+   it shifts hue like a slow heartbeat */
+@keyframes nodeDotPulse {
+    0%, 100% { background-color: var(--text-secondary); }
+    50% { background-color: var(--accent); }
 }
 
 /* in-step tool card chevron: only inside combined blocks - standalone tool

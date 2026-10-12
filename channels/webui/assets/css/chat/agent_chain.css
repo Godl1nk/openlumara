@@ -143,9 +143,13 @@
             position: absolute;
             top: 0;
             bottom: 0;
-            left: 0.5em;
-            width: 1px;
-            background: var(--border-color);
+            /* the spine lives at 0.5em (header chevron + gear + status dots
+               all center there); the line's center is its left edge + half
+               its 1px width, so pull it half a pixel left or it visibly
+               grazes one side of the dots */
+            left: calc(0.5em - 0.5px);
+            width: 0.5px;
+            background: var(--text-secondary);
         }
 
         .chain-dot {
@@ -171,6 +175,22 @@
        .agent-chain and never matched) */
     .chain-station:first-child .chain-rail::before {
         top: -0.45em;
+    }
+
+    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+       the last streaming station (no finish flag after it) TERMINATES the
+       spine at its own dot instead of trailing past it: the line stops at
+       the dot center (0.8em from the station top). the transient tool-wait
+       indicator is excluded - the line must keep running through it */
+    .chain-station:last-child:not(:has(.prompt-processing-indicator-wrapper)) .chain-rail::before {
+        bottom: auto;
+        height: 0.8em;
+    }
+
+    /* single-station chain: first-child raised the line's top to -0.45em,
+       so extend the height to still land on the dot center */
+    .chain-station:first-child:last-child:not(:has(.prompt-processing-indicator-wrapper)) .chain-rail::before {
+        height: 1.25em;
     }
 
     .chain-content {
