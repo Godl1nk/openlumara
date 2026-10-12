@@ -40,6 +40,9 @@ class Channel:
     # for the framework to automatically install/uninstall
     dependencies = []
 
+    # just like with modules, channels can be grouped into a category in supported UI's
+    category = ""
+
     def __init__(self, manager, is_user_channel=False):
         self.manager = manager
         self.name = core.modules.get_name(self) # shorthand alias

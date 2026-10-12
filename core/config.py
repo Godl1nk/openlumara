@@ -1,4 +1,5 @@
 import os
+import ast
 import copy
 import core
 import modules
@@ -14,6 +15,14 @@ _registry_cache = None
 _cache_refresh_in_progress = False
 
 SCHEMA_CACHE_FILE = ".module_cache.json"
+
+# bump whenever the shape of cached module metadata changes (e.g. a new metadata
+# field was added). a cache file written by another version is rebuilt in full on
+# startup, so stale entries never serve incomplete metadata.
+SCHEMA_CACHE_VERSION = 3
+
+# the section keys the cache stores module/channel entries under
+CACHE_SECTIONS = ("channels", "user_channels", "modules", "user_modules")
 
 core_settings_schema = {
     "core": {
@@ -406,15 +415,22 @@ def _get_module_schema_cache():
     If the cache is missing or outdated, it performs a refresh.
     """
     cache_path = os.path.abspath(os.path.join(core.get_path(), SCHEMA_CACHE_FILE))
-    cache = {"channels": {}, "user_channels": {}, "modules": {}, "user_modules": {}}
+    cache = {section_key: {} for section_key in CACHE_SECTIONS}
+    cache["_version"] = SCHEMA_CACHE_VERSION
+
+    # a cache written by a different cache version holds metadata in an old
+    # shape (e.g. missing 'category'). force a full rebuild in that case.
+    force_full_refresh = False
 
     # Load existing cache
     if os.path.exists(cache_path):
         try:
             with open(cache_path, 'r') as f:
                 loaded = json.load(f)
+            if loaded.get("_version") != SCHEMA_CACHE_VERSION:
+                force_full_refresh = True
             # merge per-section so a cache file missing a section doesn't silently disable scanning for it
-            for section_key in cache:
+            for section_key in CACHE_SECTIONS:
                 cache[section_key] = loaded.get(section_key, {})
         except Exception as e:
             print(f"[CORE] error while loading module cache {core.detail_error(e)}")
@@ -428,14 +444,14 @@ def _get_module_schema_cache():
         return cache
     _cache_refresh_in_progress = True
     try:
-        cache = _refresh_module_schema_cache(cache, cache_path)
+        cache = _refresh_module_schema_cache(cache, cache_path, force_full_refresh=force_full_refresh)
     finally:
         # always release the guard, even if something unexpected blows up mid-refresh
         _cache_refresh_in_progress = False
 
     return cache
 
-def _refresh_module_schema_cache(cache, cache_path):
+def _refresh_module_schema_cache(cache, cache_path, force_full_refresh=False):
     """Scan the filesystem for new/changed/deleted modules and rebuild the cache dict accordingly."""
     package_map = {
         "channels": (channels, core.channel.Channel),
@@ -444,7 +460,8 @@ def _refresh_module_schema_cache(cache, cache_path):
         "user_modules": (user_modules, core.module.Module)
     }
 
-    sections_to_refresh = set()
+    # when the on-disk cache is from another cache version, rebuild every section
+    sections_to_refresh = set(package_map.keys()) if force_full_refresh else set()
 
     # 1. Check for deletions or changes in existing cache
     for section_key, (package, _) in package_map.items():
@@ -479,17 +496,21 @@ def _refresh_module_schema_cache(cache, cache_path):
     if sections_to_refresh:
         for section_key in sections_to_refresh:
             package, base_class = package_map[section_key]
+            loaded_names = set()
             try:
                 # Force reload modules to pick up schema changes from disk
                 classes = core.modules.load(package, base_class, reload=True, loading_config=True)
 
                 for cls in classes:
                     name = core.modules.get_name(cls)
+                    loaded_names.add(name)
                     settings = getattr(cls, 'settings', {})
 
-                    # Capture docstring and the unsafe class attribute
+                    # Capture docstring and the unsafe/category class attributes
                     docstring = inspect.getdoc(cls) or ""
                     unsafe = getattr(cls, 'unsafe', False)
+
+                    category = getattr(cls, 'category', "") or ""
 
                     module = inspect.getmodule(cls)
                     checksum = ""
@@ -502,12 +523,37 @@ def _refresh_module_schema_cache(cache, cache_path):
                         "checksum": checksum,
                         "metadata": {
                             "docstring": docstring,
-                            "unsafe": unsafe  # Added to cache
+                            "unsafe": unsafe,  # Added to cache
+                            "category": category
                         }
                     }
 
             except Exception as e:
                 print(f"[CORE] Failed to refresh cache for {section_key}: {core.detail_error(e)}")
+
+            try:
+                for name in _discover_available_names(package):
+                    if name in loaded_names:
+                        continue
+
+                    entry = cache[section_key].get(name)
+                    if not isinstance(entry, dict):
+                        continue
+
+                    file_path = core.modules._get_module_file_path(package, name)
+                    if not file_path:
+                        continue
+
+                    extracted = _extract_class_metadata_from_file(file_path)
+                    if not extracted:
+                        continue
+
+                    metadata = entry.setdefault("metadata", {})
+                    metadata["docstring"] = extracted["docstring"]
+                    metadata["unsafe"] = extracted["unsafe"]
+                    metadata["category"] = extracted["category"]
+            except Exception as e:
+                print(f"[CORE] failed to statically read metadata for {section_key}: {core.detail_error(e)}")
 
         try:
             with open(cache_path, 'w') as f:
@@ -516,6 +562,173 @@ def _refresh_module_schema_cache(cache, cache_path):
             print(f"[CORE] failed to save module cache: {core.detail_error(e)}")
 
     return cache
+
+def _ast_class_attrs(node):
+    """
+    Read docstring/unsafe/category assignments straight off a class definition node.
+    category stays None when the class does not declare one itself (so we know to
+    look at its base classes).
+    """
+    docstring = ast.get_docstring(node) or ""
+    unsafe = False
+    category = None
+    looks_like_module = False
+
+    for item in node.body:
+        if not isinstance(item, ast.Assign) or len(item.targets) != 1:
+            continue
+        target = item.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+
+        if target.id in ("settings", "dependencies"):
+            looks_like_module = True
+        elif target.id == "unsafe" and isinstance(item.value, ast.Constant):
+            unsafe = bool(item.value.value)
+            looks_like_module = True
+        elif target.id == "category" and isinstance(item.value, ast.Constant) and isinstance(item.value.value, str):
+            category = item.value.value
+            looks_like_module = True
+
+    return {"docstring": docstring, "unsafe": unsafe, "category": category, "looks_like_module": looks_like_module}
+
+
+def _dotted_name(node):
+    """turns an ast Name/Attribute chain (e.g. `modules.http.Http`) into its dotted string"""
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+        return ".".join(reversed(parts))
+    return ""
+
+
+def _parse_ast(filepath):
+    try:
+        with open(filepath, 'r', encoding="utf-8") as f:
+            return ast.parse(f.read())
+    except Exception:
+        return None
+
+
+def _import_aliases(tree):
+    """maps locally imported names to their dotted origin, e.g. `from modules.http import Http` -> Http = modules.http.Http"""
+    aliases = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = alias.name
+    return aliases
+
+
+def _find_class_node(tree, class_name):
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            return node
+    return None
+
+
+def _module_file_for_dotted(dotted_path):
+    """resolves a dotted module path like `modules.http` to its entry file, without importing anything"""
+    parts = dotted_path.split(".")
+    if len(parts) < 2 or parts[0] not in ("modules", "user_modules", "channels", "user_channels"):
+        return None
+
+    folder = os.path.join(core.get_path(), *parts)
+    for entry in ("module.py", "channel.py"):
+        candidate = os.path.join(folder, entry)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _resolve_ast_category(tree, filepath, class_node, visited, depth=0):
+    """
+    walks a class and then its base classes to find a declared category, mirroring what
+    getattr() inheritance does for importable modules. supports bases written as full
+    dotted paths (modules.http.Http) as well as imported names (Http).
+    """
+    meta = _ast_class_attrs(class_node)
+    if meta["category"] is not None:
+        return meta["category"]
+
+    if depth >= 6:
+        return None
+
+    visited.add(os.path.abspath(filepath))
+    aliases = _import_aliases(tree)
+
+    for base in class_node.bases:
+        dotted = _dotted_name(base)
+        if not dotted:
+            continue
+
+        # base class defined in this same file
+        if "." not in dotted:
+            base_node = _find_class_node(tree, dotted)
+            if base_node is not None:
+                result = _resolve_ast_category(tree, filepath, base_node, visited, depth + 1)
+                if result is not None:
+                    return result
+
+        # base class coming from another module/channel folder
+        origin = aliases.get(dotted, dotted)
+        origin_parts = origin.split(".")
+        base_file = _module_file_for_dotted(".".join(origin_parts[:-1]))
+        if not base_file or os.path.abspath(base_file) in visited:
+            continue
+
+        base_tree = _parse_ast(base_file)
+        if base_tree is None:
+            continue
+
+        base_node = _find_class_node(base_tree, origin_parts[-1])
+        if base_node is None:
+            continue
+
+        result = _resolve_ast_category(base_tree, base_file, base_node, visited, depth + 1)
+        if result is not None:
+            return result
+
+    return None
+
+
+def _extract_class_metadata_from_file(filepath):
+    """
+    Statically extract docstring/unsafe/category from a module/channel file without
+    importing it (same spirit as core.modules._extract_deps_from_file).
+
+    Used as a fallback for modules that cannot be imported (e.g. their dependencies
+    are not installed), so their cached metadata never goes stale. Categories are
+    inherited from parent classes (across module files) just like getattr() would.
+    Returns None when the file cannot be parsed or contains no class.
+    """
+    tree = _parse_ast(filepath)
+    if tree is None:
+        return None
+
+    candidates = []
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        meta = _ast_class_attrs(node)
+        meta["node"] = node
+        candidates.append(meta)
+
+    if not candidates:
+        return None
+
+    # prefer the class that actually looks like the module/channel class
+    chosen = next((c for c in candidates if c["looks_like_module"]), candidates[0])
+    category = _resolve_ast_category(tree, filepath, chosen["node"], set()) or ""
+
+    return {"docstring": chosen["docstring"], "unsafe": chosen["unsafe"], "category": category}
+
 
 def _get_file_checksum(filepath):
     """Calculate MD5 checksum of a file."""
@@ -562,6 +775,10 @@ def get_schema():
     cache = _get_module_schema_cache()
 
     for section_key, section_cache in cache.items():
+        # skip non-section bookkeeping keys (like _version)
+        if section_key not in CACHE_SECTIONS:
+            continue
+
         section = schema.setdefault(section_key, {})
         settings = section.setdefault("settings", {})
         for name, data in section_cache.items():
@@ -583,6 +800,7 @@ def get_module_structure():
             "metadata": {
                 "doc": "...",
                 "unsafe": True/False,
+                "category": "...",
                 "type": "module" | "channel" | "user_module"
             }
         }
@@ -600,6 +818,10 @@ def get_module_structure():
     }
 
     for section_key, section_cache in cache.items():
+        # skip non-section bookkeeping keys (like _version)
+        if section_key not in CACHE_SECTIONS:
+            continue
+
         type_str = type_map.get(section_key, "unknown")
 
         for name, data in section_cache.items():
@@ -610,6 +832,8 @@ def get_module_structure():
                 "metadata": {
                     "doc": metadata["docstring"],
                     "unsafe": metadata["unsafe"],
+                    # older cache entries may predate the category field
+                    "category": metadata.get("category", ""),
                     "type": type_str
                 }
             }

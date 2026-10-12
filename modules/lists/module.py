@@ -6,6 +6,8 @@ class Lists(core.module.Module):
     Lets the AI manage lists for you, such as shopping lists, simple todo lists, and so on.
     """
 
+    category = "life"
+
     settings = {
         "insert_system_prompt": {
             "description": "Whether to put pinned lists in the system prompt. This will make your AI aware of pinned lists and their content at all times! So you can simply ask your AI to pin one of your lists, and then it will always know what's in it. Careful though, this can blow up context size fast, depending on the list!",

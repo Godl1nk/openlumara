@@ -4,6 +4,8 @@ import os
 class Docs(core.module.Module):
     """Allows your AI to grab documentation about anything you want. Has OpenLumara documentation included!"""
 
+    category = "core"
+
     settings = {
         "folders": {
             "description": "The folders to grab docs from. These folders can contain any plaintext files you want, such as txt, markdown, and so on, and it can be a nested folder structure.",

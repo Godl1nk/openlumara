@@ -9,6 +9,8 @@ TIMEZONES.update({tz: f"Set your timezone to {tz}" for tz in sorted(zoneinfo.ava
 class Time(core.module.Module):
     """Makes the AI aware of the current time and date"""
 
+    category = "core"
+
     settings = {
         "method": {
             "type": "select",

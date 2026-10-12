@@ -8,6 +8,8 @@ import re
 class Scheduler(core.module.Module):
     """Lets your AI perform actions on your behalf at specified times! Supports recurring actions."""
 
+    category = "core"
+
     settings = {
         "notification_channel": {
             "type": "select",

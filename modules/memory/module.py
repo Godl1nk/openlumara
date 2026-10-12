@@ -8,6 +8,8 @@ import ulid
 class Memory(core.module.Module):
     """Gives your AI a persistent memory system"""
 
+    category = "core"
+
     settings = {
         "insert_nudge_prompt": {
             "default": False,

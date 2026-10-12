@@ -3,6 +3,8 @@ import core
 class Identity(core.module.Module):
     """Gives your AI a personality by inserting it as a prompt. The AI can edit its own personality!"""
 
+    category = "core"
+
     async def on_ready(self):
         self.identity = core.storage.StorageList("identity", type="text")
 

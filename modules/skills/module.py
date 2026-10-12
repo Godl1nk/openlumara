@@ -7,6 +7,8 @@ class Skills(core.module.Module):
     Lets your AI use Skill files, as made popular by other harnesses. Use with either the shell module (which is sandboxed) or modules like the HTTP module (to replace `curl`) and custom user modules.
     """
 
+    category = "core"
+
     settings = {
         "folder": {
             "description": "The folder that contains skills.\n\n**NOTE**:\n\n*When using skills made for other harnesses with openlumara, keep in mind that many of them will want to use an unrestricted host-level shell - which is highly insecure and unsafe.*\n\n*For most of these skills, you will want to use the `shell` module, which is a very tightly sandboxed docker shell.*\n\n*But in some cases, you may need host-level access. In those cases, please (vibe)code a custom usermodule for openlumara that gives your AI the tools to do the thing(s) you want, without giving your AI a full host-level shell.*\n\n*Otherwise, you're compromising the security I worked so hard to achieve in openlumara.*\n\n~ Rose22",

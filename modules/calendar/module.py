@@ -6,6 +6,8 @@ import asyncio
 class Calendar(core.module.Module):
     """Lets your AI manage a calendar for you"""
 
+    category = "life"
+
     # TODO: add caldav support, iCal support, etc. maybe also google cal
 
     settings = {

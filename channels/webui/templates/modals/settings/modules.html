@@ -4,19 +4,29 @@
         <h3 x-text="$store.settings.categories[activeCategory].title"></h3>
         <p class="section-desc" x-text="$store.settings.categories[activeCategory].description"></p>
         
-        <!-- All modules (enabled first, then disabled) -->
-        <template x-for="module in [...$store.settings.categories[activeCategory].enabled, ...$store.settings.categories[activeCategory].disabled]" :key="module">
-            <template x-if="$store.settings.showUnsafe || !$store.settings.categories[activeCategory].unsafeModules[module]">
-                <div class="unified-card" :class="{ 'disabled': !$store.settings.categories[activeCategory].enabled.includes(module), 'unsafe': $store.settings.categories[activeCategory].unsafeModules[module] }">
-                    <div class="info" @click="activeModule = module">
-                        <span type="button" class="btn" x-text="formatLabel(module)"></span>
-                        <p class="description" x-html="renderMarkdown($store.settings.categories[activeCategory].descriptions[module]) || ''"></p>
+        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+             All modules grouped by the category each module declares on its
+             class (enabled first within each group, uncategorized under
+             "Other" last). The group header hides itself when no module in
+             this section declares a category at all. -->
+        <template x-for="group in $store.settings.groupedSubItems(activeCategory)" :key="group.label">
+            <div class="module-group">
+                <template x-if="group.label">
+                    <h4 class="module-group-label" x-text="group.label"></h4>
+                </template>
+
+                <template x-for="module in group.items" :key="module">
+                    <div class="unified-card" :class="{ 'disabled': !$store.settings.categories[activeCategory].enabled.includes(module), 'unsafe': $store.settings.categories[activeCategory].unsafeModules[module] }">
+                        <div class="info" @click="activeModule = module">
+                            <span type="button" class="btn" x-text="formatLabel(module)"></span>
+                            <p class="description" x-html="renderMarkdown($store.settings.categories[activeCategory].descriptions[module]) || ''"></p>
+                        </div>
+                        <button type="button" :class="{'toggle': true, 'toggle-off': $store.settings.categories[activeCategory].disabled.includes(module), 'toggle-on': $store.settings.categories[activeCategory].enabled.includes(module) }" 
+                                @click="$store.settings.toggleEnabled(activeCategory, module)">
+                        </button>
                     </div>
-                    <button type="button" :class="{'toggle': true, 'toggle-off': $store.settings.categories[activeCategory].disabled.includes(module), 'toggle-on': $store.settings.categories[activeCategory].enabled.includes(module) }" 
-                            @click="$store.settings.toggleEnabled(activeCategory, module)">
-                    </button>
-                </div>
-            </template>
+                </template>
+            </div>
         </template>
     </div>
 </template>

@@ -52,6 +52,9 @@ class Module:
     # unsafe flag can mark a module as risky to enable in supported settings UI's
     unsafe = False
 
+    # category groups modules together in supported UI's (such as the webui)
+    category = ""
+
     # list of python dependencies that need to be installed for the module to work
     dependencies = []
 

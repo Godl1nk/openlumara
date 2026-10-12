@@ -3,6 +3,8 @@ import core
 class Models(core.module.Module):
     """Lets you or the AI switch between AI models"""
 
+    category = "core"
+
     settings = {
         "insert_current_model_into_system_prompt": {
             "description" :"Whether to make the AI aware of what model it's currently running on. Can help it stay grounded!",

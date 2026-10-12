@@ -731,6 +731,8 @@ class Http(core.module.Module):
     Lets the AI send/receive raw HTTP requests
     """
 
+    category = "web"
+
     # ==================== Security constants ====================
     ALLOWED_SCHEMES = {'http', 'https'}
     MAX_REDIRECTS = 5

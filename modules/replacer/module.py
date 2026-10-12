@@ -4,6 +4,8 @@ import regex
 class Replacer(core.module.Module):
     """Replaces any words in your messages with your desired replacements. Useful for censoring, protecting sensitive data, and so on!"""
 
+    category = "utilities"
+
     settings = {
         "replacements": {
             "type": "object",

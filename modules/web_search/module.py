@@ -11,6 +11,8 @@ class WebSearch(modules.http.Http):
     Lets your AI search the web!
     """
 
+    category = "web"
+
     dependencies = ["ddgs"]
 
     settings = {

@@ -119,6 +119,24 @@
                     gap: 1px;
                     padding: 4px 0 4px 12px;
 
+                    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+                       category grouping headers for the module/channel sub-list */
+                    .sub-group {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 1px;
+                    }
+
+                    .sub-group-label {
+                        padding: 8px 12px 2px;
+                        font-size: 10px;
+                        font-weight: 700;
+                        letter-spacing: 0.08em;
+                        text-transform: uppercase;
+                        color: var(--text-secondary);
+                        opacity: 0.7;
+                    }
+
                     button {
                         width: 100%;
                         text-align: left;
