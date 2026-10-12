@@ -317,9 +317,17 @@ UI_STORE = {
     },
 
     async openModal(name) {
-        if (this.currentModal === 'settings') {
-            // auto-save the settings when switching to a different modal
-            await Alpine.store('settings').saveSettings();
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // opening another modal while settings is dirty used to silently
+        // auto-save; now it asks first. cancelling keeps the settings
+        // modal open. (the settings modal unmounts on switch, so its
+        // inline close-prompt can't ride along here - native confirm it is)
+        if (this.currentModal === 'settings' && name !== 'settings') {
+            const settings = Alpine.store('settings');
+            if (settings.hasChanges &&
+                !confirm('You have unsaved settings changes. Open the other dialog without saving?')) {
+                return;
+            }
         }
 
         this.currentModal = name;
