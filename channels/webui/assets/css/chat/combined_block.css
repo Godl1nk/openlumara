@@ -147,8 +147,16 @@
                 opacity: 0.6;
             }
 
-            .chip-count {
-                margin-left: 0.15em;
+            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+               inline action list inside a chip: "Coder: file read, file
+               edit x2 · Web: search". the commas are css so the template
+               only ever outputs bare action spans */
+            .module-action + .module-action::before {
+                content: ', ';
+            }
+
+            .action-count {
+                margin-left: 2px;
                 opacity: 0.75;
                 font-size: 0.9em;
             }
