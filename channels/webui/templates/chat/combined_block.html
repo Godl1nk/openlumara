@@ -2,7 +2,7 @@
      one collapsible header per agentic STEP. steps arrive precomputed:
      history via turn.steps (core/turns.py group_history), streaming via
      streamSteps() folding backend-stamped segments. header = numbered
-     circle + thought snippet (first reasoning line) with "Module ×N"
+     circle + thought snippet (last reasoning sentence) with "Module ×N"
      provenance chips right-aligned; thought-less steps fall back to
      module-grouped tool names. {% set combined_stream = true %} switches
      to the streaming behaviour: activity dots while this is the newest
@@ -61,7 +61,7 @@
                           {% else %}
                           x-text="'Thoughts and actions'"></span>
                           {% endif %}
-                    <!-- collapsed: first sentence (clean cut) as the preview -->
+                    <!-- collapsed: last sentence (clean cut) as the preview -->
                     <span class="step-thought" x-show="collapsed" x-text="thoughtSnippet(message.reasoning_content)"></span>
                     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
                          full provenance list instead of "Module ×N":
