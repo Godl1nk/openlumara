@@ -43,7 +43,46 @@ function streamSteps(chain) {
             : (m.step_status ?? s.status);
         s._tail = m;
     }
-    return Array.from(steps.values());
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+    // fold a tools-only step into the thoughts-only step right before it.
+    // group_stream bumps the step counter whenever a tool_calls segment
+    // arrives after the current step already attached tools, so providers
+    // that interleave tool responses with late tool batches (or emit
+    // tool-only rounds) split a beat's thought from its action live.
+    // group_history folds a thought run + the tool segment that follows
+    // into one step, so merge the same way here and the chain stops
+    // reshaping itself when the turn reloads from history
+    const list = Array.from(steps.values());
+    const merged = [];
+    for (const s of list) {
+        const prev = merged[merged.length - 1];
+        if (prev && s.tool_calls.length > 0 && !s.reasoning_content && !s.content
+            && prev.tool_calls.length === 0 && (prev.reasoning_content || prev.content)) {
+            prev.tool_calls = s.tool_calls;
+            prev.modules = s.modules;
+            prev.status = s.status;
+            prev._tail = s._tail ?? prev._tail;
+            continue;
+        }
+        merged.push(s);
+    }
+    return merged;
+}
+
+// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+// header preview of a thought: first line, cut at the last sentence
+// terminator that still fits within max chars, otherwise a clean word
+// cut with an ellipsis. no mid-word pixel guillotines in the chain.
+function thoughtSnippet(text, max) {
+    const s = (text || '').trim().split('\n')[0].trim();
+    const limit = max || 80;
+    if (s.length <= limit) return s;
+    const win = s.slice(0, limit);
+    // greedy: matches up through the LAST sentence end inside the window
+    const term = win.match(/^[\s\S]*[.!?…](?=\s|$)/);
+    if (term && term[0].length >= 12) return term[0].trim();
+    const sp = win.lastIndexOf(' ');
+    return (sp > 20 ? win.slice(0, sp) : win.slice(0, limit - 1)).replace(/\s+$/, '') + '…';
 }
 
 // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
