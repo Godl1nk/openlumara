@@ -63,9 +63,19 @@
                           {% endif %}
                     <!-- collapsed: first sentence (clean cut) as the preview -->
                     <span class="step-thought" x-show="collapsed" x-text="thoughtSnippet(message.reasoning_content)"></span>
+                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                         full provenance list instead of "Module ×N":
+                         "Coder: file read, file edit x2 · Web: search".
+                         count badge only when a function ran more than
+                         once; commas between actions come from css -->
                     <span class="step-modules" x-show="message.modules?.length > 0">
-                        <template x-for="(group, gi) in message.modules" :key="'chip-'+gi">
-                            <span class="module-chip"><span x-text="group.module"></span><span class="chip-count" x-text="'×' + group.actions.reduce((n, a) => n + (a.count || 1), 0)"></span></span>
+                        <template x-for="(group, gi) in message.modules" :key="'mod-'+gi">
+                            <span class="module-chip">
+                                <span x-show="group.actions.some(a => a.name)" x-text="group.module + ':'"></span>
+                                <template x-for="(action, ai) in group.actions.filter(a => a.name)" :key="'act-'+ai">
+                                    <span class="module-action"><span x-text="action.name.replaceAll('_', ' ')"></span><span class="action-count" x-show="action.count > 1" x-text="'x' + action.count"></span></span>
+                                </template>
+                            </span>
                         </template>
                     </span>
                 </span>
