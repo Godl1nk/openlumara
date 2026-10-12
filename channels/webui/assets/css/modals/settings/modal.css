@@ -85,8 +85,22 @@
                 gap: 2px;
                 padding: 0 8px;
 
+                /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+                   group separators between the core sections, the module
+                   block and the info-only sections */
+                .nav-divider {
+                    border: none;
+                    border-top: 1px solid var(--border-color);
+                    margin-top: 10px;
+                    margin-bottom: 10px;
+                    padding-top: 0px;
+                }
+
                 .item {
                     width: 100%;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
                     text-align: left;
                     padding: 10px 12px;
                     border: none;
@@ -110,6 +124,30 @@
                         color: var(--button-text);
                         font-weight: 600;
                         box-shadow: inset 0 0 0 1px var(--border-color);
+                    }
+
+                    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+                       per-category svg icon (see templates/modals/settings/
+                       sidebar.html). fixed slot so labels line up even for
+                       items without an icon (Restart Server, Logout) */
+                    .item-icon {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 16px;
+                        height: 16px;
+                        flex-shrink: 0;
+                        opacity: 0.65;
+                        transition: opacity 0.15s ease;
+
+                        svg {
+                            display: block;
+                        }
+                    }
+
+                    &:hover .item-icon,
+                    &.active .item-icon {
+                        opacity: 1;
                     }
                 }
 

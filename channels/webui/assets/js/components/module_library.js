@@ -20,6 +20,9 @@ function moduleLibrary() {
         // which of the two horizontal tabs (Modules | Channels) is open
         activeType: 'module',
 
+        // completion notice shown inside the restart banner after an action
+        restartNote: '',
+
         async init() {
             await this.refresh();
         },
@@ -74,7 +77,11 @@ function moduleLibrary() {
                 .map(([library, items]) => ({
                     library,
                     url: this.libraryUrls[library] || library,
-                    items
+                    // installed first, then alphabetical
+                    items: items.slice().sort((a, b) => {
+                        if (a.installed !== b.installed) return a.installed ? -1 : 1;
+                        return a.name.localeCompare(b.name);
+                    })
                 }));
         },
 
@@ -125,8 +132,15 @@ function moduleLibrary() {
                     name: m.name
                 });
 
-                if (data.restart_required) this.restartNeeded = true;
-                this.flash(action.charAt(0).toUpperCase() + action.slice(1) + ' complete.', 'success');
+                const done = action.charAt(0).toUpperCase() + action.slice(1);
+                if (data.restart_required) {
+                    // one message instead of two: the restart banner carries
+                    // the completion notice, so no separate success flash
+                    this.restartNeeded = true;
+                    this.restartNote = done + ' complete. Restart the server for it to take effect.';
+                } else {
+                    this.flash(done + ' complete.', 'success');
+                }
                 await this.refresh();
             } catch (err) {
                 this.flash(String(err), 'error');
