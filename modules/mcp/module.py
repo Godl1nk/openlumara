@@ -56,6 +56,8 @@ def _flatten_error(exc, depth=0):
 class Mcp(core.module.Module):
     """Connects to MCP (Model Context Protocol) servers and exposes their tools to your AI as if they were native tools. Supports stdio, streamable HTTP and SSE transports."""
 
+    category = "core"
+
     # pin the version of the MCP library..
     # some versions use very different syntax and would throw errors
     dependencies = ["mcp>=2"]

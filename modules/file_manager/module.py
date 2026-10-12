@@ -8,6 +8,8 @@ from pathlib import Path
 class FileManager(core.module.Module):
     """Gives your AI full access to your filesystem. CAUTION: Unsafe! Use at your own risk."""
 
+    category = "system"
+
     unsafe = True
     header = "System info"
 

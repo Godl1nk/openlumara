@@ -3,6 +3,8 @@ import core
 class Modules(core.module.Module):
     """Helps your AI manage your modules"""
 
+    category = "core"
+
     settings = {
         "insert_system_prompt": {
             "description": "Whether to insert the list of enabled/disabled modules into the system prompt. Will make the AI aware of what modules are enabled/disabled at all times.",

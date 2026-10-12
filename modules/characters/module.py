@@ -8,6 +8,8 @@ import channels.webui.api as webui
 class Characters(core.module.Module):
     """Lets your AI embody different characters! inspired by characterAI, janitorAI, sillytavern, etc."""
 
+    category = "creative"
+
     settings = {
         "insert_system_prompt": {
             "default": True,

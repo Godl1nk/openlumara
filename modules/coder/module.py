@@ -10,6 +10,8 @@ import tree_sitter_language_pack as tslp
 class Coder(core.module.Module):
     """Lets your AI write code within sandboxes, without using a shell. Validates code syntax before writing to disk to protect your code from breaking."""
 
+    category = "development"
+
     # The coder module, now manually rewritten and free of any AI slop :)
     # ~ Rose22
 

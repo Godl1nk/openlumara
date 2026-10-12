@@ -750,7 +750,7 @@ def build_field_settings(obj, schema, prefix=""):
     return settings
 
 
-def build_settings_structure(original_data, module_info):
+def build_settings_structure(original_data, module_info, core_sections):
     categories = {}
     order = 0
 
@@ -798,13 +798,19 @@ def build_settings_structure(original_data, module_info):
 
             descriptions = {}
             unsafe_modules = {}
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+            # module_name -> declared category, so the frontend can group the list
+            module_categories = {}
             for item_name, info in module_info.items():
                 if info.get("description"):
                     descriptions[item_name] = info["description"]
                 if info.get("unsafe"):
                     unsafe_modules[item_name] = True
+                if info.get("category"):
+                    module_categories[item_name] = info["category"]
             category["descriptions"] = descriptions
             category["unsafeModules"] = unsafe_modules
+            category["moduleCategories"] = module_categories
 
             category["settings"] = {}
             top_settings = (top_value or {}).get("settings")
@@ -821,8 +827,9 @@ def build_settings_structure(original_data, module_info):
                         "value": build_field_settings(item_settings, item_schema, item_name),
                     }
         else:
-            # core config sections (api, model, core, etc.), schema from module_info
-            section_schema = (module_info.get(top_key) or {}).get("settings_schema") or {}
+            # core config sections (api, model, core, etc.), schema from core_sections
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+            section_schema = (core_sections.get(top_key) or {}).get("settings_schema") or {}
             if isinstance(top_value, dict) and top_value:
                 category["settings"] = build_field_settings(top_value, section_schema, top_key)
             else:
@@ -880,7 +887,18 @@ def flatten_categories(categories):
 
 
 def get_module_info():
-    """schemas (descriptions, settings schemas, etc) for all modules and core config sections"""
+    """
+    -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+    schemas (descriptions, settings schemas, etc) for all modules/channels and for
+    the core config sections.
+
+    These are returned as TWO separate namespaces. They used to share one dict,
+    which meant a module named like a core config section (e.g. the `modules`
+    module vs the `modules` config section) would clobber the section's entry -
+    or, with the section loop running last, the section would clobber the
+    module's entry, silently losing its category/description/settings schema.
+    Returns (module_info, core_sections).
+    """
     module_info = {}
 
     for module_name, module_data in core.config.get_module_structure().items():
@@ -888,17 +906,20 @@ def get_module_info():
         module_info[module_name] = {
             "description": metadata.get("doc", ""),
             "unsafe": metadata.get("unsafe", False),
+            "category": metadata.get("category", ""),
             "settings_schema": module_data.get("settings", {}),
         }
 
+    core_sections = {}
+
     for section_name, section_data in core.config.get_core_settings_structure().items():
-        module_info[section_name] = {
+        core_sections[section_name] = {
             "description": section_data.get("metadata", {}).get("doc", ""),
             "unsafe": section_data.get("metadata", {}).get("unsafe", False),
             "settings_schema": section_data.get("settings", {}),
         }
 
-    return module_info
+    return module_info, core_sections
 
 # -------------------
 # Chat List Projection & Search Highlighting
@@ -1786,7 +1807,8 @@ async def create_fastapi(channel):
     @app.get("/api/settings/load")
     async def settings_load():
         """Returns the complete, render-ready settings structure (categories, field types, schemas and current values merged)"""
-        structure = build_settings_structure(core.config.config, get_module_info())
+        module_info, core_sections = get_module_info()
+        structure = build_settings_structure(core.config.config, module_info, core_sections)
 
         return api_result({
             "categories": structure,

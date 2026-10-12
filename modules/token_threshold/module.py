@@ -3,6 +3,8 @@ import core
 class TokenThreshold(core.module.Module):
     """Will make the AI warn you if you're approaching the token limit"""
 
+    category = "core"
+
     settings = {
         "warning_threshold": {
             "default": 0.8,

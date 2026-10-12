@@ -3,6 +3,8 @@ import core
 class Channel(core.module.Module):
     """Inserts channel-specific instructions and prompts into your chats"""
 
+    category = "core"
+
     settings = {
         # "enable_new_user_reminder": {
         #     "description": "This is what makes your AI nag you about checking out the module settings. Turn this off (instead of the entire module) if you want to still be able to ask your AI about how to use openlumara, but without being nagged all the time.. lol",

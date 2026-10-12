@@ -4,6 +4,8 @@ import simpleeval
 class Calculator(core.module.Module):
     """Lets your AI do simple calculations without relying on it's own intelligence"""
 
+    category = "utilities"
+
     dependencies = ["simpleeval"]
 
     async def calculate(self, expression: str):

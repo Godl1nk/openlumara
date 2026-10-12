@@ -31,6 +31,8 @@ class Shell(core.module.Module):
     Lets your AI safely run shell commands in a persistent sandboxed docker/podman container
     """
 
+    category = "system"
+
     header = "Shell"
 
     settings = {

@@ -30,13 +30,42 @@ SETTINGS_STORE = {
             .sort(([a, catA], [b, catB]) => (catA.order || 0) - (catB.order || 0));
     },
 
-    get filteredSubItems() {
-        return (cat) => {
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+    // (the old flat `filteredSubItems` getter was replaced by groupedSubItems)
+    // groups all (enabled + disabled) items of a module category by the category
+    // each module/channel declares on its class. returns [{ label, items }] with
+    // named categories sorted alphabetically and uncategorized items ("Other")
+    // last. the label is empty when there is nothing to group by (single unnamed
+    // group), so the templates can hide the header entirely in that case.
+    get groupedSubItems() {
+        return (cat, enabledOnly = false) => {
             const catData = this.categories[cat];
             if (!catData || !catData.enabled) return [];
-            return catData.enabled.filter(item => 
-                this.showUnsafe || !catData.unsafeModules[item]
+
+            const moduleCategories = catData.moduleCategories || {};
+            const pool = enabledOnly ? [...catData.enabled] : [...catData.enabled, ...catData.disabled];
+            const visible = pool.filter(item =>
+                this.showUnsafe || !(catData.unsafeModules || {})[item]
             );
+
+            const groups = {};
+            for (const item of visible) {
+                const label = moduleCategories[item] || "Other";
+                if (!groups[label]) groups[label] = [];
+                groups[label].push(item);
+            }
+
+            const sorted = Object.entries(groups).sort(([a], [b]) => {
+                if (a === "Other") return 1;
+                if (b === "Other") return -1;
+                return a.localeCompare(b);
+            });
+
+            const hideLabels = sorted.length === 1 && sorted[0][0] === "Other";
+            return sorted.map(([label, items]) => ({
+                label: hideLabels ? "" : label,
+                items
+            }));
         };
     },
 

@@ -3,6 +3,8 @@ import core
 class WritingStyle(core.module.Module):
     """Alter your AI's writing style in a variety of ways"""
 
+    category = "creative"
+
     header = "STYLE CONSTRAINTS"
 
     settings = {

@@ -16,6 +16,12 @@ class ExampleModule(core.module.Module):
     #   CONFIGURATION
     # -------------------------
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+    # category groups your module together with others in supported settings UI's
+    # (such as the webUI). use a short human readable name like "Web" or "Wellness".
+    # leave empty to have the module show up as uncategorized.
+    category = ""
+
     # settings defined here will show up in all channels that support it (such as the webUI)
     # for the user to change as they see fit
     # valid types: string, long_text, boolean, number, percentage, select

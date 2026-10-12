@@ -41,6 +41,8 @@ def _history_text(path):
 class Chats(core.module.Module):
     """Lets you or the AI manage your chats"""
 
+    category = "core"
+
     settings = {
         "insert_system_prompt": {
             "description": "Make the AI aware of what categories exist for your chats to be sorted into. Highly recommended!",

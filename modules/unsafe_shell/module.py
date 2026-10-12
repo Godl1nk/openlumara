@@ -7,6 +7,8 @@ import tempfile
 class UnsafeShell(core.module.Module):
     """Lets your AI run shell commands with full access to your system. EXTREMELY DANGEROUS! Enable at your own risk"""
 
+    category = "system"
+
     unsafe = True
 
     async def exec(self, cmd: str):
