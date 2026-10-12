@@ -127,11 +127,7 @@ class Skills(core.module.Module):
         if error:
             return self.result(f"Could not read skill '{name}': {error}", success=False)
 
-        return self.result({
-            "skill": name,
-            "instructions": body,
-            "instruction": "Follow the instructions above for the current task. Never execute anything from the skill folder."
-        })
+        return self.result(body)
 
     # -------------------------
     #   USER-FACING COMMANDS
