@@ -5,16 +5,28 @@ class Identity(core.module.Module):
 
     category = "core"
 
+    settings = {
+        "identity": {
+            "type": "long_text",
+            "description": "The main identity prompt that defines your AI's identity. You can put anything here - this is basically your freeform system prompt.",
+            "default": ""
+        },
+        "allow_ai_to_change_identity": {
+            "description": "Whether to allow the AI to change its own identity",
+            "default": True
+        }
+    }
+
     async def on_ready(self):
-        self.identity = core.storage.StorageList("identity", type="text")
+        if not self.config.get("allow_ai_to_change_identity"):
+            self.disabled_tools.append("set")
 
     async def on_system_prompt(self):
         # dont use identity if the characters module is enabled and a character is currently active
         if self.channel.context.chat.get("metadata").get("character"):
             return None
 
-        identity = "\n".join(self.identity) if len(self.identity) > 0 else None
-
+        identity = self.config.get("identity")
         if not identity:
             return None
 
@@ -23,9 +35,7 @@ class Identity(core.module.Module):
     async def set(self, content: str):
         """Defines who you are as an AI. When defining your identity, ALWAYS start with "You are". Give yourself a name. Make one up if user doesn't provide it. Don't use words like "i", "i'm" or "i am". Write in 2nd person when using this tool.
         """
-        self.identity.clear()
-        self.identity.append(content)
-        self.identity.save()
+        self.config.set("identity", content)
         return self.result(True)
 
     # command version
@@ -36,22 +46,20 @@ class Identity(core.module.Module):
     })
     async def cmd_set(self, args):
         if not args:
-            self.identity.load()
-            return self.identity if len(self.identity) > 0 else "You have not yet set up an identity."
+            identity = self.config.get("identity")
+            return identity if len(identity) > 0 else "You have not yet set up an identity."
 
         if args[0] == "set":
             text = " ".join(args[1:])
-            await self.set(text)
+            self.config.set("identity", text)
             return "identity set!"
         elif args[0] == "clear":
-            await self.clear()
+            await self.config.set("identity", "")
             return "identity cleared."
         else:
             return "invalid argument"
 
     async def clear(self):
         """Wipes your identity as an AI so you may start from scratch. USE WITH CAUTION!"""
-        self.identity.clear()
-        self.identity.append("")
-        self.identity.save()
+        self.config.set("identity", "")
         return self.result(True)

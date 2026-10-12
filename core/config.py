@@ -42,6 +42,10 @@ core_settings_schema = {
             "default": 30,
             "description": "Timeout in seconds for tool execution. This applies per individual tool, and is used to forcefully kill off tools that run too long."
         },
+        "module_libraries": {
+            "description": "A list of github urls that contain modules you want to be able to download and update in openlumara *(currently not implemented yet - stay tuned, this is the dev branch after all, lol)*",
+            "default": []
+        }
     },
     "api": {
         "url": {
@@ -277,6 +281,18 @@ class ConfigManager:
             else:
                 return default
         return current
+
+    def set(self, key, value):
+        """Set a key to a value.. duh lol"""
+        current = self.root_config
+        for k in self.base_path:
+            if k not in current or not isinstance(current[k], dict):
+                current[k] = {}
+            current = current[k]
+
+        current[key] = value
+        if hasattr(self.root_config, 'save'):
+            self.root_config.save()
 
     def to_dict(self):
         # reload from disk
