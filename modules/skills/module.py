@@ -143,12 +143,12 @@ class Skills(core.module.Module):
     async def skills(self, args):
         """Lists all installed skills"""
 
-        if not self.index:
-            return "No skills installed. Add skills, then use `/skills reload` or restart OpenLumara."
-
         if args and args[0] == "reload":
             self._scan()
-            return "Skills reloaded"
+            return f"Skills reloaded ({len(self.index)} loaded)"
+
+        if not self.index:
+            return "No skills installed. Add skills, then use `/skills reload` or restart OpenLumara."
 
         lines = [f"Installed skills ({len(self.index)}):"]
         for name in self.index.keys():
