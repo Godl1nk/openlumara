@@ -194,6 +194,82 @@ class Memory(core.module.Module):
             item["score"] = round(float(score), 2)
         return item
 
+    def _matches_tag(self, mem, tag):
+        """case-insensitive tag filter used by the webui routes"""
+        if not tag:
+            return True
+
+        wanted = str(tag).strip().lower()
+        if not wanted:
+            return True
+
+        for mem_tag in mem.get("tags", []) or []:
+            if str(mem_tag).strip().lower() == wanted:
+                return True
+
+        return False
+
+    @webui.route("tags")
+    async def _route_tags(self, body=None, query=None):
+        """unique memory tags for the current sidebar context"""
+        self._mem.load()
+
+        tab = str((query or {}).get("tab", "all")).lower()
+        q = str((query or {}).get("q", "")).strip()
+
+        limit = 200
+        try:
+            limit = int((query or {}).get("limit", 200) or 200)
+        except ValueError:
+            limit = 200
+
+        limit = max(1, min(limit, 500))
+
+        if tab == "pinned":
+            entries = [mem for mem in self._mem if mem.get("pinned")]
+        elif tab == "search" and q:
+            search_in_content = str((query or {}).get("search_content", "true")).lower() not in ("false", "0", "no")
+            weights = {"tags": 2.0, "content": 1.0} if search_in_content else {"tags": 2.0}
+
+            results = await core.search.search(list(self._mem), q, field_weights=weights, top_n=limit)
+            entries = [hit.get("entry", {}) for hit in results if hit.get("entry")]
+        else:
+            entries = list(self._mem)
+
+        tags = set()
+        for mem in entries:
+            for tag in mem.get("tags", []) or []:
+                tag = str(tag).strip()
+                if tag:
+                    tags.add(tag)
+
+        return sorted(tags, key=str.lower)
+
+    @webui.route("list")
+    async def _route_list(self, body=None, query=None):
+        """newest-first memories, optionally filtered by tag"""
+        self._mem.load()
+
+        limit = 100
+        try:
+            limit = int((query or {}).get("limit", 100) or 100)
+        except ValueError:
+            limit = 100
+
+        limit = max(1, min(limit, 500))
+
+        tag = (query or {}).get("tag", "")
+        items = []
+        for mem in reversed(self._mem):
+            if not self._matches_tag(mem, tag):
+                continue
+
+            items.append(self._ui_item(mem))
+            if len(items) >= limit:
+                break
+
+        return items
+
     @webui.route("list_pinned")
     async def _route_list_pinned(self, body=None, query=None):
         """newest-first pinned memories for the sidebar"""
@@ -205,9 +281,10 @@ class Memory(core.module.Module):
         except ValueError:
             limit = 0
 
+        tag = (query or {}).get("tag", "")
         items = []
         for mem in reversed(self._mem):
-            if not mem.get("pinned"):
+            if not mem.get("pinned") or not self._matches_tag(mem, tag):
                 continue
 
             items.append(self._ui_item(mem))
@@ -233,10 +310,15 @@ class Memory(core.module.Module):
 
         limit = max(1, min(limit, 100))
 
+        tag = (query or {}).get("tag", "")
+        entries = [mem for mem in self._mem if self._matches_tag(mem, tag)]
+        if not entries:
+            return []
+
         search_in_content = str((query or {}).get("search_content", "true")).lower() not in ("false", "0", "no")
         weights = {"tags": 2.0, "content": 1.0} if search_in_content else {"tags": 2.0}
 
-        results = await self._mem.search(q, field_weights=weights, top_n=limit)
+        results = await core.search.search(entries, q, field_weights=weights, top_n=limit)
         return [self._ui_item(hit.get("entry", {}), hit.get("score")) for hit in results if hit.get("entry")]
 
     @webui.route("pin", method="POST")
@@ -244,6 +326,8 @@ class Memory(core.module.Module):
         mem_id = (body or {}).get("id")
         if not mem_id:
             return self.result("no memory id given", success=False)
+
+        self._mem.load()
         return await self.pin(mem_id)
 
     @webui.route("unpin", method="POST")
@@ -251,4 +335,41 @@ class Memory(core.module.Module):
         mem_id = (body or {}).get("id")
         if not mem_id:
             return self.result("no memory id given", success=False)
+
+        self._mem.load()
         return await self.unpin(mem_id)
+
+    @webui.route("update", method="POST")
+    async def _route_update(self, body=None, query=None):
+        mem_id = (body or {}).get("id")
+        if not mem_id:
+            return self.result("no memory id given", success=False)
+
+        self._mem.load()
+
+        content = (body or {}).get("content")
+        if content is None or not str(content).strip():
+            return self.result("memory content cannot be empty", success=False)
+
+        tags = (body or {}).get("tags", [])
+        if not isinstance(tags, list):
+            tags = []
+
+        index = self._get_index(mem_id)
+        if index == -1:
+            return self.result("memory with that ID not found!", success=False)
+
+        self._mem[index]["content"] = str(content).strip()
+        self._mem[index]["tags"] = [str(tag).strip() for tag in tags if str(tag).strip()]
+        self._mem.save()
+
+        return self.result(f"memory {mem_id} edited")
+
+    @webui.route("delete", method="POST")
+    async def _route_delete(self, body=None, query=None):
+        mem_id = (body or {}).get("id")
+        if not mem_id:
+            return self.result("no memory id given", success=False)
+
+        self._mem.load()
+        return await self.delete(mem_id)

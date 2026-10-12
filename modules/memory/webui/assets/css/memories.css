@@ -128,6 +128,44 @@
     border-color: var(--accent, #00d4ff);
 }
 
+.memory-panel .mem-filter {
+    position: relative;
+    padding: 0 2px;
+}
+
+.memory-panel .mem-filter-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    color: var(--text-secondary, #999);
+    pointer-events: none;
+}
+
+.memory-panel .mem-filter-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.memory-panel .mem-select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px 7px 30px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.memory-panel .mem-select:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
 .memory-panel .mem-list {
     display: flex;
     flex-direction: column;
@@ -203,6 +241,27 @@
     color: #ff7b72;
 }
 
+.memory-panel .mem-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.memory-panel .mem-action.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    min-width: 26px;
+    height: 26px;
+}
+
+.memory-panel .mem-action.icon svg {
+    width: 15px;
+    height: 15px;
+}
+
 .memory-panel .mem-empty {
     padding: 10px;
     font-size: 13px;
@@ -213,5 +272,108 @@
     font-size: 11px;
     color: #ff7b72;
     padding: 4px;
+    word-break: break-word;
+}
+
+/* memory edit modal */
+
+.memory-edit-modal {
+    width: 560px;
+    height: fit-content;
+}
+
+.memory-edit-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--text-primary, #eee);
+    max-height: calc(90vh - 48px);
+    overflow: auto;
+    box-sizing: border-box;
+}
+
+.memory-edit-modal .mem-field-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.memory-edit-modal .mem-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 180px;
+    padding: 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 14px;
+    line-height: 1.45;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.memory-edit-modal .mem-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.memory-edit-modal .mem-textarea:focus,
+.memory-edit-modal .mem-input:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.memory-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.memory-edit-modal .mem-action {
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #eee);
+}
+
+.memory-edit-modal .mem-action:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.memory-edit-modal .mem-action.primary {
+    background: var(--accent, #00d4ff);
+    border-color: var(--accent, #00d4ff);
+    color: #000;
+}
+
+.memory-edit-modal .mem-action.primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+}
+
+.memory-edit-modal .mem-action:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.memory-edit-modal .mem-footer {
+    font-size: 12px;
+    color: #ff7b72;
     word-break: break-word;
 }

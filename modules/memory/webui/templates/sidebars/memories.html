@@ -1,7 +1,7 @@
 {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
    memory sidebar tab: discovered via the sidebars/ convention.
    logic lives in assets/js/memories.js (MEMORY_PANEL global). #}
-<div class="memory-panel" x-data="MEMORY_PANEL" x-intersect.enter="refresh()">
+<div class="memory-panel" x-data="memoryPanelComponent()" x-intersect.enter="refresh()">
 
     <div class="mem-header">
         <span class="mem-title">Memory</span>
@@ -10,12 +10,27 @@
         </button>
     </div>
 
+    <div class="mem-filter">
+        <span class="mem-filter-icon">{% include 'svg/tag.svg' %}</span>
+        <select
+            class="mem-select"
+            aria-label="Filter memories by tag"
+            x-model="selectedTag"
+            @change="onTagChange()"
+        >
+            <option value="">all tags</option>
+            <template x-for="tag in tags" :key="tag">
+                <option :value="tag" x-text="tag"></option>
+            </template>
+        </select>
+    </div>
+
     <div class="mem-tabs">
-        <button type="button" class="mem-tab" :class="{ active: tab === 'pinned' }" @click="tab = 'pinned'">
+        <button type="button" class="mem-tab" :class="{ active: tab === 'pinned' }" @click="onTabChange('pinned')">
             pinned
             <span class="mem-count" x-show="pinned.length" x-text="pinned.length"></span>
         </button>
-        <button type="button" class="mem-tab" :class="{ active: tab === 'search' }" @click="tab = 'search'">
+        <button type="button" class="mem-tab" :class="{ active: tab === 'search' }" @click="onTabChange('search')">
             search
         </button>
     </div>
@@ -38,21 +53,42 @@
         </template>
 
         <template x-if="!loadingPinned && pinned.length === 0">
-            <div class="mem-empty">no pinned memories yet</div>
+            <div class="mem-empty" x-text="selectedTag ? 'no pinned memories with this tag' : 'no pinned memories yet'"></div>
         </template>
 
         <template x-for="item in pinned" :key="item.id">
             <article class="mem-card">
                 <div class="mem-card-top">
                     <span class="mem-date" x-text="formatDate(item.date_created)"></span>
-                    <button
-                        type="button"
-                        class="mem-action danger"
-                        title="Unpin this memory"
-                        @click="togglePin(item)"
-                    >
-                        unpin
-                    </button>
+                    <div class="mem-actions">
+                        <button
+                            type="button"
+                            class="mem-action icon"
+                            title="Edit this memory"
+                            aria-label="Edit this memory"
+                            @click="openEdit(item)"
+                        >
+                            {% include 'svg/pencil.svg' %}
+                        </button>
+                        <button
+                            type="button"
+                            class="mem-action icon danger"
+                            title="Unpin this memory"
+                            aria-label="Unpin this memory"
+                            @click="togglePin(item)"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/><path d="M4 4l16 16"/></svg>
+                        </button>
+                        <button
+                            type="button"
+                            class="mem-action icon danger"
+                            title="Delete this memory"
+                            aria-label="Delete this memory"
+                            @click="confirmDelete(item)"
+                        >
+                            {% include 'svg/trash.svg' %}
+                        </button>
+                    </div>
                 </div>
                 <p class="mem-content" x-text="item.content"></p>
                 <div class="mem-tags" x-show="item.tags && item.tags.length">
@@ -66,30 +102,56 @@
 
     <div class="mem-list" x-show="tab === 'search'">
         <template x-if="loadingResults">
-            <div class="mem-empty">searching..</div>
+            <div class="mem-empty" x-text="query.trim().length >= 2 ? 'searching..' : 'loading memories..'"></div>
         </template>
 
-        <template x-if="!loadingResults && query.trim().length < 2">
-            <div class="mem-empty">type at least two characters to search</div>
+        <template x-if="!loadingResults && query.trim().length < 2 && !selectedTag">
+            <div class="mem-empty">type at least two characters to search, or pick a tag</div>
+        </template>
+
+        <template x-if="!loadingResults && query.trim().length < 2 && selectedTag && results.length === 0">
+            <div class="mem-empty">no memories with this tag</div>
         </template>
 
         <template x-if="!loadingResults && query.trim().length >= 2 && results.length === 0">
-            <div class="mem-empty">no memories found</div>
+            <div class="mem-empty" x-text="selectedTag ? 'no memories found with this tag' : 'no memories found'"></div>
         </template>
 
         <template x-for="item in results" :key="item.id">
             <article class="mem-card">
                 <div class="mem-card-top">
                     <span class="mem-score" x-show="item.score" x-text="'score ' + item.score"></span>
-                    <button
-                        type="button"
-                        class="mem-action"
-                        :class="{ danger: item.pinned }"
-                        :title="item.pinned ? 'Unpin this memory' : 'Pin this memory'"
-                        @click="togglePin(item)"
-                        x-text="item.pinned ? 'unpin' : 'pin'"
-                    >
-                    </button>
+                    <div class="mem-actions">
+                        <button
+                            type="button"
+                            class="mem-action icon"
+                            title="Edit this memory"
+                            aria-label="Edit this memory"
+                            @click="openEdit(item)"
+                        >
+                            {% include 'svg/pencil.svg' %}
+                        </button>
+                        <button
+                            type="button"
+                            class="mem-action icon"
+                            :class="{ danger: item.pinned }"
+                            :title="item.pinned ? 'Unpin this memory' : 'Pin this memory'"
+                            :aria-label="item.pinned ? 'Unpin this memory' : 'Pin this memory'"
+                            @click="togglePin(item)"
+                        >
+                            <svg x-show="item.pinned" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/><path d="M4 4l16 16"/></svg>
+                            <svg x-show="!item.pinned" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>
+                        </button>
+                        <button
+                            type="button"
+                            class="mem-action icon danger"
+                            title="Delete this memory"
+                            aria-label="Delete this memory"
+                            @click="confirmDelete(item)"
+                        >
+                            {% include 'svg/trash.svg' %}
+                        </button>
+                    </div>
                 </div>
                 <p class="mem-content" x-text="item.content"></p>
                 <div class="mem-tags" x-show="item.tags && item.tags.length">
