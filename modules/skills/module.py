@@ -13,7 +13,7 @@ class Skills(core.module.Module):
             "default": "skills"
         },
         "insert_system_prompt": {
-            "description": "Injects the names of all valid skills into the system prompt, so your AI knows which skills exist and can load one when a task matches. Only the names are listed, to keep context small.",
+            "description": "Injects the names of all skills into the system prompt, so your AI knows which skills exist and can load one when a task matches. Only the names are listed, to keep context small.",
             "default": True
         },
     }
@@ -63,6 +63,10 @@ class Skills(core.module.Module):
 
     def _scan(self):
         self.index = {}
+
+        if not self.config.get("folder"):
+            return
+
         root = self._root_path()
         if os.path.isdir(root):
             for entry in sorted(os.listdir(root)):
