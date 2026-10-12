@@ -25,6 +25,7 @@ class Manager:
         self.channel = None # current active channel. gets dynamically switched around
 
         self.modules = {}
+        self.module_manager = core.module_manager.ModuleManager(self)
         self.user_modules = {}
         self.broken_modules = [] # tracks modules that threw errors and skips them so that it doesn't break the whole framework
 
