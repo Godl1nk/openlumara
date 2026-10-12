@@ -1,5 +1,6 @@
 import core
 import os
+import asyncio
 import datetime
 import json
 import shlex
@@ -119,6 +120,16 @@ class Commands:
         "modules": "lists modules",
         "module": "enables/disables a module by name",
         "channel": "toggles a channel",
+        "library": {
+            "": "shows configured module libraries",
+            "sync": "clones/updates all configured library repos",
+            "list": "lists installable modules from the cloned libraries",
+            "add <git url>": "adds a library repo url to the core settings",
+            "remove <git url>": "removes a library repo url from the core settings",
+            "install <name> [library]": "installs a module/channel from a library",
+            "update <name> [library]": "updates an installed module from its library",
+            "remove <name>": "removes an installed user module/channel (alias: uninstall)",
+        },
         "tools": {
             "": "lists tools available to the AI",
             "search <query>": "searches the tool catalog",
@@ -455,9 +466,14 @@ class Commands:
         
         if module_name not in all_modules:
             return "module with that name doesn't exist"
-        
+
+        # determine the new state before toggling so we can report it
+        enabled_modules = (core.config.get("modules", "enabled", default=[]) +
+                           core.config.get("user_modules", "enabled", default=[]))
+        new_state = module_name not in enabled_modules
+
         await self.channel.manager.toggle_module(module_name)
-        return "module toggled"
+        return f"module {'enabled' if new_state else 'disabled'}\nrestart required - run /restart"
     
     async def cmd_channel(self, args: list):
         if not args:
@@ -468,10 +484,201 @@ class Commands:
         
         if channel_name not in all_channels:
             return "channel with that name doesn't exist"
-        
+
+        # determine the new state before toggling so we can report it
+        enabled_channels = (core.config.get("channels", "enabled", default=[]) +
+                            core.config.get("user_channels", "enabled", default=[]))
+        new_state = channel_name not in enabled_channels
+
         await self.channel.manager.toggle_channel(channel_name)
-        return "channel toggled"
-    
+        return f"channel {'enabled' if new_state else 'disabled'}\nrestart required - run /restart"
+
+    async def cmd_library(self, args: list):
+        """manage external module libraries: sync repos, browse, install, update and remove modules/channels"""
+        mm = self.channel.manager.module_manager
+
+        if not args:
+            lines = ["== module libraries =="]
+            repos = mm.list_repos()
+            if repos:
+                lines.append("configured repos:")
+                lines.extend([f"  - {repo}" for repo in repos])
+            else:
+                lines.append("no repos configured - add git urls under core -> module_libraries")
+
+            libs = mm.list_libraries()
+            if libs:
+                lines.append("cloned: " + ", ".join(libs.keys()))
+            else:
+                lines.append("nothing cloned yet - run /library sync")
+
+            lines.append("\nsubcommands: sync | list | add <git url> | remove <git url> | install <name> | update <name> | remove <name>")
+            return "\n".join(lines)
+
+        subcmd = args[0].lower()
+
+        def _resolve_library(name):
+            """find which cloned libraries contain a module/channel by name"""
+            matches = []
+            for lib_name, lib_path in mm.list_libraries().items():
+                source, kind = mm._find_source(lib_path, name)
+                if source:
+                    matches.append(lib_name)
+            return matches
+
+        if subcmd == "sync":
+            if not mm.list_repos():
+                return "no module libraries configured - add git urls under core -> module_libraries first"
+
+            await self.channel.push("syncing module libraries..")
+            if not await mm.load():
+                return "sync failed - check the logs"
+
+            available = mm.list_available()
+            return f"synced {len(mm.list_libraries())} librar{'y' if len(mm.list_libraries()) == 1 else 'ies'} - {len(available)} installable entries found. use /library list"
+
+        if subcmd == "list":
+            available = mm.list_available()
+            if not available:
+                return "no installable modules found - run /library sync first"
+
+            # map cloned library folder names back to their source urls for display.
+            # prefer each clone's actual git origin (always correct), fall back to
+            # the configured repo list, then to the folder name
+            url_by_lib = {mm.repo_name(repo): repo for repo in mm.list_repos()}
+
+            git = mm._find_git()
+            if git:
+                for lib_name, lib_path in mm.list_libraries().items():
+                    code, origin = await mm._run_git(git, ["-C", lib_path, "remote", "get-url", "origin"])
+                    if code == 0 and origin:
+                        url_by_lib[lib_name] = origin
+
+            groups = {}
+            for entry in available:
+                groups.setdefault(entry["library"], []).append(entry)
+
+            # installed entries first within each group, then alphabetically by name
+            for entries in groups.values():
+                entries.sort(key=lambda e: (not e["installed"], e["name"].lower()))
+
+            # NOTE: no square brackets anywhere in this output - the CLI channel prints
+            # command results through rich with markup enabled, which swallows [text] as style tags
+            lines = ["== available from libraries =="]
+            for lib_name, entries in groups.items():
+                url = url_by_lib.get(lib_name, lib_name)
+                lines.append(f"\n{url}:")
+                for entry in entries:
+                    flag = " (installed)" if entry["installed"] else ""
+                    doc = f" - {entry['doc']}" if entry["doc"] else ""
+                    lines.append(f"  {entry['name']} ({entry['type']}){flag}{doc}")
+            return "\n".join(lines)
+
+        if subcmd == "add":
+            if len(args) < 2:
+                return "usage: /library add <git url>"
+
+            url = args[1].strip()
+            if not (url.startswith(("http://", "https://", "git://", "git@"))):
+                return "that doesn't look like a git url - expected http(s)://, git:// or git@..."
+
+            repos = list(mm.list_repos())
+            if url in repos:
+                return f"'{url}' is already in the library list"
+
+            repos.append(url)
+            core.config.config["core"]["module_libraries"] = repos
+            core.config.config.save()
+            return f"added {url} - run /library sync to clone it"
+
+        if subcmd == "install":
+            if len(args) < 2:
+                return "usage: /library install <name> [library]"
+
+            name = args[1]
+            if len(args) >= 3:
+                library = args[2]
+            else:
+                matches = _resolve_library(name)
+                if not matches:
+                    return f"'{name}' not found in any cloned library - run /library sync first"
+                if len(matches) > 1:
+                    return f"'{name}' exists in multiple libraries ({', '.join(matches)}) - add the library name to disambiguate"
+                library = matches[0]
+
+            success, message = mm.install(library, name)
+            if not success:
+                return message
+
+            try:
+                kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
+                await core.modules.install_module_deps(__import__(kind), name, self.channel.manager)
+            except Exception as e:
+                self.channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+
+            return f"installed {name} to {message}\nrestart required - run /restart"
+
+        if subcmd == "update":
+            if len(args) < 2:
+                return "usage: /library update <name> [library]"
+
+            name = args[1]
+            if len(args) >= 3:
+                library = args[2]
+            else:
+                matches = _resolve_library(name)
+                if not matches:
+                    return f"'{name}' not found in any cloned library - it may have been removed upstream"
+                if len(matches) > 1:
+                    return f"'{name}' exists in multiple libraries ({', '.join(matches)}) - add the library name to disambiguate"
+                library = matches[0]
+
+            success, message = await mm.update(library, name)
+            if not success:
+                return message
+
+            try:
+                kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
+                await core.modules.install_module_deps(__import__(kind), name, self.channel.manager)
+            except Exception as e:
+                self.channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+
+            return f"updated {name} from library '{library}'\nrestart required - run /restart"
+
+        if subcmd in ("remove", "uninstall"):
+            if len(args) < 2:
+                return "usage: /library remove <git url> | /library remove <module name>"
+
+            target = args[1].strip()
+
+            # a url removes the repo from the core settings; anything else is treated as an installed module/channel name
+            if "://" in target or target.startswith("git@"):
+                repos = list(mm.list_repos())
+                if target not in repos:
+                    return f"'{target}' is not a configured repo url"
+
+                repos.remove(target)
+                core.config.config["core"]["module_libraries"] = repos
+                core.config.config.save()
+                return f"removed {target} from the library list (any cloned copy stays on disk until deleted manually)"
+
+            name = target
+
+            # clean up dependencies while the module files still exist so deps can be read from them
+            for kind in ("user_modules", "user_channels"):
+                try:
+                    await core.modules.uninstall_module_deps(__import__(kind), name, self.channel.manager)
+                except Exception as e:
+                    self.channel.log("libraries", f"dependency cleanup failed for {name}: {core.detail_error(e)}")
+
+            success, message = mm.uninstall(name)
+            if not success:
+                return message
+
+            return f"removed {name} from {message}\nrestart required - run /restart"
+
+        return f"unknown subcommand: {subcmd}. use sync | list | install | update | remove"
+
     async def cmd_tools(self, args: list):
         if not core.config.get("model").get("use_tools", False):
             return "Tools are turned off globally."

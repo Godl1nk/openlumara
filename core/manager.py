@@ -443,7 +443,7 @@ class Manager:
         self.started = False
         self.log("core", "Shutdown complete")
 
-    async def toggle_module(self, module_name: str, autorestart=True):
+    async def toggle_module(self, module_name: str):
         modules = core.config.config["modules"]
         user_modules = core.config.config["user_modules"]
 
@@ -470,15 +470,9 @@ class Manager:
         if toggled:
             core.config.config.save()
 
-            if autorestart:
-                if self.channel:
-                    await self.channel.push(f"{module_name.capitalize()} module {'enabled' if new_state else 'disabled'}. Restarting to apply change..")
-                await asyncio.sleep(0.1)
-                await self.channel.manager.restart()
-
         return toggled
 
-    async def toggle_channel(self, channel_name: str, autorestart=True):
+    async def toggle_channel(self, channel_name: str):
         channels = core.config.config["channels"]
         user_channels = core.config.config["user_channels"]
 
@@ -504,12 +498,6 @@ class Manager:
 
         if toggled:
             core.config.config.save()
-
-            if autorestart:
-                if self.channel:
-                    await self.channel.push(f"{channel_name.capitalize()} channel {'enabled' if new_state else 'disabled'}. Restarting to apply change..")
-                await asyncio.sleep(0.1)
-                await self.channel.manager.restart()
 
         return toggled
 
