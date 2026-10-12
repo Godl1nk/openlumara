@@ -784,6 +784,19 @@ def build_settings_structure(original_data, module_info, core_sections):
         if top_key.lower() in ("theme", "theme_mode"):
             continue
 
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+        # special tab: browse, install, update and uninstall modules coming
+        # from the git repos in core.module_libraries (see core/module_manager.py).
+        # inserted mid-loop so it lands directly above Channels in the sidebar.
+        if top_key == "channels" and "module_library" not in categories:
+            categories["module_library"] = {
+                "title": "Module Library",
+                "description": "Install modules from external libraries",
+                "order": order,
+                "isThemeCategory": True,
+            }
+            order += 1
+
         category = {
             "title": format_label(top_key),
             "description": f"Configure {format_label(top_key).lower()}",
@@ -836,6 +849,16 @@ def build_settings_structure(original_data, module_info, core_sections):
                 category["settings"] = {}
 
         categories[top_key] = category
+
+    # safety net: if the channels section was absent from the config,
+    # the tab still shows up (appended at the end of the regular sections)
+    if "module_library" not in categories:
+        categories["module_library"] = {
+            "title": "Module Library",
+            "description": "Install modules from external libraries",
+            "order": order,
+            "isThemeCategory": True,
+        }
 
     return categories
 
@@ -1125,6 +1148,13 @@ ADMIN_ONLY_ENDPOINTS = [
     "/api/system/logs",
     "/api/system/restart",
     "/api/system/context_size",
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+    # module library management follows the same admin lockdown
+    "/api/libraries/status",
+    "/api/libraries/sync",
+    "/api/libraries/install",
+    "/api/libraries/update",
+    "/api/libraries/uninstall",
 ]
 
 def api_result(obj = None, success: bool = True):
@@ -1911,6 +1941,102 @@ async def create_fastapi(channel):
             return api_result(str(result), success=False)
 
         return api_result(success=True)
+
+    # ----------------------------
+    # Module Library (external module repos)
+    # ----------------------------
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+    # thin HTTP layer over core.module_manager.ModuleManager. the instance is
+    # created lazily (git work should never slow down startup) and kept here
+    # rather than in core, so any channel can grow its own frontend later.
+    _lib_manager = {}
+
+    def get_module_manager():
+        if "instance" not in _lib_manager:
+            import core.module_manager
+            _lib_manager["instance"] = core.module_manager.ModuleManager(channel.manager)
+        return _lib_manager["instance"]
+
+    @app.get("/api/libraries/status")
+    async def libraries_status():
+        """Returns the configured library repos, the cloned libraries, and every installable module found in them"""
+        mm = get_module_manager()
+        return api_result({
+            "repos": mm.list_repos(),
+            "libraries": list(mm.list_libraries().keys()),
+            "modules": mm.list_available(),
+        })
+
+    @app.post("/api/libraries/sync")
+    async def libraries_sync():
+        """Clones/updates every repo in core.module_libraries, then returns the refreshed module list"""
+        mm = get_module_manager()
+        if not mm.list_repos():
+            return api_result("No module libraries configured. Add github repo urls under Core settings first.", success=False)
+
+        synced = await mm.load()
+        return api_result({"synced": bool(synced), "modules": mm.list_available()}, success=True)
+
+    @app.post("/api/libraries/install")
+    async def libraries_install(request: fastapi.Request):
+        """Installs a module/channel from a library into the user folders and installs its dependencies"""
+        data = await request.json()
+        library = (data.get("library") or "").strip()
+        name = (data.get("name") or "").strip()
+
+        mm = get_module_manager()
+        success, message = mm.install(library, name)
+        if not success:
+            return api_result(message, success=False)
+
+        try:
+            kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
+            await core.modules.install_module_deps(__import__(kind), name, channel.manager)
+        except Exception as e:
+            channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+
+        return api_result({"restart_required": True, "message": message}, success=True)
+
+    @app.post("/api/libraries/update")
+    async def libraries_update(request: fastapi.Request):
+        """Re-syncs a library and overwrites an installed module with the newest version from it"""
+        data = await request.json()
+        library = (data.get("library") or "").strip()
+        name = (data.get("name") or "").strip()
+
+        mm = get_module_manager()
+        success, message = await mm.update(library, name)
+        if not success:
+            return api_result(message, success=False)
+
+        try:
+            kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
+            await core.modules.install_module_deps(__import__(kind), name, channel.manager)
+        except Exception as e:
+            channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+
+        return api_result({"restart_required": True, "message": message}, success=True)
+
+    @app.post("/api/libraries/uninstall")
+    async def libraries_uninstall(request: fastapi.Request):
+        """Removes an installed user module/channel and cleans up dependencies nothing else needs anymore"""
+        data = await request.json()
+        name = (data.get("name") or "").strip()
+
+        mm = get_module_manager()
+
+        # run the on_uninstall hook and dependency cleanup while the files still exist
+        for kind in ("user_modules", "user_channels"):
+            try:
+                await core.modules.uninstall_module_deps(__import__(kind), name, channel.manager)
+            except Exception as e:
+                channel.log("libraries", f"dependency cleanup failed for {name}: {core.detail_error(e)}")
+
+        success, message = mm.uninstall(name)
+        if not success:
+            return api_result(message, success=False)
+
+        return api_result({"restart_required": True, "message": message}, success=True)
 
     # ----------------------------
     # System.. stuff
