@@ -1,0 +1,217 @@
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+   memory sidebar panel styles. Kept module-scoped so the core sidebar
+   keeps its own chat-list styling untouched. */
+
+.memory-panel {
+    padding: 7px;
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: var(--gap, 6px);
+}
+
+.memory-panel .mem-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px;
+}
+
+.memory-panel .mem-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.memory-panel .mem-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+}
+
+.memory-panel .mem-icon-btn:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+    color: var(--text-primary, #eee);
+}
+
+.memory-panel .mem-icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.memory-panel .mem-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 2px;
+}
+
+.memory-panel .mem-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: none;
+    color: var(--text-secondary, #999);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.memory-panel .mem-tab:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+    color: var(--text-primary, #eee);
+}
+
+.memory-panel .mem-tab.active {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.08));
+    border-color: var(--accent, #00d4ff);
+    color: var(--text-primary, #eee);
+}
+
+.memory-panel .mem-count {
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+}
+
+.memory-panel .mem-search {
+    position: relative;
+    padding: 0 2px;
+}
+
+.memory-panel .mem-search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    color: var(--text-secondary, #999);
+    pointer-events: none;
+}
+
+.memory-panel .mem-search-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.memory-panel .mem-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px 8px 30px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.memory-panel .mem-input:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.memory-panel .mem-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    gap: 8px;
+    padding: 2px;
+}
+
+.memory-panel .mem-card {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+}
+
+.memory-panel .mem-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.memory-panel .mem-date,
+.memory-panel .mem-score {
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+}
+
+.memory-panel .mem-content {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--text-primary, #eee);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.memory-panel .mem-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.memory-panel .mem-tag {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary, #999);
+}
+
+.memory-panel .mem-action {
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #eee);
+}
+
+.memory-panel .mem-action:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.memory-panel .mem-action.danger:hover {
+    color: #ff7b72;
+}
+
+.memory-panel .mem-empty {
+    padding: 10px;
+    font-size: 13px;
+    color: var(--text-secondary, #999);
+}
+
+.memory-panel .mem-footer {
+    font-size: 11px;
+    color: #ff7b72;
+    padding: 4px;
+    word-break: break-word;
+}
