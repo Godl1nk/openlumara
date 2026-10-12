@@ -134,7 +134,18 @@ async function handleWebSocketMessage(data) {
             const segment = data.turn;
 
             if (stream.turn.length <= 0) {
-                stream.turn = {role: "assistant", messages: []};
+                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                // the live turn joins turnHistory the moment its first
+                // segment arrives, flagged live. the streaming templates
+                // render it as a branch inside the turn x-for (reading the
+                // same object), and stream_complete promotes it in place
+                // (live -> false) instead of removing a streaming node and
+                // appending a history node - so the alpine-animation FLIP
+                // watching #messages never sees a remove+add when a stream
+                // finishes.
+                stream.turn = {role: "assistant", live: true, messages: []};
+                chat.turnHistory.push(stream.turn);
+                Alpine.store('ui').syncMountWindows();
             }
 
             // check if this updates the last segment or starts a new one
@@ -358,12 +369,21 @@ async function handleWebSocketMessage(data) {
             // user_message_added already reloads the chat, so the user turn is usually
             // already displayed - only push it if it's missing, otherwise we render a
             // duplicate bubble that shifts the scroll height right when we scroll to bottom
-            const lastTurn = chat.turnHistory[chat.turnHistory.length - 1];
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+            // the live assistant turn is now the tail of turnHistory, so
+            // the user turn to check against sits one slot earlier - and if
+            // it's somehow missing it must be spliced in BEFORE the live
+            // turn, never after it.
+            const hist = chat.turnHistory;
+            const hasLiveTail = hist.length > 0 && hist[hist.length - 1] && hist[hist.length - 1].live === true;
+            const lastTurn = hist[hist.length - 1 - (hasLiveTail ? 1 : 0)];
             const userAlreadyShown = lastTurn && lastTurn.role === 'user' &&
                 stream.userMsg && lastTurn.messages?.[0]?.index === stream.userMsg.index;
 
             if (!userAlreadyShown) {
-                chat.turnHistory.push({"role": "user", "messages": [stream.userMsg]});
+                const userTurn = {"role": "user", "messages": [stream.userMsg]};
+                if (hasLiveTail) hist.splice(hist.length - 1, 0, userTurn);
+                else hist.push(userTurn);
             }
 
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
@@ -378,7 +398,20 @@ async function handleWebSocketMessage(data) {
             stream.turn.steps = streamSteps(handoffSplit.chain);
             stream.turn.final_messages = handoffSplit.final;
 
-            chat.turnHistory.push(stream.turn);
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+            // promote the live turn in place: same object, same x-for
+            // index, same DOM element - the streaming branch and the
+            // history branch swap INSIDE the turn element, so no node is
+            // ever removed from or added to #messages and the animation
+            // FLIP stays silent. the push below only runs as a fallback
+            // when the live turn never made it into history (e.g. the chat
+            // was reloaded or switched mid-stream, or the response was
+            // empty so no token ever arrived).
+            if (hist.length > 0 && hist[hist.length - 1] && hist[hist.length - 1].live === true) {
+                stream.turn.live = false;
+            } else {
+                chat.turnHistory.push(stream.turn);
+            }
 
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
             // mount the pushed turns synchronously: they land exactly where
