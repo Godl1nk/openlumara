@@ -70,12 +70,20 @@ function streamSteps(chain) {
 }
 
 // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-// header preview of a thought: first line, cut at the last sentence
-// terminator that still fits within max chars, otherwise a clean word
-// cut with an ellipsis. no mid-word pixel guillotines in the chain.
+// header preview of a thought: the LAST sentence of the whole reasoning
+// (whitespace collapsed across lines), then the classic truncation: cut
+// at the last sentence terminator that still fits within max chars,
+// otherwise a clean word cut with an ellipsis. no mid-word pixel
+// guillotines in the chain. while streaming this tracks the thought as
+// it unfolds, since the newest sentence is always the live one.
 function thoughtSnippet(text, max) {
-    const s = (text || '').trim().split('\n')[0].trim();
     const limit = max || 80;
+    const t = (text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    // sentence = run of text up to a terminator followed by whitespace
+    // (or end of text); the last split piece is the final sentence
+    const parts = t.split(/(?<=[.!?…])\s+/);
+    const s = parts[parts.length - 1].trim();
     if (s.length <= limit) return s;
     const win = s.slice(0, limit);
     // greedy: matches up through the LAST sentence end inside the window
