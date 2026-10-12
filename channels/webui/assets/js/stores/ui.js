@@ -171,7 +171,13 @@ UI_STORE = {
     _mountRaf: null,
 
     isTurnMounted(turnIndex) {
-        return Boolean(this.turnMounted[turnIndex]);
+        if (this.turnMounted[turnIndex]) return true;
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // live streaming turns are ALWAYS mounted: the live turn now lives
+        // in turnHistory (it gets promoted in place on stream_complete),
+        // and recycling it mid-stream would blank out the reply as it types.
+        const turn = Alpine.store('chat').turnHistory?.[turnIndex];
+        return Boolean(turn && turn.live === true);
     },
 
     resetTurnMounts() {

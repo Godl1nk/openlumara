@@ -11,6 +11,7 @@
 
 <!-- the main message view -->
 <div id="messages" x-ref="messages" x-cloak
+    x-animate.duration.120ms
     @scroll.throttle.100ms="$store.ui.onScroll()"
 >
     <!--
@@ -87,8 +88,111 @@
                 </div>
             </template>
 
+            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                 live streaming assistant turn: moved INSIDE the turn x-for.
+                 the live turn joins turnHistory on its first token (see
+                 turn_stream in websockets.js) and stream_complete flips
+                 live to false IN PLACE - so the streaming DOM and the
+                 finalized history DOM swap inside this one turn element.
+                 #messages itself never gains or loses a child when a
+                 stream ends, which keeps the x-animate FLIP from playing
+                 a leave+enter on the reply. the markup reads `turn` (the
+                 very object the stream store feeds) instead of
+                 $store.stream.turn. -->
+            <template x-if="turn.live === true">
+                <div class="message-wrapper assistant">
+                    <div class="message assistant">
+                        <!-- streaming chain wrapper: expanded while streaming (content
+                             renders standalone until a newer segment pulls it back into
+                             the chain), but manually toggable -->
+                        <template x-if="streamTurnSplit(turn).chain.length > 0">
+                            <!-- header shows "Processing.." + spinning gear while the
+                                 stream is active; when collapsed, the last chain item's
+                                 label appears in parentheses so you can see what the
+                                 agent is busy with without expanding -->
+                            <div class="agent-chain" :class="{ 'is-streaming': processing }" x-data="{
+                                     // initial collapse state follows the Appearance
+                                     // setting (read fresh at mount, so it applies
+                                     // starting from the next turn)
+                                     // reasoning display disabled: locked collapsed
+                                     {% if config.get('enable_chain_expansion') %}
+                                     collapsed: localStorage.getItem('collapseChainDefault') === 'true',
+                                     {% else %}
+                                     collapsed: true,
+                                     {% endif %}
+                                     get processing() { return $store.stream.state !== 'idle' },
+                                     get lastLabel() {
+                                         // look at the turn's LAST segment overall, not just
+                                         // the chain: once final content arrives it moves
+                                         // OUT of the chain, so checking the chain alone
+                                         // kept showing the previous 'thinking' label
+                                         const split = streamTurnSplit(turn);
+                                         const items = split.chain.concat(split.final);
+                                         if (!items.length) return '';
+                                         const label = items[items.length - 1].label ?? '';
+                                         // finished reasoning reads Thoughts, only the
+                                         // live stream keeps Thinking.. (no double
+                                         // quotes in here, this lives in an html attr!)
+                                         return $store.stream.state === 'idle' ? label.replace('Thinking..', 'Thoughts') : label;
+                                     }
+                                 }">
+                                <!-- reasoning display disabled: locked collapsed, no
+                                     chevron and clicking does nothing -->
+                                {% if not config.get('enable_chain_expansion') %}
+                                <div class="agent-chain-header locked">
+                                {% else %}
+                                <div class="agent-chain-header" @click="collapsed = !collapsed">
+                                {% endif %}
+                                    {% if config.get('enable_chain_expansion') %}
+                                    <svg :class="{'toggle': true, 'toggle-expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="9 6 15 12 9 18"></polyline>
+                                    </svg>
+                                    {% endif %}
+                                    {% include 'svg/gear.svg' %}
+                                    <span class="label" x-text="processing ? 'Processing..' : 'Process'"></span>
+                                    <span class="activity" x-show="collapsed && lastLabel" x-text="'(' + lastLabel + ')'"></span>
+                                </div>
+                                <!-- timeline layout (see history chain). no finish flag
+                                     while streaming: we can't know which content segment
+                                     is the final one until the stream ends. the newest
+                                     station's node pulses instead. -->
+                                <template x-if="!collapsed">
+                                    <div class="agent-chain-body">
+                                        <!-- segments carry backend step numbers; streamSteps()
+                                             folds them into step objects matching history steps -->
+                                        <template x-for="(message, messageIndex) in streamSteps(streamTurnSplit(turn).chain)" :key="messageIndex">
+                                            <div class="chain-station">
+                                                <div class="chain-rail"><div class="chain-dot"></div></div>
+                                                <div class="chain-content">
+                                                    {% set combined_stream = True %}
+                                                    {% include 'chat/combined_block.html' %}
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template x-if="$store.stream.state === 'processing_tools'">
+                                            <div class="chain-station">
+                                                <div class="chain-rail"><div class="chain-dot"></div></div>
+                                                <div class="chain-content">
+                                                    {% set pp_variant = 'tool' %}
+                                                    {% include 'chat/prompt_processing.html' %}
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <template x-for="(message, messageIndex) in streamTurnSplit(turn).final" :key="'final-'+messageIndex">
+                            {% include 'chat/turns/assistant_stream.html' %}
+                        </template>
+                    </div>
+                </div>
+            </template>
+
             <!-- assistant turn (multiple messages combined into one bubble) -->
-            <template x-if="turn.role === 'assistant'">
+            <template x-if="turn.role === 'assistant' && !turn.live">
                 <div class="message-wrapper assistant">
                     <div class="message assistant">
                         <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
@@ -205,107 +309,9 @@
         </div>
     </template>
 
-    <!-- streaming assistant turn -->
-    <template x-if="$store.stream.turn.messages">
-        <div class="message-wrapper assistant">
-            <div class="message assistant">
-                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                     streaming chain wrapper: expanded while streaming (content
-                     renders standalone until a newer segment pulls it back into
-                     the chain), but manually toggable -->
-                <template x-if="streamTurnSplit($store.stream.turn).chain.length > 0">
-                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                         header shows "Processing.." + spinning gear while the
-                         stream is active; when collapsed, the last chain item's
-                         label appears in parentheses so you can see what the
-                         agent is busy with without expanding -->
-                    <div class="agent-chain" :class="{ 'is-streaming': processing }" x-data="{
-                             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                             // initial collapse state follows the Appearance
-                             // setting (read fresh at mount, so it applies
-                             // starting from the next turn)
-                             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                             // reasoning display disabled: locked collapsed
-                             {% if config.get('enable_chain_expansion') %}
-                             collapsed: localStorage.getItem('collapseChainDefault') === 'true',
-                             {% else %}
-                             collapsed: true,
-                             {% endif %}
-                             get processing() { return $store.stream.state !== 'idle' },
-                             get lastLabel() {
-                                 /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                                    look at the turn's LAST segment overall, not just
-                                    the chain: once final content arrives it moves
-                                    OUT of the chain, so checking the chain alone
-                                    kept showing the previous 'thinking' label */
-                                 const split = streamTurnSplit($store.stream.turn);
-                                 const items = split.chain.concat(split.final);
-                                 if (!items.length) return '';
-                                 const label = items[items.length - 1].label ?? '';
-                                 // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                 // finished reasoning reads Thoughts, only the
-                                 // live stream keeps Thinking.. (no double
-                                 // quotes in here, this lives in an html attr!)
-                                 return $store.stream.state === 'idle' ? label.replace('Thinking..', 'Thoughts') : label;
-                             }
-                         }">
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                             reasoning display disabled: locked collapsed, no
-                             chevron and clicking does nothing -->
-                        {% if not config.get('enable_chain_expansion') %}
-                        <div class="agent-chain-header locked">
-                        {% else %}
-                        <div class="agent-chain-header" @click="collapsed = !collapsed">
-                        {% endif %}
-                            {% if config.get('enable_chain_expansion') %}
-                            <svg :class="{'toggle': true, 'toggle-expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="9 6 15 12 9 18"></polyline>
-                            </svg>
-                            {% endif %}
-                            {% include 'svg/gear.svg' %}
-                            <span class="label" x-text="processing ? 'Processing..' : 'Process'"></span>
-                            <span class="activity" x-show="collapsed && lastLabel" x-text="'(' + lastLabel + ')'"></span>
-                        </div>
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                             timeline layout (see history chain). no finish flag
-                             while streaming: we can't know which content segment
-                             is the final one until the stream ends. the newest
-                             station's node pulses instead. -->
-                        <template x-if="!collapsed">
-                            <div class="agent-chain-body">
-                                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                     segments carry backend step numbers; streamSteps()
-                                     folds them into step objects matching history steps -->
-                                <template x-for="(message, messageIndex) in streamSteps(streamTurnSplit($store.stream.turn).chain)" :key="messageIndex">
-                                    <div class="chain-station">
-                                        <div class="chain-rail"><div class="chain-dot"></div></div>
-                                        <div class="chain-content">
-                                            {% set combined_stream = True %}
-                                            {% include 'chat/combined_block.html' %}
-                                        </div>
-                                    </div>
-                                </template>
-                                <template x-if="$store.stream.state === 'processing_tools'">
-                                    <div class="chain-station">
-                                        <div class="chain-rail"><div class="chain-dot"></div></div>
-                                        <div class="chain-content">
-                                            {% set pp_variant = 'tool' %}
-                                            {% include 'chat/prompt_processing.html' %}
-                                        </div>
-                                    </div>
-                                </template>
-
-                            </div>
-                        </template>
-                    </div>
-                </template>
-
-                <template x-for="(message, messageIndex) in streamTurnSplit($store.stream.turn).final" :key="'final-'+messageIndex">
-                    {% include 'chat/turns/assistant_stream.html' %}
-                </template>
-            </div>
-        </div>
-    </template>
+    <!-- streaming assistant turn: moved inside the turn x-for above as the
+         turn.live branch (2026-10-12) so stream finalization is an in-place
+         promotion instead of a remove+add on #messages -->
 
     <!-- typing indicator -->
     <template x-if="$store.stream.state === 'message_sending' || $store.stream.state === 'message_received'">

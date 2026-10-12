@@ -20,6 +20,20 @@ function mergeTurnHistory(existing, incoming) {
             : incoming[i];
     }
 
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+    // keep a live streaming turn across reloads: the backend history does
+    // not contain the in-progress assistant turn yet, so a plain merge
+    // would drop it (and the streaming DOM with it) whenever anything
+    // reloads the chat mid-stream. only an incoming history that reaches
+    // past the live turn's slot AND ends on an assistant turn counts as
+    // its finalized form - otherwise the live object stays at the tail.
+    const tail = existing[existing.length - 1];
+    const inTail = incoming[incoming.length - 1];
+    if (tail && tail.live === true &&
+        (incoming.length < existing.length || !inTail || inTail.role !== 'assistant')) {
+        merged.push(tail);
+    }
+
     return merged;
 }
 
