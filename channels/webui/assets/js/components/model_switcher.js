@@ -22,9 +22,17 @@ function modelQuickSwitch() {
             return cached;
         },
 
-        init() {
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // no more fetch on page init: a failing API poisoned
+        // modelsLoadError globally, which hid the "press refresh" hint in
+        // the settings modal before the user ever touched anything.
+        // the list is now fetched lazily when the header dropdown gets
+        // focus (and nothing is cached yet).
+        lazyFetch() {
             const settings = Alpine.store('settings');
-            if (!settings.cachedModels) settings.fetchModels();
+            if (!settings.cachedModels || settings.cachedModels.length === 0) {
+                settings.fetchModels();
+            }
         },
 
         async setModel(name) {

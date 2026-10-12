@@ -84,22 +84,40 @@ function settingsModal() {
             }
         },
 
-        async closeAndSave() {
-            // close the modal and save settings
-            await Alpine.store('settings').saveSettings();
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // unsaved-changes prompt: shown when closing with dirty settings
+        // so nobody loses edits by reflex-clicking the close button.
+        showClosePrompt: false,
+
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // closing no longer silently saves: with pending changes the
+        // in-modal prompt (save / don't save / cancel) intercepts first.
+        async close() {
+            if (Alpine.store('settings').hasChanges) {
+                this.showClosePrompt = true;
+                return;
+            }
             await Alpine.store('ui').closeModal();
         },
 
+        async saveAndClose() {
+            await Alpine.store('settings').saveSettings();
+            // a failed save keeps the modal (and the prompt) open; the
+            // store error banner shows what went wrong
+            if (Alpine.store('settings').error) return;
+            await Alpine.store('ui').closeModal();
+        },
+
+        async closeWithoutSaving() {
+            this.showClosePrompt = false;
+            await Alpine.store('ui').closeModal();
+        },
+
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+        // switching categories no longer auto-saves, and the model
+        // category no longer auto-fetches its model list (the model
+        // field shows a hint with a refresh button instead).
         async switchCategory(cat) {
-            // Auto-save settings to the backend when switching categories
-            const settings = Alpine.store('settings');
-            await settings.saveSettings();
-
-            // Auto-fetch models if switching to the model category
-            if (cat === 'model') {
-                await settings.fetchModels();
-            }
-
             this.activeCategory = cat;
             this.activeModule = null;
             this.activeChannel = null;

@@ -13,7 +13,7 @@
 
         <div class="header">
             <h2 id="title">Settings</h2>
-            <button class="close" @click="closeAndSave()" aria-label="Close settings">×</button>
+            <button class="close" @click="close()" aria-label="Close settings">×</button>
         </div>
 
         <!-- Error State -->
@@ -104,6 +104,38 @@
                 </template>
             </main>
 
+        </div>
+
+        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+             Manual-save footer: replaces the old autosave on close and on
+             category switch. Save persists the edited category tree; Reset
+             restores it to the state from the last load/save. -->
+        <div class="settings-footer">
+            <span class="unsaved" x-show="$store.settings.hasChanges">Unsaved changes</span>
+            <div class="footer-buttons">
+                <button type="button" class="footer-btn reset"
+                        @click="$store.settings.resetChanges()"
+                        title="Revert all settings to the values from the last save. This does NOT restore the original defaults."
+                        :disabled="!$store.settings.hasChanges || $store.settings.loading">Revert</button>
+                <button type="button" class="footer-btn save"
+                        @click="$store.settings.saveSettings()"
+                        :disabled="!$store.settings.hasChanges || $store.settings.loading">Save</button>
+            </div>
+        </div>
+
+        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+             unsaved-changes prompt (vs-code style): intercepts the close
+             button while the settings tree is dirty. save keeps the modal
+             open when the save fails, so errors stay visible. -->
+        <div class="close-prompt" x-show="showClosePrompt" x-cloak @click.self="showClosePrompt = false">
+            <div class="prompt-box">
+                <p class="prompt-text">You have unsaved changes. Save before closing?</p>
+                <div class="prompt-buttons">
+                    <button type="button" class="prompt-btn save" @click="saveAndClose()">Save</button>
+                    <button type="button" class="prompt-btn danger" @click="closeWithoutSaving()">Don't save</button>
+                    <button type="button" class="prompt-btn" @click="showClosePrompt = false">Cancel</button>
+                </div>
+            </div>
         </div>
     </div>
 </template>

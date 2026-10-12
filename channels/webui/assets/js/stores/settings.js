@@ -83,6 +83,15 @@ SETTINGS_STORE = {
         // get API connection status
         try {
             this.apiStatus = await simpleApiFetch("/api/check_connection");
+
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+            // once the api is reachable again, retire any stale model-load
+            // error (e.g. from the earlier blur-detect on the api url
+            // field). the "no models found" hint stays, since the list
+            // itself is still empty until the user presses refresh.
+            if (this.apiStatus) {
+                this.modelsLoadError = null;
+            }
         } catch (e) {
            this.apiStatus = false;
         }
@@ -159,6 +168,40 @@ SETTINGS_STORE = {
         } finally {
             this.loading = false;
         }
+    },
+
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+    // discard all pending edits: restore the category tree from the
+    // snapshot taken at the last load/save and forget dirty modules.
+    // used by the reset button in the settings modal footer.
+    //
+    // IMPORTANT: values are restored IN PLACE instead of swapping the
+    // categories object. the field widgets capture their `setting` object
+    // once (x-data="{ setting: ... }"), so a wholesale replacement leaves
+    // every rendered input pointing at the old edited objects and the dom
+    // never updates - reset appeared to do nothing. walking the existing
+    // tree and writing the snapshot values back mutates the very objects
+    // the dom is bound to, so every field snaps back.
+    resetChanges() {
+        const restore = (target, source) => {
+            for (const key of Object.keys(target)) {
+                if (!(key in source)) continue;
+                const t = target[key];
+                const s = source[key];
+                const bothObj = t && s && typeof t === 'object' && typeof s === 'object';
+                if (bothObj && !Array.isArray(t) && !Array.isArray(s)) {
+                    restore(t, s);
+                } else if (t !== s) {
+                    // deep-copy so later edits never touch the snapshot
+                    target[key] = (s && typeof s === 'object') ? JSON.parse(JSON.stringify(s)) : s;
+                }
+            }
+        };
+        restore(this.categories, this.originalCategories);
+
+        this.changedModuleSettings.clear();
+        this.error = null;
+        this.apiError = null;
     },
 
     toggleEnabled(category, itemName) {

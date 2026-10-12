@@ -1,4 +1,8 @@
 .settings-modal {
+    /* NOTE: do NOT set position here. .settings-modal is also .modal,
+       which centers itself with position:fixed + inset:0 + margin:auto;
+       any position override drops it into normal page flow. the
+       unsaved-changes prompt below is a fixed overlay instead. */
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -192,6 +196,147 @@
         font-size: 13px;
         font-weight: 500;
         color: var(--text-secondary);
+    }
+
+    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+       Manual-save footer: reset + save buttons, pinned below the body. */
+    .settings-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 12px 24px;
+        border-top: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        flex-shrink: 0;
+
+        .footer-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .footer-btn {
+            padding: 8px 20px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-family: var(--font-primary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+
+            &:hover:not(:disabled) {
+                border-color: var(--accent);
+                background: var(--button-bg);
+                color: var(--button-text);
+            }
+
+            &:disabled {
+                opacity: 0.45;
+                cursor: not-allowed;
+            }
+        }
+
+        .footer-btn.save {
+            background: var(--button-bg);
+            color: var(--button-text);
+            border-color: var(--accent);
+
+            &:hover:not(:disabled) {
+                box-shadow: 0 0 12px var(--accent-glow);
+            }
+        }
+
+        /* destructive styling for the discard button */
+        .footer-btn.reset {
+            &:hover:not(:disabled) {
+                border-color: var(--error);
+                color: var(--error);
+                background: var(--error-bg);
+            }
+        }
+    }
+
+    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+       Hint shown under the model field when no models are loaded yet. */
+    .model-empty-note {
+        margin: 4px 0 0 0;
+        font-size: 13px;
+        font-style: italic;
+        color: var(--text-muted);
+    }
+
+    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+       Unsaved-changes prompt: dims the modal and centers a small box
+       with save / don't save / cancel. clicking the dim backdrop cancels. */
+    .close-prompt {
+        position: fixed;
+        inset: 0;
+        z-index: 1002; /* above .modal (1001) */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+
+        .prompt-box {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 24px 28px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+            max-width: 380px;
+
+            .prompt-text {
+                margin: 0;
+                font-size: 15px;
+                color: var(--text-primary);
+            }
+
+            .prompt-buttons {
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+            }
+
+            .prompt-btn {
+                padding: 8px 16px;
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius-sm);
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
+                font-family: var(--font-primary);
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    border-color: var(--accent);
+                }
+
+                &.save {
+                    background: var(--button-bg);
+                    color: var(--button-text);
+                    border-color: var(--accent);
+
+                    &:hover {
+                        box-shadow: 0 0 12px var(--accent-glow);
+                    }
+                }
+
+                &.danger:hover {
+                    border-color: var(--error);
+                    color: var(--error);
+                    background: var(--error-bg);
+                }
+            }
+        }
     }
 
     /* --- Theme Section --- */
