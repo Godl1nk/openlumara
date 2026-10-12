@@ -4,10 +4,10 @@
    a station with a node dot on it, and the chain terminates on a finish
    flag. no per-block left borders or nesting - the spine is the container.
 
-   alignment math: the chevron is 14px wide, so its center sits at 7px from
-   the left edge of the chain. the rail line is therefore placed at left:7px
-   (dots centered on it), and the finish flag is nudged left so ITS pole
-   (x=4/24 of the svg) lands on the same 7px line. */
+   alignment math (updated 2026-10-12, header chevron removed): the gear is
+   the first header item, 1.18em wide, so its center sits at 0.59em from the
+   left edge of the chain. the body is nudged 0.09em right so the rail line
+   (centered at 0.5em into the rail) lands on that same 0.59em line. */
 /* node dots only exist inside the timeline; outside an agent chain (e.g. a
    final message that carries reasoning_content) the raw svg would render
    unstyled at full size, so hide the whole thing there */
@@ -81,35 +81,28 @@
         flex: 0 1 auto;
     }
 
-    /* process header chevron: sits directly above the spine (14px wide,
-       centered at x=7) and doubles as the collapse indicator */
-    .toggle {
-        width: 1em;
-        height: 1em;
-        color: var(--text-secondary);
-        transition: transform 0.2s ease;
-        flex-shrink: 0;
-    }
-
     /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       gear icon: the svg hardcodes 16px, which kept its center fixed while
-       the em-based rail grew -> override so gear center stays on the spine:
-       1em (toggle) + 0.6em (gap) + 1.18em/2 = 2.19em = margin-left(1.69em)
-       + spine(0.5em) */
-    .agent-chain-header svg:not(.toggle) {
+       gear icon: the svg hardcodes 16px -> keep it em-based so it scales
+       with the timeline.
+       -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+       header chevron (.toggle) removed along with its template markup: the
+       gear is the first header item now, center at 1.18em/2 = 0.59em =
+       body margin-left(0.09em) + spine(0.5em) */
+    .agent-chain-header svg {
         width: 1.18em;
         height: 1.18em;
         flex-shrink: 0;
     }
 
-    .toggle-expanded {
-        transform: rotate(90deg);
-    }
-
     .agent-chain-body {
-        /* flush against the header so the spine grows out of the chevron */
+        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+           chevron gone: the gear is now the first header item, so its center
+           sits at 1.18em/2 = 0.59em from the chain edge. nudge the body 0.09em
+           so the spine (centered at 0.5em into the rail) grows straight out of
+           the gear center. everything below (rail, dots, content column) keeps
+           its relative geometry - the whole timeline shifted with it. */
         margin-top: 0;
-        margin-left: 1.7em;
+        margin-left: 0.09em;
         display: flex;
         flex-direction: column;
     }
@@ -168,11 +161,9 @@
         }
     }
 
-    /* the header row is taller than the 14px chevron, so the chevron's
+    /* the header row is a bit taller than the gear icon, so the gear's
        bottom edge sits a few px above the body. pull the first rail
-       segment up so the line starts AT the chevron, no gap.
-       (nested properly this time - the earlier version double-prefixed
-       .agent-chain and never matched) */
+       segment up so the line starts AT the gear, no gap. */
     .chain-station:first-child .chain-rail::before {
         top: -0.45em;
     }

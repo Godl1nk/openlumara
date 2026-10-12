@@ -142,11 +142,10 @@
                                 {% else %}
                                 <div class="agent-chain-header" @click="collapsed = !collapsed">
                                 {% endif %}
-                                    {% if config.get('enable_chain_expansion') %}
-                                    <svg :class="{'toggle': true, 'toggle-expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="9 6 15 12 9 18"></polyline>
-                                    </svg>
-                                    {% endif %}
+                                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                                         header chevron removed: the gear sits flush
+                                         left, centered on the spine, and is handle
+                                         enough (the whole header toggles) -->
                                     {% include 'svg/gear.svg' %}
                                     <span class="label" x-text="processing ? 'Processing..' : 'Process'"></span>
                                     <span class="activity" x-show="collapsed && lastLabel" x-text="'(' + lastLabel + ')'"></span>
@@ -222,11 +221,9 @@
                                 {% else %}
                                 <div class="agent-chain-header" @click="collapsed = !collapsed; if (!collapsed) mounted = true">
                                 {% endif %}
-                                    {% if config.get('enable_chain_expansion') %}
-                                    <svg :class="{'toggle': true, 'toggle-expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="9 6 15 12 9 18"></polyline>
-                                    </svg>
-                                    {% endif %}
+                                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
+                                         header chevron removed (matches the live
+                                         branch): gear flush left on the spine -->
                                     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                                          thoughts-only turns swap the gear + Process
                                          label for a thought bubble + Thoughts -->
