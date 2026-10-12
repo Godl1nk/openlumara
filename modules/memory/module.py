@@ -1,4 +1,5 @@
 import core
+import channels.webui.api as webui
 import os
 import msgpack
 import datetime
@@ -175,3 +176,79 @@ class Memory(core.module.Module):
             return self.result(msg)
 
         return self.result("\n".join(results))
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+    # webui extension routes for the memory sidebar panel. Private methods are
+    # ignored by the tool loader; @webui.route exposes them under
+    # /api/ext/memory/<path>.
+    def _ui_item(self, mem, score=None):
+        """compact JSON shape used by the webui memory sidebar"""
+        item = {
+            "id": mem.get("id"),
+            "content": mem.get("content", ""),
+            "tags": mem.get("tags", []) or [],
+            "pinned": bool(mem.get("pinned")),
+            "date_created": mem.get("date_created", ""),
+        }
+        if score is not None:
+            item["score"] = round(float(score), 2)
+        return item
+
+    @webui.route("list_pinned")
+    async def _route_list_pinned(self, body=None, query=None):
+        """newest-first pinned memories for the sidebar"""
+        self._mem.load()
+
+        limit = 0
+        try:
+            limit = int((query or {}).get("limit", 0) or 0)
+        except ValueError:
+            limit = 0
+
+        items = []
+        for mem in reversed(self._mem):
+            if not mem.get("pinned"):
+                continue
+
+            items.append(self._ui_item(mem))
+            if limit and len(items) >= limit:
+                break
+
+        return items
+
+    @webui.route("search")
+    async def _route_search(self, body=None, query=None):
+        """ranked memory search for the sidebar. Returns raw JSON entries."""
+        self._mem.load()
+
+        q = str((query or {}).get("q", "")).strip()
+        if not q:
+            return []
+
+        limit = 20
+        try:
+            limit = int((query or {}).get("limit", 20) or 20)
+        except ValueError:
+            limit = 20
+
+        limit = max(1, min(limit, 100))
+
+        search_in_content = str((query or {}).get("search_content", "true")).lower() not in ("false", "0", "no")
+        weights = {"tags": 2.0, "content": 1.0} if search_in_content else {"tags": 2.0}
+
+        results = await self._mem.search(q, field_weights=weights, top_n=limit)
+        return [self._ui_item(hit.get("entry", {}), hit.get("score")) for hit in results if hit.get("entry")]
+
+    @webui.route("pin", method="POST")
+    async def _route_pin(self, body=None, query=None):
+        mem_id = (body or {}).get("id")
+        if not mem_id:
+            return self.result("no memory id given", success=False)
+        return await self.pin(mem_id)
+
+    @webui.route("unpin", method="POST")
+    async def _route_unpin(self, body=None, query=None):
+        mem_id = (body or {}).get("id")
+        if not mem_id:
+            return self.result("no memory id given", success=False)
+        return await self.unpin(mem_id)
