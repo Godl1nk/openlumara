@@ -31,6 +31,7 @@ class ModuleManager:
         path = core.get_data_path(LIBRARY_SUBFOLDER)
         if not os.path.exists(path):
             os.makedirs(path, exist_ok=True)
+
         return path
 
     def repo_name(self, url):
@@ -38,19 +39,19 @@ class ModuleManager:
         name = url.rstrip("/").split("/")[-1]
         if name.endswith(".git"):
             name = name[:-4]
+
         name = re.sub(r"[^A-Za-z0-9._-]", "_", name)
         return name or "repo"
 
     def list_repos(self):
         repos = core.config.get("core", "module_libraries")
-        if not isinstance(repos, list):
-            return []
         return [r.strip() for r in repos if isinstance(r, str) and r.strip()]
 
     def _find_git(self):
         git = shutil.which("git")
         if not git:
             self.log("git executable not found - module libraries cannot be synced")
+
         return git
 
     async def _run_git(self, git, args):
@@ -61,6 +62,7 @@ class ModuleManager:
             stderr=asyncio.subprocess.PIPE
         )
         _, stderr = await proc.communicate()
+
         return proc.returncode, stderr.decode("utf-8", "replace").strip()
 
     async def sync_repo(self, url):
@@ -77,18 +79,21 @@ class ModuleManager:
             if code != 0:
                 self.log(f"failed to fetch {url}: {err} - using existing copy")
                 return dest
+
             code, err = await self._run_git(git, ["-C", dest, "reset", "--hard", "origin/HEAD"])
             if code != 0:
                 # origin/HEAD can be missing on some clones; fall back to tracked branch
                 code, err = await self._run_git(git, ["-C", dest, "reset", "--hard", "@{u}"])
                 if code != 0:
                     self.log(f"failed to update {url}: {err} - using existing copy")
+
             return dest
 
         code, err = await self._run_git(git, ["clone", "--depth", "1", url, dest])
         if code != 0:
             self.log(f"failed to clone {url}: {err}")
             return None
+
         self.log(f"cloned module library {url}")
         return dest
 
@@ -102,6 +107,7 @@ class ModuleManager:
         for repo in repos:
             if await self.sync_repo(repo):
                 synced += 1
+
         return synced > 0
 
     def list_libraries(self):
@@ -112,6 +118,7 @@ class ModuleManager:
             path = os.path.join(base, entry)
             if os.path.isdir(path) and os.path.isdir(os.path.join(path, ".git")):
                 libs[entry] = path
+
         return libs
 
     def _extract_module_docstring(self, module_file):
@@ -121,22 +128,27 @@ class ModuleManager:
                 tree = ast.parse(f.read())
         except Exception:
             return ""
+
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 doc = ast.get_docstring(node)
                 if doc:
                     return doc.strip().split("\n")[0]
+
         return ""
 
     def _scan_dir(self, scan_root, library_name, installed_names, available):
         for entry in sorted(os.listdir(scan_root)):
             mod_dir = os.path.join(scan_root, entry)
+
             if not os.path.isdir(mod_dir) or entry.startswith(("_", ".")):
                 continue
+
             for entry_file, kind in (("module.py", "module"), ("channel.py", "channel")):
                 entry_path = os.path.join(mod_dir, entry_file)
                 if not os.path.isfile(entry_path):
                     continue
+
                 available.append({
                     "library": library_name,
                     "name": entry,
@@ -167,6 +179,7 @@ class ModuleManager:
                 sub_path = os.path.join(lib_path, sub)
                 if os.path.isdir(sub_path):
                     self._scan_dir(sub_path, lib_name, installed_names, available)
+
         return available
 
     def _find_source(self, lib_path, module_name):
@@ -177,6 +190,7 @@ class ModuleManager:
                 candidate = os.path.join(root, module_name, entry_file)
                 if os.path.isfile(candidate):
                     return os.path.dirname(candidate), k
+
         return None, None
 
     def install(self, library, module_name):

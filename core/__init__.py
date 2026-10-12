@@ -38,6 +38,7 @@ import core.turns
 import core.channel
 
 import core.modules
+import core.module_manager
 import core.api
 
 # handle first run

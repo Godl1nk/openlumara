@@ -1968,16 +1968,11 @@ async def create_fastapi(channel):
     # Module Library (external module repos)
     # ----------------------------
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-    # thin HTTP layer over core.module_manager.ModuleManager. the instance is
-    # created lazily (git work should never slow down startup) and kept here
-    # rather than in core, so any channel can grow its own frontend later.
-    _lib_manager = {}
-
+    # thin HTTP layer over core.module_manager.ModuleManager; the instance
+    # itself is owned by the manager (manager.module_manager), so every
+    # channel and module shares the same one.
     def get_module_manager():
-        if "instance" not in _lib_manager:
-            import core.module_manager
-            _lib_manager["instance"] = core.module_manager.ModuleManager(channel.manager)
-        return _lib_manager["instance"]
+        return channel.manager.module_manager
 
     @app.get("/api/libraries/status")
     async def libraries_status():
