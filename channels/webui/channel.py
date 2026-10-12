@@ -790,7 +790,7 @@ def build_settings_structure(original_data, module_info, core_sections):
         # inserted mid-loop so it lands directly above Channels in the sidebar.
         if top_key == "channels" and "module_library" not in categories:
             categories["module_library"] = {
-                "title": "Module Library",
+                "title": "Module Libraries",
                 "description": "Install modules from external libraries",
                 "order": order,
                 "isThemeCategory": True,
@@ -854,7 +854,7 @@ def build_settings_structure(original_data, module_info, core_sections):
     # the tab still shows up (appended at the end of the regular sections)
     if "module_library" not in categories:
         categories["module_library"] = {
-            "title": "Module Library",
+            "title": "Module Libraries",
             "description": "Install modules from external libraries",
             "order": order,
             "isThemeCategory": True,

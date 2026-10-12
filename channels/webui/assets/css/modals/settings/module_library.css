@@ -9,7 +9,6 @@
 
 .module-library {
     width: 100%;
-    max-width: 760px;
 
     .library-toolbar {
         display: flex;

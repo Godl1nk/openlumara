@@ -8,8 +8,23 @@ SYSTEM_STORE = {
     async restart(message = 'Restarting server..') {
         this.message = message || "Restarting server..";
         this.restarting = true;
-        await simpleApiPost("/api/system/restart");
-        this.restarting = false;
+
+        try {
+            await simpleApiPost("/api/system/restart");
+        } catch (e) {
+            // expected: the server dies while handling the request.
+            // the websocket reconnect in services/websockets.js reloads
+            // the page once the server is back, so keep the overlay up.
+            if (window.socket && window.socket.readyState === WebSocket.OPEN) {
+                // server survived the call: this was a real failure
+                this.restarting = false;
+                this.message = String(e);
+            }
+            return;
+        }
+
+        // request completed: the server is about to go down and the page
+        // reloads itself on reconnect, so leave restarting=true here
     },
 
     async loadData() {
