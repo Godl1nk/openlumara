@@ -2,6 +2,14 @@ let isWsConnected = false;
 let wsReconnecting = false;
 let responseSoundPlayed = false;
 
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+// remembers that the server went away while this page was open, so the
+// reconnect can reload the page and pick up fresh assets after a restart.
+// wsClosedAt also lets us tell a real restart (multi-second outage) apart
+// from a momentary proxy/network blip.
+let serverShutdownSeen = false;
+let wsClosedAt = null;
+
 // intended to be used to queue up messages for sending to the backend in case the
 // websocket isn't connected. it's a stub for now
 let sendQueue = [];
@@ -31,6 +39,19 @@ async function connectWebSocket() {
         Alpine.store('ui').notice = null;
         isWsConnected = true;
         wsReconnecting = false;
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+        // the server came back after having gone away: reload the page so
+        // fresh templates/css/js and any module changes take effect. only
+        // counts as a real restart when the shutdown broadcast arrived, the
+        // restart button was used, or the outage outlasted a blip.
+        const downFor = wsClosedAt ? Date.now() - wsClosedAt : 0;
+        wsClosedAt = null;
+        if (serverShutdownSeen || Alpine.store('system').restarting || downFor > 2500) {
+            window.location.reload();
+            return;
+        }
+
         await Alpine.store("chat").reloadChat();
     };
 
@@ -49,6 +70,7 @@ async function connectWebSocket() {
             wsSocket = null;
             window.socket = null;
             isWsConnected = false;
+            wsClosedAt = Date.now();
 
             Alpine.store('ui').notice = "Not connected to the backend server! Is OpenLumara running?"
             stream = Alpine.store("stream")
@@ -242,6 +264,7 @@ async function handleWebSocketMessage(data) {
 
         case "shutdown":
             sys = Alpine.store("system")
+            serverShutdownSeen = true;
             if (!sys.restarting) {
                 sys.message = "Server is down! Trying to reconnect..";
                 sys.running = false;
