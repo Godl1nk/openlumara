@@ -1,0 +1,49 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+   memory edit modal. Auto-discovered from templates/modals/. Uses the same
+   Alpine store as the memory sidebar panel so the edited item is shared. #}
+<template x-if="$store.ui.currentModal === 'memory_edit' && $store.memoryPanel && $store.memoryPanel.editing" x-cloak>
+    <div class="modal memory-edit-modal" @keydown.escape.window="$store.memoryPanel.closeEdit()">
+        <div class="header">
+            <h2>Edit memory</h2>
+            <button class="close" @click="$store.memoryPanel.closeEdit()" aria-label="Close memory editor">&times;</button>
+        </div>
+
+        <div class="memory-edit-body">
+            <label class="mem-field-label" for="memory-edit-content">content</label>
+            <textarea
+                id="memory-edit-content"
+                class="mem-textarea"
+                rows="8"
+                x-model="$store.memoryPanel.editContent"
+                @keydown.ctrl.enter.prevent="$store.memoryPanel.saveEdit()"
+                @keydown.meta.enter.prevent="$store.memoryPanel.saveEdit()"
+            ></textarea>
+
+            <label class="mem-field-label" for="memory-edit-tags">tags</label>
+            <input
+                id="memory-edit-tags"
+                class="mem-input"
+                placeholder="comma, separated, tags"
+                x-model="$store.memoryPanel.editTags"
+                @keydown.enter.prevent="$store.memoryPanel.saveEdit()"
+            >
+
+            <div class="memory-edit-actions">
+                <button type="button" class="mem-action" @click="$store.memoryPanel.closeEdit()">
+                    cancel
+                </button>
+                <button
+                    type="button"
+                    class="mem-action primary"
+                    :disabled="$store.memoryPanel.savingEdit || !$store.memoryPanel.editContent || !$store.memoryPanel.editContent.trim()"
+                    @click="$store.memoryPanel.saveEdit()"
+                    x-text="$store.memoryPanel.savingEdit ? 'saving..' : 'save'"
+                >
+                    save
+                </button>
+            </div>
+
+            <div class="mem-footer" x-show="$store.memoryPanel.error" x-text="$store.memoryPanel.error"></div>
+        </div>
+    </div>
+</template>
