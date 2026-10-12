@@ -12,21 +12,35 @@
 
                 <!-- Module/Channel sub-lists -->
                 <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-                     grouped by each module/channel's declared category; the
-                     group header hides itself when nothing declares one -->
+                     grouped by each module/channel's declared category. the group
+                     header is a collapsible toggle (state persisted in localStorage)
+                     so categories you never touch can be folded away; the header
+                     hides itself when nothing declares a category at all -->
                 <template x-if="(cat === 'modules' || cat === 'user_modules' || cat === 'channels' || cat === 'user_channels') && expanded[cat] && !$store.ui.isMobile">
                     <div class="sub-list">
                         <template x-for="group in $store.settings.groupedSubItems(cat, true)" :key="group.label">
                             <div class="sub-group">
-                                <template x-if="group.label">
-                                    <span class="sub-group-label" x-text="group.label"></span>
-                                </template>
-                                <template x-for="item in group.items" :key="item">
-                                    <button 
-                                        :class="{ active: (cat.includes('module') ? activeModule : activeChannel) === item }"
-                                        @click.stop="selectItem(item, cat)"
-                                        x-text="formatLabel(item)"
-                                    ></button>
+                                <button
+                                    type="button"
+                                    class="sub-group-label"
+                                    :class="{ collapsed: isGroupCollapsed(cat, group.label, group.items.length) }"
+                                    :style="group.label ? '' : 'display: none'"
+                                    @click.stop="toggleGroup(cat, group.label, group.items.length)"
+                                >
+                                    <span class="chevron">▸</span>
+                                    <span x-text="group.label"></span>
+                                </button>
+
+                                <template x-if="!isGroupCollapsed(cat, group.label, group.items.length)">
+                                    <div class="sub-group-items">
+                                        <template x-for="item in group.items" :key="item">
+                                            <button
+                                                :class="{ active: (cat.includes('module') ? activeModule : activeChannel) === item }"
+                                                @click.stop="selectItem(item, cat)"
+                                                x-text="formatLabel(item)"
+                                            ></button>
+                                        </template>
+                                    </div>
                                 </template>
                             </div>
                         </template>

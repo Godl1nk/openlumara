@@ -13,6 +13,72 @@ function settingsModal() {
             channels: false,
             user_channels: false
         },
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+        // collapsed module/channel categories in the settings sidebar,
+        // keyed "category::groupName", persisted so a tidied sidebar stays tidied
+        collapsedGroups: {},
+
+        // the group we auto-opened for the currently open module/channel.
+        // transient (never persisted): only one group is ever auto-open, so
+        // switching groups folds the previous one back automatically
+        autoExpandedKey: null,
+
+        groupCollapsedState(cat, label, itemCount) {
+            // effective visibility: the auto-opened group is open; else the
+            // user's persisted choice; else fold categories that hold a single
+            // module so the sidebar isn't a wall of lonely one-item headers
+            const key = cat + '::' + label;
+            if (key === this.autoExpandedKey) return false;
+            if (key in this.collapsedGroups) return !!this.collapsedGroups[key];
+            return itemCount === 1;
+        },
+
+        isGroupCollapsed(cat, label, itemCount = 0) {
+            return this.groupCollapsedState(cat, label, itemCount);
+        },
+
+        toggleGroup(cat, label, itemCount = 0) {
+            const key = cat + '::' + label;
+            const effective = this.groupCollapsedState(cat, label, itemCount);
+
+            // a manual click takes ownership of the group back from the
+            // auto-expander, otherwise the open module inside it would keep
+            // forcing it open and the click would appear to do nothing
+            if (this.autoExpandedKey === key) this.autoExpandedKey = null;
+
+            this.collapsedGroups[key] = !effective;
+            localStorage.setItem('settingsCollapsedGroups', JSON.stringify(this.collapsedGroups));
+        },
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+        // keeps the sidebar's group expansion in sync with the open module:
+        // - open module is enabled -> auto-open the group containing it; since
+        //   only one group is ever auto-open, switching to an enabled module in
+        //   another group folds the old one back and expands the new one
+        // - Back / leaving to a non-module category -> fold it back
+        // - open module is NOT enabled -> leave the sidebar exactly as it is
+        syncActiveGroup() {
+            const cat = this.activeCategory;
+            const item = this.activeModule || this.activeChannel;
+
+            if (!['modules', 'user_modules', 'channels', 'user_channels'].includes(cat) || !item) {
+                this.autoExpandedKey = null;
+                return;
+            }
+
+            const catData = Alpine.store('settings').categories[cat];
+            if (!catData || !catData.enabled || !catData.enabled.includes(item)) {
+                return;
+            }
+
+            // resolve the group through the same getter the sidebar renders
+            // with, so keys always match (incl. the hidden-label "Other" case)
+            const group = Alpine.store('settings').groupedSubItems(cat, true).find(g => g.items.includes(item));
+            if (group) {
+                this.autoExpandedKey = cat + '::' + group.label;
+            }
+        },
         
         // --- Viewport ---
         mobile: window.innerWidth <= 768,
@@ -62,6 +128,24 @@ function settingsModal() {
             this.themeMode = Alpine.store('theme').mode;
 
             this.activeCategory = "appearance";
+
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+            // restore which sidebar categories were folded away last time
+            try {
+                this.collapsedGroups = JSON.parse(localStorage.getItem('settingsCollapsedGroups') || '{}');
+            } catch (e) {
+                this.collapsedGroups = {};
+            }
+
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+            // keep the sidebar's group expansion in sync with whichever
+            // module/channel is open. watchers cover every navigation path
+            // (sidebar click, main-list drilldown, Back button, category
+            // switch) without touching each of their handlers. watchers run
+            // async, so multi-step updates settle before syncActiveGroup reads.
+            this.$watch('activeModule', () => this.syncActiveGroup());
+            this.$watch('activeChannel', () => this.syncActiveGroup());
+            this.$watch('activeCategory', () => this.syncActiveGroup());
 
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
             // always pull fresh settings from the backend on every open:
