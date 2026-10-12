@@ -4,21 +4,13 @@
      Data/actions live in js/components/module_library.js -->
 <template x-if="activeCategory === 'module_library'">
     <div class="module-library" x-data="moduleLibrary()">
-        <h3 class="section-title">Module Libraries</h3>
+        <h3 class="section-title">Get Modules</h3>
         <p class="section-desc">Install modules and channels from the git repositories configured under Core settings (Module Libraries).</p>
-
-        <div class="library-toolbar">
-            <button type="button" class="library-btn primary" @click="sync()" :disabled="syncing">
-                <span class="library-sync-icon" :class="{ spinning: syncing }">{% include 'svg/reload.svg' %}</span>
-                <span x-text="syncing ? 'Syncing..' : 'Sync Libraries'"></span>
-            </button>
-            <span class="library-repo-count" x-text="repos.length === 0 ? 'No libraries configured yet' : repos.length + (repos.length === 1 ? ' library configured' : ' libraries configured')"></span>
-        </div>
 
         <div class="library-message" x-show="message" x-cloak :class="messageKind" x-text="message"></div>
 
         <div class="library-restart" x-show="restartNeeded" x-cloak>
-            <span>Module changes need a server restart to take effect.</span>
+            <span x-text="restartNote || 'Module changes need a server restart to take effect.'"></span>
             <button type="button" class="library-btn primary" @click="restart()">Restart Now</button>
         </div>
 
@@ -33,6 +25,10 @@
                     @click="activeType = 'channel'">
                 <span>Channels</span>
                 <span class="tab-count" x-text="typeCounts.channel"></span>
+            </button>
+            <button type="button" class="library-btn primary library-sync-btn" @click="sync()" :disabled="syncing">
+                <span class="library-sync-icon" :class="{ spinning: syncing }">{% include 'svg/reload.svg' %}</span>
+                <span x-text="syncing ? 'Syncing..' : 'Sync Libraries'"></span>
             </button>
         </div>
 
@@ -59,10 +55,12 @@
                                 <div class="library-item-main">
                                     <div class="library-item-header">
                                         <span class="library-item-name" x-text="formatLabel(m.name)"></span>
-                                        <span class="library-chip installed" x-show="m.installed">installed</span>
                                     </div>
                                     <p class="library-item-doc" x-show="m.doc" x-text="m.doc"></p>
                                 </div>
+                                <span class="library-installed-indicator" x-show="m.installed" title="Installed">
+                                    {% include 'svg/check_disc.svg' %}
+                                </span>
                                 <div class="library-item-actions">
                                     <button type="button" class="library-btn" x-show="!m.installed"
                                             @click="install(m)" :disabled="anyBusy()">

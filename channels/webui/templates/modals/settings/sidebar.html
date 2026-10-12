@@ -1,12 +1,44 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+   per-category icons for the settings sidebar. every entry points at a file
+   in templates/svg, included inline; since `cat` only exists client-side,
+   the matching happens through tiny x-if templates. #}
+{% set tab_icons = {
+    'appearance': 'svg/sun.svg',
+    'audio': 'svg/audio.svg',
+    'core': 'svg/gear.svg',
+    'api': 'svg/plug.svg',
+    'model': 'svg/cube.svg',
+    'task_models': 'svg/layers.svg',
+    'channels': 'svg/chat.svg',
+    'user_channels': 'svg/chat.svg',
+    'modules': 'svg/wrench.svg',
+    'user_modules': 'svg/wrench.svg',
+    'module_library': 'svg/download.svg',
+    'system_prompt': 'svg/thought_bubble.svg',
+    'system_logs': 'svg/clipboard.svg'
+} %}
 <aside class="sidebar" x-show="activeCategory">
     <nav class="nav">
         <template x-for="[cat, data] in $store.settings.sortedCategories" :key="cat">
             <div x-animate.duration.150ms>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+                   visual grouping: one line where the core config sections end
+                   (before Get Modules) and one where the info-only sections
+                   start (before System Prompt) #}
+                <template x-if="['module_library', 'system_prompt'].includes(cat)">
+                    <hr class="nav-divider">
+                </template>
+
                 <button 
                     :class="{ active: activeNavCategory === cat }"
                     @click="await switchCategory(cat)"
                     class="item"
                 >
+                    <span class="item-icon">
+                        {%- for key, icon in tab_icons.items() %}
+                        <template x-if="cat === '{{ key }}'">{% include icon %}</template>
+                        {%- endfor %}
+                    </span>
                     <span x-text="data.title"></span>
                 </button>
 
@@ -58,6 +90,7 @@
             class="item" 
             @click="await $store.system.restart()"
         >
+            <span class="item-icon">{% include 'svg/reload.svg' %}</span>
             <span>Restart Server</span>
         </button>
 

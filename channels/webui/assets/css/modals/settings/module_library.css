@@ -10,19 +10,8 @@
 .module-library {
     width: 100%;
 
-    .library-toolbar {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin: 16px 0;
-    }
-
-    .library-repo-count {
-        font-size: 13px;
-        color: var(--text-muted);
-    }
-
-    /* horizontal Modules | Channels switcher, spanning the full content width */
+    /* horizontal Modules | Channels switcher, spanning the full content width.
+       the Sync Libraries button lives on the right end of the same bar */
     .library-type-tabs {
         display: flex;
         width: 100%;
@@ -64,6 +53,13 @@
                 opacity: 0.7;
             }
         }
+
+        .library-sync-btn {
+            flex-shrink: 0;
+            margin: 1px 1px 1px 4px;
+            padding: 5px 14px;
+            border-color: var(--border-color);
+        }
     }
 
     /* buttons: same visual language as the settings footer, but local */
@@ -97,7 +93,7 @@
         &.primary {
             background: var(--button-bg);
             color: var(--button-text);
-            border-color: var(--accent);
+            border-color: var(--border-color);
 
             &:hover:not(:disabled) {
                 box-shadow: 0 0 12px var(--accent-glow);
@@ -265,18 +261,18 @@
             color: var(--text-muted);
         }
 
-        .library-chip {
-            font-size: 10.5px;
-            letter-spacing: 0.3px;
-            text-transform: uppercase;
-            padding: 2px 8px;
-            border-radius: 999px;
-            border: 1px solid var(--border-color);
-            color: var(--text-secondary);
+        /* installed marker: quiet accent check between description and buttons */
+        .library-installed-indicator {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            flex-shrink: 0;
+            color: var(--accent);
+            opacity: 0.85;
 
-            &.installed {
-                border-color: var(--accent);
-                color: var(--accent);
+            svg {
+                display: block;
             }
         }
 
@@ -285,6 +281,12 @@
             flex-direction: column;
             gap: 6px;
             flex-shrink: 0;
+
+            /* equal-width action buttons so the card edges line up */
+            .library-btn {
+                width: 104px;
+                justify-content: center;
+            }
         }
     }
 }

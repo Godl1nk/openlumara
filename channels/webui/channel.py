@@ -780,6 +780,19 @@ def build_settings_structure(original_data, module_info, core_sections):
         "isThemeCategory": True,
     }
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+    # explicit display priority for the module/channel sections, so the
+    # sidebar groups as: appearance, audio, core config sections, channels,
+    # modules | get modules, user channels, user modules | info-only tabs.
+    # the 10+ base keeps these clear of the sequentially ordered sections.
+    section_order = {
+        "channels": 10,
+        "modules": 11,
+        "user_channels": 13,
+        "user_modules": 14,
+    }
+    module_library_order = 12
+
     for top_key, top_value in original_data.items():
         if top_key.lower() in ("theme", "theme_mode"):
             continue
@@ -787,20 +800,29 @@ def build_settings_structure(original_data, module_info, core_sections):
         # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
         # special tab: browse, install, update and uninstall modules coming
         # from the git repos in core.module_libraries (see core/module_manager.py).
-        # inserted mid-loop so it lands directly above Channels in the sidebar.
+        # sits in its own slot between Modules and User Channels; the sidebar
+        # draws a divider above it.
         if top_key == "channels" and "module_library" not in categories:
             categories["module_library"] = {
-                "title": "Module Libraries",
+                "title": "Get Modules",
                 "description": "Install modules from external libraries",
-                "order": order,
+                "order": module_library_order,
                 "isThemeCategory": True,
             }
-            order += 1
 
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+        # display names for the user folders (where Get Modules installs to);
+        # the config keys and folders themselves stay user_modules/user_channels
+        section_titles = {
+            "user_channels": "Installed Channels",
+            "user_modules": "Installed Modules",
+        }
+
+        display_title = section_titles.get(top_key, format_label(top_key))
         category = {
-            "title": format_label(top_key),
-            "description": f"Configure {format_label(top_key).lower()}",
-            "order": order,
+            "title": display_title,
+            "description": f"Configure {display_title.lower()}",
+            "order": section_order.get(top_key, order),
         }
         order += 1
 
@@ -854,9 +876,9 @@ def build_settings_structure(original_data, module_info, core_sections):
     # the tab still shows up (appended at the end of the regular sections)
     if "module_library" not in categories:
         categories["module_library"] = {
-            "title": "Module Libraries",
+            "title": "Get Modules",
             "description": "Install modules from external libraries",
-            "order": order,
+            "order": module_library_order,
             "isThemeCategory": True,
         }
 
