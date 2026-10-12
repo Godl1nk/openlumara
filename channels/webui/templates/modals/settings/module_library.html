@@ -1,0 +1,87 @@
+<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+     MODULE LIBRARY tab: browse, install, update and uninstall modules that
+     come from the git repos configured under Core -> Module Libraries.
+     Data/actions live in js/components/module_library.js -->
+<template x-if="activeCategory === 'module_library'">
+    <div class="module-library" x-data="moduleLibrary()">
+        <h3 class="section-title">Module Library</h3>
+        <p class="section-desc">Install modules and channels from the git repositories configured under Core settings (Module Libraries).</p>
+
+        <div class="library-toolbar">
+            <button type="button" class="library-btn primary" @click="sync()" :disabled="syncing">
+                <span class="library-sync-icon" :class="{ spinning: syncing }">{% include 'svg/reload.svg' %}</span>
+                <span x-text="syncing ? 'Syncing..' : 'Sync Libraries'"></span>
+            </button>
+            <span class="library-repo-count" x-text="repos.length === 0 ? 'No libraries configured yet' : repos.length + (repos.length === 1 ? ' library configured' : ' libraries configured')"></span>
+        </div>
+
+        <div class="library-message" x-show="message" x-cloak :class="messageKind" x-text="message"></div>
+
+        <div class="library-restart" x-show="restartNeeded" x-cloak>
+            <span>Module changes need a server restart to take effect.</span>
+            <button type="button" class="library-btn primary" @click="restart()">Restart Now</button>
+        </div>
+
+        <!-- horizontal Modules | Channels switcher -->
+        <div class="library-type-tabs">
+            <button type="button" class="library-type-tab" :class="{ active: activeType === 'module' }"
+                    @click="activeType = 'module'">
+                <span>Modules</span>
+                <span class="tab-count" x-text="typeCounts.module"></span>
+            </button>
+            <button type="button" class="library-type-tab" :class="{ active: activeType === 'channel' }"
+                    @click="activeType = 'channel'">
+                <span>Channels</span>
+                <span class="tab-count" x-text="typeCounts.channel"></span>
+            </button>
+        </div>
+
+        <div class="library-loading" x-show="loading">
+            <div class="spinner"></div>
+        </div>
+
+        <template x-if="!loading">
+            <div class="library-list">
+                <p class="library-empty" x-show="modules.length === 0">
+                    No library modules found. Add a repo url under Core settings, then press Sync Libraries.
+                </p>
+                <p class="library-empty" x-show="modules.length > 0 && groupedModules.length === 0" x-text="'No ' + activeType + 's found in your libraries.'"></p>
+
+                <!-- items grouped by the repo (url) they came from -->
+                <template x-for="group in groupedModules" :key="group.library">
+                    <div class="library-group">
+                        <h4 class="library-group-header">
+                            <a :href="group.url" target="_blank" rel="noopener" x-text="group.url" :title="group.url"></a>
+                        </h4>
+
+                        <template x-for="m in group.items" :key="m.library + '/' + m.name">
+                            <div class="library-item" :class="{ installed: m.installed }">
+                                <div class="library-item-main">
+                                    <div class="library-item-header">
+                                        <span class="library-item-name" x-text="formatLabel(m.name)"></span>
+                                        <span class="library-chip installed" x-show="m.installed">installed</span>
+                                    </div>
+                                    <p class="library-item-doc" x-show="m.doc" x-text="m.doc"></p>
+                                </div>
+                                <div class="library-item-actions">
+                                    <button type="button" class="library-btn" x-show="!m.installed"
+                                            @click="install(m)" :disabled="anyBusy()">
+                                        <span x-text="isBusy(m) ? 'Working..' : 'Install'"></span>
+                                    </button>
+                                    <button type="button" class="library-btn" x-show="m.installed"
+                                            @click="update(m)" :disabled="anyBusy()">
+                                        <span x-text="isBusy(m) ? 'Working..' : 'Update'"></span>
+                                    </button>
+                                    <button type="button" class="library-btn danger" x-show="m.installed"
+                                            @click="uninstall(m)" :disabled="anyBusy()">
+                                        <span x-text="isBusy(m) ? 'Working..' : 'Uninstall'"></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+</template>
