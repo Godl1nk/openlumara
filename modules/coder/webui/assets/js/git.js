@@ -263,7 +263,10 @@ const GIT_PANEL = {
 
     async loadLog() {
         try {
-            const data = await simpleApiFetch(`/api/ext/coder/git_log?sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}`);
+            // n=100: the backend default is only 20, which always fits the
+            // modal body - so the list never got a scrollbar and deeper
+            // history was unreachable. 100 is the backend's hard cap.
+            const data = await simpleApiFetch(`/api/ext/coder/git_log?sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}&n=100`);
             this.log = data.log || [];
         } catch (e) {
             this.log = [];
