@@ -38,7 +38,7 @@
                 <span x-show="$store.coderPanel.selLen > 0" x-text="$store.coderPanel.selLen + ' selected'"></span>
                 <span class="mode" x-text="$store.coderPanel.editor.mode || 'plain text'"></span>
                 <span class="vim-tag" x-show="$store.coderPanel.vim_mode" title="vim keymap enabled">vim</span>
-                <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment &middot; ctrl+space complete</span>
+                <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment</span>
             </div>
 
             <div class="coder-editor-errors" x-show="$store.coderPanel.editor.error" x-text="$store.coderPanel.editor.error"></div>
