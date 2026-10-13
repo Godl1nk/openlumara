@@ -79,8 +79,6 @@ def _uninstall_deps(module_name, packages, manager):
     except subprocess.CalledProcessError as e:
         manager.log(module_name, f"dependency uninstall failed: {core.detail_error(e)}")
 
-# -- AI GENERATED CODE (qwen/Qwen3.8-Flash-Next-Q4) :: 2026-10-03
-# folder-based module layout: each module/channel lives in a folder with an entry file (module.py or channel.py).
 ENTRY_FILENAMES = ("module.py", "channel.py")
 reported_init = []
 
@@ -193,6 +191,13 @@ class _EntryFileFinder:
 
         module_file = _get_module_file_path(package, parts[1])
         if not module_file:
+            return None
+
+        # if dependencies are missing, don't throw an error, simply don't execute the main module.py.
+        # but let things still import from other files in the module's folder
+        # used for webui/api.py, among other things
+        deps = _extract_deps_from_file(module_file)
+        if deps and _check_missing_deps(deps):
             return None
 
         return importlib.util.spec_from_file_location(
