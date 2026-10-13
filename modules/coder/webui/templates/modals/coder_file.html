@@ -94,23 +94,24 @@
                 <span x-text="'ln ' + $store.coderPanel.caretLine + ', col ' + $store.coderPanel.caretCol"></span>
                 <span x-show="$store.coderPanel.selLen > 0" x-text="$store.coderPanel.selLen + ' selected'"></span>
                 <span class="mode" x-text="$store.coderPanel.editor.mode || 'plain text'"></span>
-                <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment<span x-show="$store.coderPanel.diff.active"> &middot; F8 changes</span></span>
-            </div>
-
-            <div class="coder-editor-errors" x-show="$store.coderPanel.editor.error" x-text="$store.coderPanel.editor.error"></div>
-
-            <div class="coder-editor-actions">
+                <span class="hints">ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment<span x-show="$store.coderPanel.diff.active"> &middot; F8 changes</span></span>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   save lives in the status bar now; the row below it was
+                   dropped (close button redundant next to the modal X) #}
                 <span class="coder-saved-note" x-show="$store.coderPanel.editor.saved && !$store.coderPanel.editor.dirty" x-text="$store.coderPanel.editor.saved"></span>
-                <button type="button" class="coder-action" @click="$store.coderPanel.closeEditor()">close</button>
                 <button
                     type="button"
                     class="coder-action primary"
                     x-show="!$store.coderPanel.read_only"
                     :disabled="$store.coderPanel.editor.saving || !$store.coderPanel.editor.dirty"
                     @click="$store.coderPanel.save()"
-                    x-text="$store.coderPanel.editor.saving ? 'saving..' : 'save (ctrl+s)'"
+                    title="save (ctrl+s)"
+                    x-text="$store.coderPanel.editor.saving ? 'saving..' : 'save'"
                 ></button>
             </div>
+
+            <div class="coder-editor-errors" x-show="$store.coderPanel.editor.error" x-text="$store.coderPanel.editor.error"></div>
+
         </div>
     </div>
 </template>
