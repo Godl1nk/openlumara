@@ -24,3 +24,8 @@ dev_run.sh
 .module_cache.json
 .tiktoken_cache/
 .requirements_hash
+
+Dockerfile
+.dockerignore
+docker-compose.yml
+migrate_to_folders.py
