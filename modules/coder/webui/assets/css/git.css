@@ -292,8 +292,9 @@
     flex-direction: column;
     gap: 1px;
     padding: 8px 10px 14px;
-    max-height: min(70vh, 640px);
+    max-height: min(74vh, 680px);
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .git-log-modal .git-log-entry,
