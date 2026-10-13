@@ -873,7 +873,6 @@ div.CodeMirror-lint-tooltip {
     font-size: 12px;
     color: var(--text-primary, #ddd);
     cursor: pointer;
-    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
