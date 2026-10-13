@@ -11,6 +11,9 @@ user_modules/
 user_modules/*
 user_channels/
 user_channels/*
+skills
+skills/
+skills/*
 config.yaml
 dev_run.sh
 *.1
