@@ -70,6 +70,11 @@ function coderLoadVim() {
 // a reactive proxy wrapped around a whole CodeMirror would be a world
 // of hurt, and nothing in the templates needs to read it.
 let CODER_CM = null;
+
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+// one-time guard for registering the :w / :wq Ex commands on the global
+// CodeMirror.Vim object (vim.js ships no built-ins for these).
+let CODER_VIM_EX = false;
 let CODER_CM_LOAD = null;
 
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
@@ -703,6 +708,31 @@ const CODER_PANEL = {
         this.editor.cmReady = true;
 
         if (vimOn) {
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+            // real :w / :wq support. :w saves; :wq saves and closes, but
+            // only when the save actually stuck (a syntax-check rejection
+            // keeps editor.dirty true, so the modal stays open on the
+            // error). read-only sandboxes: save() no-ops, and closeEditor
+            // still confirms if anything is unsaved.
+            if (!CODER_VIM_EX) {
+                CODER_VIM_EX = true;
+                const panel = this;
+                CodeMirror.Vim.defineEx("write", "w", async function () {
+                    await panel.save();
+                });
+                CodeMirror.Vim.defineEx("wq", "wq", async function () {
+                    await panel.save();
+                    if (!panel.editor.dirty) panel.closeEditor();
+                });
+                // :q closes (closeEditor itself confirms when dirty, like
+                // vim's E370 prompt); :q! skips the confirm. vim.js has no
+                // bang concept, but the raw input is preserved in params.
+                CodeMirror.Vim.defineEx("quit", "q", function (cm, params) {
+                    const bang = !!(params && params.input && params.input.indexOf("!") !== -1);
+                    panel.closeEditor(bang);
+                });
+            }
+
             const applyVimState = (event) => {
                 const state = event && (event.mode || event.subMode !== undefined)
                     ? { mode: event.mode || "normal", subMode: event.subMode || "" }
@@ -943,8 +973,10 @@ const CODER_PANEL = {
         }
     },
 
-    closeEditor() {
-        if (this.editor.dirty && !window.confirm("This file has unsaved changes. Close anyway?")) {
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    // force=true skips the unsaved-changes confirm (used by :q!)
+    closeEditor(force) {
+        if (!force && this.editor.dirty && !window.confirm("This file has unsaved changes. Close anyway?")) {
             return;
         }
 
