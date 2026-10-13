@@ -1414,17 +1414,19 @@ class Coder(core.module.Module):
 
         if has_upstream:
             target = upstream
-            ok, raw = await self._run_git_bytes(
+            # NOTE: _run_git_bytes returns (returncode, raw) NOT (ok, out) -
+            # check rc != 0, never `if not ok` (0 means success!).
+            rc, raw = await self._run_git_bytes(
                 root, "log", "--pretty=%h%x09%s", f"{upstream}..HEAD", "-n100"
             )
         else:
             # brand new branch: commits that exist on no remote at all
             target = f"{remote}/{branch}"
-            ok, raw = await self._run_git_bytes(
+            rc, raw = await self._run_git_bytes(
                 root, "log", "--pretty=%h%x09%s", "HEAD", "--not", "--remotes", "-n100"
             )
 
-        if not ok:
+        if rc != 0:
             return self.result(raw.decode("utf-8", "replace").strip() or "git log failed", success=False)
 
         ahead = []
