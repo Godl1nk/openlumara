@@ -274,7 +274,7 @@ const GIT_PANEL = {
     },
 
     openDiff(c) {
-        this.diff = { path: c.path, staged: c.staged, lines: ["loading.."], loading: true };
+        this.diff = { path: c.path, staged: c.staged, untracked: !!c.untracked, lines: ["loading.."], loading: true };
         Alpine.store("ui").openModal("git_diff");
 
         const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}` +
@@ -288,6 +288,78 @@ const GIT_PANEL = {
 
     closeDiff() {
         Alpine.store("ui").closeModal();
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       open the changed file in the coder file editor with the diff points
+       highlighted and prev/next navigation (F8). the diff modal unmounts
+       itself: the ui store only shows one modal at a time. */
+    async editFile() {
+        const d = this.diff;
+        if (!d.path || d.loading) return;
+
+        const panel = Alpine.store("coderPanel");
+        if (!panel) return;
+
+        // diff paths are repo-relative; the editor wants sandbox-relative
+        const full = this.subpath ? this.subpath + "/" + d.path : d.path;
+
+        // untracked: every line is an addition, so highlighting would paint
+        // the whole file and navigation would be pointless. open it clean.
+        let marks = null;
+        if (!d.untracked) {
+            const p = this.parseDiffPoints(d.lines);
+            if (p.adds.length || p.dels.length) {
+                marks = { adds: p.adds, dels: p.dels, label: d.staged ? "staged changes" : "changes" };
+            }
+        }
+
+        // the git tab has its own sandbox picker; point the coder tab at the
+        // same sandbox so the path resolves. the tree reload is
+        // fire-and-forget: openFile doesn't need it.
+        if (panel.sandbox !== this.sandbox) {
+            panel.sandbox = this.sandbox;
+            panel.onSandboxChange();
+        }
+
+        panel.openFile({ path: full }, 0, marks);
+    },
+
+    // parse unified diff text into new-file line numbers (1-based): every
+    // added line, plus one entry per deleted run (the line the deletion
+    // happened at). hunk headers reseed the counter, context lines advance
+    // it, '-' lines don't (they exist only in the old file).
+    parseDiffPoints(lines) {
+        const adds = [];
+        const dels = [];
+        let newLine = 0;
+        let inHunk = false;
+        let delPending = false;
+
+        for (const line of lines) {
+            const h = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+            if (h) {
+                newLine = parseInt(h[1], 10);
+                inHunk = true;
+                continue;
+            }
+            if (!inHunk) continue;
+            if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("\\")) continue;
+
+            if (line.startsWith("+")) {
+                adds.push(newLine);
+                newLine++;
+                delPending = false;
+            } else if (line.startsWith("-")) {
+                // one marker per deletion run, at the line it precedes
+                if (!delPending) { dels.push(newLine); delPending = true; }
+            } else {
+                newLine++;
+                delPending = false;
+            }
+        }
+
+        return { adds, dels };
     },
 
     errorText(e) {

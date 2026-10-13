@@ -18,6 +18,34 @@
                 <span class="coder-ro-tag" x-show="$store.coderPanel.read_only">read-only</span>
             </h2>
             <div class="coder-editor-header-actions">
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   diff-point navigation: only shown when the file was
+                   opened from the git sidebar's diff view #}
+                <div class="coder-diff-nav" x-show="$store.coderPanel.diff.active">
+                    <button
+                        type="button"
+                        class="coder-editor-icon-btn"
+                        @click="$store.coderPanel.diffJump(-1)"
+                        title="previous change (shift+F8)"
+                        aria-label="Previous change"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M18 15l-6-6-6 6" />
+                        </svg>
+                    </button>
+                    <span class="coder-diff-count" x-text="$store.coderPanel.diffLabel()"></span>
+                    <button
+                        type="button"
+                        class="coder-editor-icon-btn"
+                        @click="$store.coderPanel.diffJump(1)"
+                        title="next change (F8)"
+                        aria-label="Next change"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </button>
+                </div>
                 <button
                     type="button"
                     class="coder-editor-icon-btn"
@@ -66,7 +94,7 @@
                 <span x-text="'ln ' + $store.coderPanel.caretLine + ', col ' + $store.coderPanel.caretCol"></span>
                 <span x-show="$store.coderPanel.selLen > 0" x-text="$store.coderPanel.selLen + ' selected'"></span>
                 <span class="mode" x-text="$store.coderPanel.editor.mode || 'plain text'"></span>
-                <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment</span>
+                <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment<span x-show="$store.coderPanel.diff.active"> &middot; F8 changes</span></span>
             </div>
 
             <div class="coder-editor-errors" x-show="$store.coderPanel.editor.error" x-text="$store.coderPanel.editor.error"></div>

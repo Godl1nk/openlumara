@@ -8,7 +8,25 @@
                 <span x-text="$store.gitPanel.diff.path"></span>
                 <span class="git-ro-tag" x-show="$store.gitPanel.diff.staged">staged</span>
             </h2>
-            <button class="close" @click="$store.gitPanel.closeDiff()" aria-label="Close diff">&times;</button>
+            {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+               open the file in the coder editor with the diff points
+               highlighted + F8 prev/next navigation #}
+            <div class="coder-editor-header-actions">
+                <button
+                    type="button"
+                    class="coder-editor-icon-btn"
+                    :disabled="$store.gitPanel.diff.loading"
+                    @click="$store.gitPanel.editFile()"
+                    title="Open in editor with changes highlighted"
+                    aria-label="Edit file"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                        <path d="m15 5 4 4" />
+                    </svg>
+                </button>
+                <button class="close" @click="$store.gitPanel.closeDiff()" aria-label="Close diff">&times;</button>
+            </div>
         </div>
 
         <pre class="git-diff-body"><template x-for="(line, i) in $store.gitPanel.diff.lines" :key="i"><div class="git-diff-line" :class="{ add: line.startsWith('+') && !line.startsWith('+++'), del: line.startsWith('-') && !line.startsWith('---'), hunk: line.startsWith('@@'), meta: line.startsWith('+++') || line.startsWith('---') }" x-text="line || ' '"></div></template></pre>
