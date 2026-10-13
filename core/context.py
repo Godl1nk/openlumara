@@ -13,6 +13,9 @@ class Context:
         self.token_encoding = None
         self.compressing = False
 
+        # prompt cache invalidation debugging
+        self._prompt_cache_state = {}
+
         # UI-agnostic chat history system - save/load context windows from save file!
         self.chat = core.chat.Chat(self.channel)
 
@@ -209,6 +212,13 @@ class Context:
             await self.channel.manager.API.disconnect()
 
             return None
+
+        if core.debug:
+            # prompt cache invalidation debug check
+            await self._debug_prompt_cache_check(
+                full_context,
+                (self.chat.current, system_prompt, end_prompt, history, prevent_recursion, trim)
+            )
 
         return full_context
 
@@ -490,4 +500,97 @@ Hard rules:
 
         num_tokens = self._count_text_tokens(data_str)
         return num_tokens
+
+    def _fingerprint_context(self, context):
+        """per-message sha256 fingerprints of the exact dicts that get sent to the API"""
+        import hashlib
+        
+        hashes = []
+        for msg in context:
+            blob = json.dumps(msg, sort_keys=True, ensure_ascii=False, default=str)
+            hashes.append(hashlib.sha256(blob.encode("utf-8")).hexdigest())
+        return hashes
+
+    def _preview_message(self, msg):
+        """short human-readable preview of a message for invalidation logs"""
+        if msg is None:
+            return "<none>"
+        content = msg.get("content")
+        if not isinstance(content, str):
+            content = json.dumps(content, ensure_ascii=False, default=str)
+        extra = ""
+        if msg.get("tool_calls"):
+            extra += f" +tool_calls({len(msg['tool_calls'])})"
+        if "reasoning_content" in msg:
+            extra += " +reasoning"
+        return f"role={msg.get('role')} chars={len(content)}{extra} :: {content[:120]!r}"
+
+    async def _debug_prompt_cache_check(self, context, flags):
+        """check if the context has changed in any way"""
+        if not core.debug:
+            return
+        
+        hashes = self._fingerprint_context(context)
+
+        # the end prompt sits at the very end and legitimately changes every turn,
+        # so it is excluded from the prefix comparison
+        if flags[2]:  # end_prompt
+            core_hashes = hashes[:-1]
+            core_context = context[:-1]
+        else:
+            core_hashes = hashes
+            core_context = context
+
+        prev = self._prompt_cache_state.get(flags)
+
+        if flags not in self._prompt_cache_state and len(self._prompt_cache_state) >= 8:
+            self._prompt_cache_state.pop(next(iter(self._prompt_cache_state)))
+        self._prompt_cache_state[flags] = {"hashes": hashes, "core": core_hashes, "context": core_context}
+
+        if prev is None:
+            return
+
+        first_diff = None
+        for i in range(min(len(prev["core"]), len(core_hashes))):
+            if prev["core"][i] != core_hashes[i]:
+                first_diff = i
+                break
+
+        if first_diff is None and len(core_hashes) >= len(prev["core"]):
+            # pure append: prompt cache intact
+            return
+
+        # something that was already sent changed or vanished. classify it.
+        p = prev["context"][first_diff] if first_diff is not None and first_diff < len(prev["context"]) else None
+        c = core_context[first_diff] if first_diff is not None and first_diff < len(core_context) else None
+
+        reason = None
+        expected = False
+
+        if first_diff == 0 and p is not None and p.get("role") in ("system", "developer"):
+            reason = "system prompt changed"
+            expected = True
+        elif len(core_hashes) < len(prev["core"]) and core_hashes == prev["core"][len(prev["core"]) - len(core_hashes):]:
+            reason = f"history trimmed from the front ({len(prev['core']) - len(core_hashes)} messages dropped)"
+        elif len(core_hashes) < len(prev["core"]):
+            # context shrank without a clean front-trim: almost certainly compression
+            reason = "context compressed (history rewritten into a summary)"
+            expected = True
+        elif p is not None and c is not None:
+            p_stripped = {k: v for k, v in p.items() if k != "reasoning_content"}
+            c_stripped = {k: v for k, v in c.items() if k != "reasoning_content"}
+            if p_stripped == c_stripped:
+                reason = "reasoning_content added/removed on a past message (keep_reasoning_in_context / only_preserve_reasoning_for_current_agentic_loop)"
+            else:
+                reason = "message content mutated"
+        else:
+            reason = "unknown"
+
+        tag = "expected" if expected else "UNEXPECTED"
+        self.channel.log("prompt-cache", f"[{tag}] prompt cache invalidated :: {reason}")
+        self.channel.log("prompt-cache", f"  first divergence at message index {first_diff} (core messages: {len(prev['core'])} -> {len(core_hashes)})")
+        if p is not None:
+            self.channel.log("prompt-cache", f"  was: {self._preview_message(p)}")
+        if c is not None:
+            self.channel.log("prompt-cache", f"  now: {self._preview_message(c)}")
 

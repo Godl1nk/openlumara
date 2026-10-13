@@ -344,22 +344,22 @@ class APIClient():
             tool_count = len(tools or [])
             custom_field_keys = sorted(list(custom_fields.keys())) if isinstance(custom_fields, dict) else []
 
-            self.manager.log(
-                "debug:request",
-                json.dumps({
-                    "base_url": api_config.get("url"),
-                    "model": core.config.get("model", "name"),
-                    "stream": stream,
-                    "use_thinking": use_thinking,
-                    "message_count": len(context),
-                    "tool_count": tool_count,
-                    "max_completion_tokens": req.get("max_completion_tokens"),
-                    "temperature": req.get("temperature"),
-                    "reasoning_effort": req.get("reasoning_effort"),
-                    "custom_field_keys": custom_field_keys,
-                    "messages": message_summary,
-                }, ensure_ascii=True, sort_keys=True)
-            )
+#             self.manager.log(
+#                 "debug:request",
+#                 json.dumps({
+#                     "base_url": api_config.get("url"),
+#                     "model": core.config.get("model", "name"),
+#                     "stream": stream,
+#                     "use_thinking": use_thinking,
+#                     "message_count": len(context),
+#                     "tool_count": tool_count,
+#                     "max_completion_tokens": req.get("max_completion_tokens"),
+#                     "temperature": req.get("temperature"),
+#                     "reasoning_effort": req.get("reasoning_effort"),
+#                     "custom_field_keys": custom_field_keys,
+#                     "messages": message_summary,
+#                 }, ensure_ascii=True, sort_keys=True)
+#             )
 
         response = None
         try:
@@ -430,8 +430,8 @@ class APIClient():
         finally:
             self.cancel_request = False
 
-        if core.debug:
-            self.manager.log("debug:response", str(response))
+#         if core.debug:
+#             self.manager.log("debug:response", str(response))
 
         return response
 
