@@ -70,10 +70,10 @@ class Coder(core.module.Module):
             "description": "Keybinding scheme for the webui file editor.",
             "options": {
                 "standard": "Standard CodeMirror bindings (no special emulation)",
-                "vim": "Vim keybindings (normal/insert/visual, motions, text objects, :w/:wq/:q)",
-                "emacs": "Emacs-style bindings (ctrl-f/b/p/n, ctrl-a/e, ctrl-k/w/y, ctrl-x prefix..)",
-                "sublime": "Sublime Text-style bindings (ctrl+d multi-cursor, line swapping, bookmarks..)",
-                "nano": "GNU nano bindings (ctrl-o save, ctrl-x exit, ctrl-k cut, ctrl-u uncut, ctrl-w find..)",
+                "vim": "Vim keybindings",
+                "emacs": "Emacs-style bindings",
+                "sublime": "Sublime Text-style bindings",
+                "nano": "GNU nano bindings",
             },
             "depends": "enable_webui_extension"
         },
