@@ -203,6 +203,27 @@ function coderJumpToLine(cm) {
     });
 }
 
+function coderVimState(cm) {
+    const vim = cm && cm.state && cm.state.vim;
+    if (!vim) return { mode: "normal", subMode: "" };
+
+    if (vim.visualMode) {
+        return {
+            mode: "visual",
+            subMode: vim.visualLine ? "linewise" : vim.visualBlock ? "blockwise" : "",
+        };
+    }
+
+    if (vim.insertMode) {
+        return {
+            mode: cm.getOption("overwrite") ? "replace" : "insert",
+            subMode: "",
+        };
+    }
+
+    return { mode: "normal", subMode: "" };
+}
+
 const CODER_PANEL = {
     sandboxes: [],
     sandbox: "",
@@ -215,7 +236,7 @@ const CODER_PANEL = {
     loading: false,
     loaded: false,
     error: "",
-    editor: { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false },
+    editor: { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false, vimMode: "normal", vimSubMode: "" },
     caretLine: 1,
     caretCol: 1,
     selLen: 0,
@@ -352,7 +373,7 @@ const CODER_PANEL = {
 
     async openFile(row, line) {
         const path = row.path;
-        this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM, maximized: false };
+        this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM, maximized: false, vimMode: "normal", vimSubMode: "" };
         this._reveal = line && line > 1 ? line : 0;
         this.caretLine = this._reveal || 1;
         this.caretCol = 1;
@@ -476,6 +497,9 @@ const CODER_PANEL = {
                 vimOn = !!CodeMirror.Vim;
             } catch (e) {}
             if (!host.isConnected) return;
+            // if the vim addon failed to load, keep the UI honest: no vim
+            // keymap means no vim mode line, and escape should close the modal.
+            if (!vimOn) this.vim_mode = false;
         }
 
         const cm = CodeMirror(host, {
@@ -539,6 +563,25 @@ const CODER_PANEL = {
         CODER_CM = cm;
         this.editor.cmReady = true;
 
+        if (vimOn) {
+            const applyVimState = (event) => {
+                const state = event && (event.mode || event.subMode !== undefined)
+                    ? { mode: event.mode || "normal", subMode: event.subMode || "" }
+                    : coderVimState(cm);
+                this.editor.vimMode = state.mode;
+                this.editor.vimSubMode = state.subMode;
+            };
+
+            applyVimState();
+
+            // CodeMirror's custom vim-mode-change signal passes the event
+            // object directly. Some CodeMirror event helpers pass (cm, event),
+            // so accept both shapes.
+            cm.on("vim-mode-change", (...args) => {
+                applyVimState(args.length > 1 ? args[1] : args[0]);
+            });
+        }
+
         cm.on("change", () => {
             if (!this._silent && !this.editor.dirty) this.editor.dirty = true;
         });
@@ -548,6 +591,14 @@ const CODER_PANEL = {
             this.caretLine = cur.line + 1;
             this.caretCol = cur.ch + 1;
             this.selLen = c.somethingSelected() ? c.getSelection().length : 0;
+
+            // fallback for vim mode: some mode transitions are easiest to
+            // catch from the live vim state when the cursor/selection moves.
+            if (vimOn) {
+                const vimState = coderVimState(c);
+                this.editor.vimMode = vimState.mode;
+                this.editor.vimSubMode = vimState.subMode;
+            }
         });
 
         // follow dark/light switches while the modal stays open
@@ -671,7 +722,7 @@ const CODER_PANEL = {
             await simpleApiPost("/api/ext/coder/delete", { sandbox: this.sandbox, path: row.path });
 
             if (this.editor.path === row.path || this.editor.path.startsWith(row.path + "/")) {
-                this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false };
+                this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false, vimMode: "normal", vimSubMode: "" };
                 if (Alpine.store("ui").currentModal === "coder_file") Alpine.store("ui").closeModal();
             }
 
@@ -728,6 +779,15 @@ const CODER_PANEL = {
         }
     },
 
+    vimModeLabel() {
+        const mode = this.editor.vimMode || "normal";
+        const sub = this.editor.vimSubMode || "";
+        if (mode === "visual" && sub) {
+            return "VISUAL " + sub.toUpperCase();
+        }
+        return mode.toUpperCase();
+    },
+
     toggleMaximize() {
         this.editor.maximized = !this.editor.maximized;
 
@@ -745,7 +805,7 @@ const CODER_PANEL = {
             return;
         }
 
-        this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false };
+        this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false, vimMode: "normal", vimSubMode: "" };
         Alpine.store("ui").closeModal();
     },
 
