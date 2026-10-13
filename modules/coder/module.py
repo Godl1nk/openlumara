@@ -160,8 +160,6 @@ class Coder(core.module.Module):
 
         if self.config.get("read-only"):
             final_output.append("## IMPORTANT: Read-Only Mode\nYour coder module is in read-only mode and you cannot write to files. Provide output code to the user directly in your messages.")
-        else:
-            final_output.append("No need to check syntax. Coder has built-in syntax check.")
 
         if final_output:
             return "\n\n".join(final_output)
@@ -478,7 +476,7 @@ class Coder(core.module.Module):
         except Exception as e:
             return self.result(str(e), success=False)
 
-        return self.result(f"File {path} successfully created")
+        return self.result(f"File {path} successfully created. Syntax verification passed - no need to verify further.")
 
     async def file_move(self, sandbox: str, orig_path: str, target_path: str):
         orig_path_sandboxed = await self._get_sandbox_subpath(sandbox, orig_path)
@@ -715,7 +713,7 @@ class Coder(core.module.Module):
            # TAWK TOUHA
            return self.result(str(e), success=False)
 
-       return self.result(f"Successfully edited file {path}")
+       return self.result(f"Successfully edited file {path}. Syntax verification passed - no need to verify further.")
 
     # ---------------------
     # user-facing commands
@@ -1369,6 +1367,49 @@ class Coder(core.module.Module):
             "changes": changes,
             "read_only": bool(self.config.get("read-only")),
         }
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # lightweight recent-commit peek for the welcome card's git strip.
+    # same %h + %s fields (and tab-split parsing) as git_log, just capped:
+    # the strip never needs more than a handful of rows.
+    @webui.route("git_recent")
+    async def _route_git_recent(self, body=None, query=None):
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+        limit = min(int((query or {}).get("n", 5)), 20)
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, _ = await self._run_git(root, "rev-parse", "--is-inside-work-tree")
+        if not ok:
+            return {"is_repo": False}
+
+        _, branch = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+
+        rc, raw = await self._run_git_bytes(
+            root, "log", f"--pretty=%h%x09%s", f"-n{limit}"
+        )
+        if rc != 0:
+            # a repo without any commits yet is not an error worth surfacing
+            return {"is_repo": True, "branch": branch, "log": []}
+
+        entries = []
+        for line in raw.decode("utf-8", "replace").splitlines():
+            if not line.strip():
+                continue
+            if "\t" in line:
+                h, msg = line.split("\t", 1)
+            else:
+                h, msg = line, ""
+            entries.append({"hash": h.strip(), "msg": msg})
+
+        return {"is_repo": True, "branch": branch, "log": entries}
 
     @webui.route("git_stage", method="POST")
     async def _route_git_stage(self, body=None, query=None):

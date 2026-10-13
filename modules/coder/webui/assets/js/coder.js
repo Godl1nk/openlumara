@@ -396,9 +396,106 @@ function coderVimState(cm) {
     return { mode: "normal", subMode: "" };
 }
 
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+// recently-opened files, persisted to localStorage as
+// [{ sandbox, path, at }] newest-first. lives on the panel store so the
+// welcome panel (templates/chat/welcome.html) and the sidebar share one
+// list. entries pointing at deleted/moved files aren't checked against
+// the disk: openFile surfaces the read error, and deleting an entry
+// prunes the list (see deleteRow).
+const CODER_RECENTS_KEY = "coder_recent_files";
+const CODER_RECENTS_MAX = 10;
+
+function coderLoadRecents() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(CODER_RECENTS_KEY));
+        if (!Array.isArray(raw)) return [];
+        return raw.filter((r) => r && r.sandbox && r.path).slice(0, CODER_RECENTS_MAX);
+    } catch (e) {
+        return [];
+    }
+}
+
+function coderSaveRecents(list) {
+    try {
+        localStorage.setItem(CODER_RECENTS_KEY, JSON.stringify(list));
+    } catch (e) {}
+}
+
+function coderPushRecent(sandbox, path) {
+    if (!sandbox || !path) return;
+    const list = coderLoadRecents().filter((r) => !(r.sandbox === sandbox && r.path === path));
+    list.unshift({ sandbox: sandbox, path: path, at: Date.now() });
+    coderSaveRecents(list.slice(0, CODER_RECENTS_MAX));
+}
+
+
+
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+// pinned files: same shape as recents but never expire and cap higher.
+// pinned first, newest pin first (togglePin unshifts).
+const CODER_PINNED_KEY = "coder_pinned_files";
+const CODER_PINNED_MAX = 20;
+
+function coderLoadPinned() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(CODER_PINNED_KEY));
+        if (!Array.isArray(raw)) return [];
+        return raw.filter((r) => r && r.sandbox && r.path).slice(0, CODER_PINNED_MAX);
+    } catch (e) {
+        return [];
+    }
+}
+
+function coderSavePinned(list) {
+    try {
+        localStorage.setItem(CODER_PINNED_KEY, JSON.stringify(list));
+    } catch (e) {}
+}
+
+function coderSetPinned(sandbox, path, on) {
+    const list = coderLoadPinned().filter((r) => !(r.sandbox === sandbox && r.path === path));
+    if (on) list.unshift({ sandbox: sandbox, path: path, at: Date.now() });
+    coderSavePinned(list.slice(0, CODER_PINNED_MAX));
+}
+
+// rename/move: rewrite the path in BOTH lists in place (keeps order and
+// pin status) instead of dropping the entry
+function coderMoveEntry(sandbox, src, dst) {
+    const fix = (list) => list.map((r) => {
+        if (r.sandbox !== sandbox) return r;
+        if (r.path === src) return { ...r, path: dst };
+        if (r.path.startsWith(src + "/")) return { ...r, path: dst + r.path.slice(src.length) };
+        return r;
+    });
+    coderSaveRecents(fix(coderLoadRecents()));
+    coderSavePinned(fix(coderLoadPinned()));
+}
+
+// delete: drop the entry (and, for folders, everything under it) from both lists
+function coderDropEntry(sandbox, path) {
+    const keep = (list) => list.filter((r) => !(r.sandbox === sandbox && (r.path === path || r.path.startsWith(path + "/"))));
+    coderSaveRecents(keep(coderLoadRecents()));
+    coderSavePinned(keep(coderLoadPinned()));
+}
+
+// "just now" / "5m ago" / "3h ago" / "4d ago"
+function coderTimeAgo(ts) {
+    const s = Math.max(0, Math.floor((Date.now() - (ts || 0)) / 1000));
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + "m ago";
+    if (s < 86400) return Math.floor(s / 3600) + "h ago";
+    return Math.floor(s / 86400) + "d ago";
+}
+
 const CODER_PANEL = {
     sandboxes: [],
     sandbox: "",
+    recents: coderLoadRecents(),
+    pinned: coderLoadPinned(),
+    // git snapshot of the active sandbox root, for the welcome card's
+    // git strip (see loadGit / the git_recent + git_status routes)
+    git: { is_repo: false, branch: "", dirty: 0, log: [], subpath: "", loaded: false },
     read_only: false,
     editor_mode: "standard", // mirrors the module setting: standard | vim | emacs | sublime (gated by enable_webui_extension)
     rows: [],
@@ -439,6 +536,52 @@ const CODER_PANEL = {
         if (this.sandbox && (force || !this.loaded)) {
             await this.loadRoot();
         }
+
+        // welcome card's git strip (fire-and-forget: never gates the tree)
+        this.loadGit();
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       branch + dirty count + the 5 most recent commits for the active
+       sandbox, shown in the welcome card's git strip. sandboxes are NOT
+       assumed to be repos: repos are discovered inside them (git_repos),
+       and the pick mirrors the git sidebar - a saved choice wins,
+       otherwise the first repo found. status + recent commits are fetched
+       in parallel for that repo; in-flight guard because sidebar mount and
+       welcome card can both kick this at once. */
+    async loadGit() {
+        if (!this.sandbox || this._gitLoading) return;
+        this._gitLoading = true;
+        try {
+            const repos = await simpleApiFetch(`/api/ext/coder/git_repos?sandbox=${encodeURIComponent(this.sandbox)}`)
+                .then((d) => d.repos || [])
+                .catch(() => []);
+
+            let sub = localStorage.getItem("git_repo::" + this.sandbox) || "";
+            if (!repos.includes(sub)) sub = repos[0] || "";
+
+            if (!repos.length) {
+                this.git = { is_repo: false, branch: "", dirty: 0, log: [], subpath: "", loaded: true };
+                return;
+            }
+
+            const q = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(sub)}`;
+            const [st, recent] = await Promise.all([
+                simpleApiFetch("/api/ext/coder/git_status?" + q).catch(() => null),
+                simpleApiFetch(`/api/ext/coder/git_recent?${q}&n=5`).catch(() => null),
+            ]);
+
+            this.git = {
+                is_repo: !!(st && st.is_repo),
+                branch: (st && st.branch) || (recent && recent.branch) || "",
+                dirty: st && st.changes ? st.changes.length : 0,
+                log: (recent && recent.log) || [],
+                subpath: sub,
+                loaded: true,
+            };
+        } finally {
+            this._gitLoading = false;
+        }
     },
 
     async loadSandboxes() {
@@ -466,6 +609,12 @@ const CODER_PANEL = {
 
     async onSandboxChange() {
         try { localStorage.setItem("coder_sandbox", this.sandbox); } catch (e) {}
+        await this.resetTree();
+    },
+
+    // drop every cached tree/quick-open/search state and refetch the root.
+    // shared by the sidebar dropdown and switchSandbox (welcome panel)
+    async resetTree() {
         this.expanded = {};
         this.children = {};
         this.rootEntries = null;
@@ -477,7 +626,74 @@ const CODER_PANEL = {
 
         if (this.sandbox) {
             await this.loadRoot();
+            this.loadGit();
         }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       welcome-panel helpers (templates/chat/welcome.html) ---- */
+
+    // switch sandboxes programmatically (x-model doesn't fire on assignment)
+    async switchSandbox(name) {
+        if (!this.sandboxes.includes(name) || name === this.sandbox) return;
+        this.sandbox = name;
+        await this.onSandboxChange();
+    },
+
+    // jump to another sidebar tab (the git strip's "changed"/"git" links).
+    // the core sidebar keeps sidebarTab in the shell's local Alpine scope,
+    // which the chat area can't reach - so drive the tab button directly.
+    // for the git tab, hand over the strip's repo pick first: the git
+    // sidebar restores git_repo::<sandbox> on its first refresh.
+    openGitSidebar() {
+        if (this.sandbox && this.git.subpath !== undefined) {
+            try { localStorage.setItem("git_repo::" + this.sandbox, this.git.subpath || ""); } catch (e) {}
+        }
+        const btn = document.querySelector('.sidebar-tab[data-tab="coder/git"]');
+        if (btn) btn.click();
+    },
+
+    async openRecent(r) {
+        if (r.sandbox !== this.sandbox) await this.switchSandbox(r.sandbox);
+        if (this.sandbox !== r.sandbox) return; // sandbox vanished mid-switch
+        this.openFile({ path: r.path });
+    },
+
+    clearRecents() {
+        this.recents = [];
+        coderSaveRecents([]);
+    },
+
+    /* ---- pinned files (file modal header button + welcome card) ---- */
+    isPinned() {
+        if (!this.editor.path) return false;
+        return this.pinned.some((r) => r.sandbox === this.sandbox && r.path === this.editor.path);
+    },
+
+    togglePin() {
+        if (!this.editor.path) return;
+        const on = !this.isPinned();
+        coderSetPinned(this.sandbox, this.editor.path, on);
+        this.pinned = coderLoadPinned();
+    },
+
+    unpin(r) {
+        coderSetPinned(r.sandbox, r.path, false);
+        this.pinned = coderLoadPinned();
+    },
+
+    basename(path) {
+        return String(path).split("/").pop() || path;
+    },
+
+    dirname(path) {
+        const parts = String(path).split("/");
+        parts.pop();
+        return parts.join("/");
+    },
+
+    timeAgo(ts) {
+        return coderTimeAgo(ts);
     },
 
     async loadRoot() {
@@ -549,6 +765,8 @@ const CODER_PANEL = {
     // the git sidebar's "edit" button (see git.js editFile)
     async openFile(row, line, marks) {
         const path = row.path;
+        coderPushRecent(this.sandbox, path);
+        this.recents = coderLoadRecents();
         this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM, maximized: coderMaxStored(), vimMode: "normal", vimSubMode: "" };
         this.clearDiffMarks();
         if (marks) CODER_DIFF.spec = marks;
@@ -998,6 +1216,9 @@ const CODER_PANEL = {
                 const target = parent ? parent + "/" + name : name;
                 await simpleApiPost("/api/ext/coder/move", { sandbox: this.sandbox, src: p.row.path, dst: target });
                 if (this.editor.path === p.row.path) this.editor.path = target;
+                coderMoveEntry(this.sandbox, p.row.path, target);
+                this.recents = coderLoadRecents();
+                this.pinned = coderLoadPinned();
                 await this.reloadAfterChange([parent]);
             } else if (p.mode === "move") {
                 const oldParent = p.row.path.split("/").slice(0, -1).join("/");
@@ -1005,6 +1226,9 @@ const CODER_PANEL = {
                 const newParent = dst.includes("/") ? dst.split("/").slice(0, -1).join("/") : "";
                 await simpleApiPost("/api/ext/coder/move", { sandbox: this.sandbox, src: p.row.path, dst });
                 if (this.editor.path === p.row.path) this.editor.path = dst;
+                coderMoveEntry(this.sandbox, p.row.path, dst);
+                this.recents = coderLoadRecents();
+                this.pinned = coderLoadPinned();
                 await this.reloadAfterChange([oldParent, newParent]);
             }
 
@@ -1023,6 +1247,11 @@ const CODER_PANEL = {
 
         try {
             await simpleApiPost("/api/ext/coder/delete", { sandbox: this.sandbox, path: row.path });
+
+            // keep the welcome panel's lists honest (folders: their children too)
+            coderDropEntry(this.sandbox, row.path);
+            this.recents = coderLoadRecents();
+            this.pinned = coderLoadPinned();
 
             if (this.editor.path === row.path || this.editor.path.startsWith(row.path + "/")) {
                 this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false, vimMode: "normal", vimSubMode: "" };
@@ -1175,15 +1404,19 @@ const CODER_PANEL = {
 
     /* ---- fuzzy quick-open (ctrl+p) ---- */
     async openQuickOpen(event) {
-        // only act while the coder sidebar is actually visible; otherwise
-        // leave the browser shortcut (print) alone
-        const panel = document.querySelector(".coder-panel");
-        if (!panel || !panel.offsetParent) return;
-
+        // works with the coder sidebar closed too: the modal lives in the
+        // core modal area. ctrl+p is now ours everywhere in the app (print
+        // loses); the store self-bootstraps via loadSandboxes when the
+        // sidebar never refreshed.
         if (event) event.preventDefault();
 
+        const prev = this.sandbox;
         if (!this.sandboxes.length) await this.loadSandboxes();
         if (!this.sandbox) return;
+
+        // sidebar never mounted (or was showing another sandbox): keep the
+        // tree caches in sync so opening a file lands in a consistent state
+        if (this.sandbox !== prev) await this.resetTree();
 
         if (this.quick.filesLoadedFor !== this.sandbox) {
             try {
@@ -1436,9 +1669,8 @@ document.addEventListener("alpine:init", () => {
 });
 
 // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-// ctrl+p / cmd+p -> fuzzy quick-open. capture phase so we get the key
-// before the browser (print dialog) or CodeMirror does; openQuickOpen
-// itself no-ops (leaving print alone) unless the coder sidebar is visible.
+// ctrl+p / cmd+p -> fuzzy quick-open, app-wide (the print shortcut loses).
+// capture phase so we get the key before the browser or CodeMirror does.
 window.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && String(event.key).toLowerCase() === "p") {

@@ -1,0 +1,116 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   coder hook for the core welcome panel (extension_slot "below_message").
+   slot templates must contain macro definitions only; the card shows a
+   resume row for the last-opened file, pinned files, recent files and a
+   git strip (branch + dirty count + the 5 most recent commits, same
+   hash+subject format as the git log modal). recents/pins live in
+   localStorage (see the coderRecents/coderPinned helpers in
+   assets/js/coder.js), so they survive reloads.
+
+   Two hard rules for future editors of this file:
+   1. NEVER put a multi-line JS object literal in an x-data attribute. A
+      line ending in { directly above a line starting with { reads as
+      {{ ... }} to Jinja, which blows up the whole template (it gets
+      skipped and dumps raw text into the page).
+   2. NEVER mirror store state into local x-data via $watch. $watch's
+      { immediate: true } option does not fire reliably here, so the
+      mirror can stay empty forever. Read $store.coderPanel directly in
+      every expression instead. #}
+{% macro below_message() %}
+{# the wrapper always renders and owns the sandbox fetch: putting the
+   kick-start inside an x-if on sandboxes.length would never run, since
+   an empty list means the template (and its x-init) doesn't exist.
+   (the sidebar panel's own x-intersect refresh can't cover this either:
+   x-show's display:none keeps IntersectionObserver from firing) #}
+<div class="coder-welcome" x-cloak
+    x-data="{ panel: $store.coderPanel }"
+    x-show="panel && panel.sandboxes.length"
+    x-init="if (panel && !panel.sandboxes.length) panel.refresh()">
+
+    <div class="coder-welcome-card" x-show="panel.pinned.length || panel.recents.length || panel.git.is_repo">
+
+        {# ---- resume: the single last-opened file ---- #}
+        <div class="coder-welcome-resume" x-show="panel.recents.length"
+            :title="panel.recents[0] ? panel.recents[0].sandbox + '/' + panel.recents[0].path : ''"
+            @click="panel.recents[0] && panel.openRecent(panel.recents[0])">
+            <svg class="rr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="6 4 20 12 6 20 6 4"/>
+            </svg>
+            <span class="rr-label">continue</span>
+            <span class="rr-name" x-text="panel.recents[0] ? panel.basename(panel.recents[0].path) : ''"></span>
+            <span class="rr-dir" x-text="panel.recents[0] ? panel.dirname(panel.recents[0].path) : ''"></span>
+            <span class="rr-age" x-text="panel.recents[0] ? panel.timeAgo(panel.recents[0].at) : ''"></span>
+        </div>
+
+        {# ---- pinned files ---- #}
+        <div class="coder-welcome-section" x-show="panel.pinned.length">
+            <div class="coder-welcome-label">pinned</div>
+            <template x-for="r in panel.pinned" :key="'p' + r.sandbox + '/' + r.path">
+                <div class="coder-welcome-file"
+                    :title="r.sandbox + '/' + r.path"
+                    @click="panel.openRecent(r)">
+                    <span class="star">★</span>
+                    <span class="fname" x-text="panel.basename(r.path)"></span>
+                    <span class="fpath" x-text="panel.dirname(r.path)"></span>
+                    <span class="fsandbox" x-text="r.sandbox"></span>
+                    <button type="button" class="funpin" title="unpin"
+                        @click.stop="panel.unpin(r)">&times;</button>
+                </div>
+            </template>
+        </div>
+
+        {# ---- recent files (the newest one is the resume row above) ---- #}
+        <div class="coder-welcome-section" x-show="panel.recents.length > 1">
+            <div class="coder-welcome-label">
+                recent files
+                <button type="button" class="coder-welcome-clear" title="clear list"
+                    @click="panel.clearRecents()">&times;</button>
+            </div>
+            <template x-for="r in panel.recents.slice(1)" :key="'r' + r.sandbox + '/' + r.path">
+                <div class="coder-welcome-file"
+                    :title="r.sandbox + '/' + r.path"
+                    @click="panel.openRecent(r)">
+                    <span class="fname" x-text="panel.basename(r.path)"></span>
+                    <span class="fpath" x-text="panel.dirname(r.path)"></span>
+                    <span class="fsandbox" x-text="r.sandbox"></span>
+                    <span class="fage" x-text="panel.timeAgo(r.at)"></span>
+                </div>
+            </template>
+        </div>
+
+        {# ---- git strip: repo · branch · dirty/clean, then the 5 most
+              recent commits in the git log modal's hash+subject format ---- #}
+        <div class="coder-welcome-git" x-show="panel.git.loaded && panel.git.is_repo" x-cloak>
+            <div class="gw-head">
+                <span class="gw-repo" x-text="panel.git.subpath ? panel.git.subpath.split('/').pop() : panel.sandbox"
+                    :title="panel.sandbox + '/' + (panel.git.subpath || '')"></span>
+                <span class="gw-sep">·</span>
+                <span class="gw-branch">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="6" y1="3" x2="6" y2="15"/>
+                        <circle cx="18" cy="6" r="3"/>
+                        <circle cx="6" cy="18" r="3"/>
+                        <path d="M18 9a9 9 0 0 1-9 9"/>
+                    </svg>
+                    <span x-text="panel.git.branch"></span>
+                </span>
+                <button type="button" class="gw-dirty" x-show="panel.git.dirty > 0"
+                    :title="panel.git.dirty + ' changed files'"
+                    @click="panel.openGitSidebar()"
+                    x-text="panel.git.dirty + ' changed'"></button>
+                <span class="gw-clean" x-show="panel.git.dirty === 0">clean</span>
+                <button type="button" class="gw-open"
+                    title="open the git sidebar"
+                    @click="panel.openGitSidebar()">git &rarr;</button>
+            </div>
+
+            <template x-for="entry in panel.git.log" :key="entry.hash">
+                <div class="git-log-entry gw-entry">
+                    <span class="h" x-text="entry.hash"></span>
+                    <span x-text="entry.msg"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+{% endmacro %}

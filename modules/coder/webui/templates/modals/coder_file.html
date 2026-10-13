@@ -48,6 +48,21 @@
                         </svg>
                     </button>
                 </div>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   pin to the welcome card's pinned list (localStorage) #}
+                <button
+                    type="button"
+                    class="coder-editor-icon-btn coder-pin-btn"
+                    :class="{ on: $store.coderPanel.isPinned() }"
+                    @click="$store.coderPanel.togglePin()"
+                    :aria-label="$store.coderPanel.isPinned() ? 'Unpin file' : 'Pin file'"
+                    :title="$store.coderPanel.isPinned() ? 'unpin from welcome card' : 'pin to welcome card'"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 2l2.9 6.26L21.5 9.27l-4.75 4.14L18.18 20 12 16.4 5.82 20l1.43-6.59L2.5 9.27l6.6-1.01L12 2z"
+                            fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                    </svg>
+                </button>
                 <button
                     type="button"
                     class="coder-editor-icon-btn"
