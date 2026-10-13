@@ -682,6 +682,14 @@ CHAT_STORE = {
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
 
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        // re-split trailing runs of consecutive content-only assistant
+        // messages (the assistant's answer + pushed announcements) into one
+        // final bubble each, BEFORE merging: deterministic on the same
+        // messages, so hash-matched existing turns were resplit identically
+        // and keep their identity across reloads.
+        (result.turn_history || []).forEach(resplitHistoryTurn);
+
         // reuse the existing turn objects for every turn that didn't actually
         // change, so alpine doesn't re-render (and re-parse the markdown of)
         // the entire conversation on every single reload

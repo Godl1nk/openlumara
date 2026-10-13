@@ -93,6 +93,66 @@ function thoughtSnippet(text, max) {
     return (sp > 20 ? win.slice(0, sp) : win.slice(0, limit - 1)).replace(/\s+$/, '') + '…';
 }
 
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+// the backend's build_steps() makes exactly ONE message final: the last
+// content-without-toolcalls one. that's wrong for pushed announcements: a
+// push that lands right after the assistant's answer is another content-only
+// message, so it hijacks the final slot and the real answer gets demoted into
+// the Process chain. re-split finalized history turns: every message in the
+// trailing run of consecutive content-only assistant messages becomes its own
+// final bubble, and the demoted ones are trimmed back out of the chain's
+// trailing step (build_steps folds a thought run's content into one step's
+// `content` field, joined with \n\n, in order - so the demoted tail is an
+// exact suffix of the last step).
+function resplitHistoryTurn(turn) {
+    if (!turn || turn.role !== 'assistant') return turn;
+
+    const messages = turn.messages || [];
+    const finals = [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.role === 'assistant' && !m.tool_calls &&
+            typeof m.content === 'string' && m.content.trim() !== '') {
+            finals.unshift(m);
+        } else {
+            break;
+        }
+    }
+
+    // single (or no) trailing content message: the backend already got it right
+    if (finals.length <= 1) return turn;
+
+    // pull the demoted messages back out of the chain's trailing step.
+    // compare against the RAW join (build_steps joins untrimmed content),
+    // then tidy the seam left behind.
+    const demoted = finals.slice(0, -1).map(m => m.content).join('\n\n');
+    const steps = turn.steps || [];
+    const last = steps[steps.length - 1];
+    if (last && (last.content || '').endsWith(demoted)) {
+        last.content = (last.content.slice(0, last.content.length - demoted.length)).trimEnd();
+        if (!last.content && !last.reasoning_content &&
+            (!last.tool_calls || last.tool_calls.length === 0)) {
+            steps.pop();
+        }
+    }
+
+    // reasoning that rode on these messages already lives in the chain steps
+    // (build_steps merges thought-run reasoning, and gives the backend's
+    // final message its own Thoughts step) - strip it from the bubbles so it
+    // never renders twice. copies only; turn.messages stays pristine.
+    for (let i = 0; i < finals.length; i++) {
+        if (finals[i].reasoning_content) {
+            const copy = { ...finals[i] };
+            delete copy.reasoning_content;
+            finals[i] = copy;
+        }
+    }
+
+    turn.steps = steps;
+    turn.final_messages = finals;
+    return turn;
+}
+
 // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
 // while streaming we can't know which content will be the final one:
 // content only counts as final while it is the most recent segment. if a
