@@ -9,6 +9,7 @@ const GIT_PANEL = {
     subpath: "",
     repos: [],
     _autoPicked: false,
+    _didRestore: false,
     read_only: false,
     ready: false,
     loading: false,
@@ -46,7 +47,10 @@ const GIT_PANEL = {
             this._autoPicked = false;
         }
         if (!this.sandbox && this.sandboxes.length) {
-            this.sandbox = this.sandboxes[0];
+            // prefer the sandbox chosen before a page reload over the
+            // plain first entry
+            const saved = localStorage.getItem("git_sandbox") || "";
+            this.sandbox = this.sandboxes.includes(saved) ? saved : this.sandboxes[0];
         }
 
         if (!this.sandbox) {
@@ -68,6 +72,18 @@ const GIT_PANEL = {
                 this.repos = rd.repos || [];
             } catch (e) {
                 this.repos = [];
+            }
+        }
+
+        // first load of the page only: restore the repo this sandbox had
+        // before the reload (per-sandbox key, root = ""). once per page so
+        // later refreshes never undo a manual pick of "(root)".
+        if (!this.subpath && !this._didRestore) {
+            this._didRestore = true;
+            const savedRepo = localStorage.getItem("git_repo::" + this.sandbox) || "";
+            if (this.repos.includes(savedRepo)) {
+                this.subpath = savedRepo;
+                this._autoPicked = true; // a restored choice beats auto-hop
             }
         }
 
@@ -96,9 +112,16 @@ const GIT_PANEL = {
             this.error = this.errorText(e);
             this.changes = [];
         } finally {
+            // remember the effective selection across page reloads
+            this._save("git_sandbox", this.sandbox);
+            this._save("git_repo::" + this.sandbox, this.subpath);
             this.loading = false;
             this.ready = true;
         }
+    },
+
+    _save(key, val) {
+        try { localStorage.setItem(key, val); } catch (e) {}
     },
 
     stagedCount() {
@@ -124,9 +147,10 @@ const GIT_PANEL = {
     },
 
     async switchSandbox() {
-        // sandbox already bound via x-model. repos are per-sandbox, so the
-        // whole repo selection resets when the sandbox changes
-        this.subpath = "";
+        // sandbox already bound via x-model. repos are per-sandbox: hop
+        // straight back into whatever was last selected for this one
+        // (refresh resets the subpath again if it no longer exists)
+        this.subpath = localStorage.getItem("git_repo::" + this.sandbox) || "";
         this.repos = [];
         this._autoPicked = false;
         await this.refresh();
