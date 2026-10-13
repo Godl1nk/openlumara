@@ -26,6 +26,18 @@ const GIT_PANEL = {
         branch: "", remote: "", upstream: "", has_upstream: false, target: "",
         ahead: [], behind: 0, dirty: false, loading: false, pushing: false, error: "",
     },
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    // fetch/pull state
+    pull: { loading: false, incoming: [], error: "", pulling: false },
+    // branch management (manage-branches modal state)
+    branchModal: { newName: "", confirming: null, submitting: false, error: "" },
+    _currentBranch: "",
+    // blame
+    blame: { path: "", lines: [], loading: false },
+    // conflicts
+    conflicts: [],
+    // split diff
+    splitDiff: { active: false, rows: [], loading: false },
 
     async refresh(force = false) {
         // own sandbox picker (header button forces a rescan of both the
@@ -105,6 +117,7 @@ const GIT_PANEL = {
             }
 
             this.branch = data.branch || "";
+            this._currentBranch = this.branch;
             this.branches = data.branches || [];
             this.changes = data.changes || [];
             this.read_only = !!data.read_only;
@@ -117,6 +130,8 @@ const GIT_PANEL = {
             this._save("git_repo::" + this.sandbox, this.subpath);
             this.loading = false;
             this.ready = true;
+            // check for merge conflicts in the background
+            this.loadConflicts();
         }
     },
 
@@ -201,7 +216,10 @@ const GIT_PANEL = {
         try {
             await simpleApiPost("/api/ext/coder/git_branch", { sandbox: this.sandbox, subpath: this.subpath, name });
         } catch (e) {
+            // show the error AFTER refresh so it doesn't get wiped
+            await this.refresh(true);
             this.error = this.errorText(e);
+            return;
         }
 
         await this.refresh(true);
@@ -241,6 +259,177 @@ const GIT_PANEL = {
 
     closePush() {
         if (this.push.pushing) return; // never close mid-push
+        Alpine.store("ui").closeModal();
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       fetch + pull # */
+    async doFetch() {
+        if (this.pull.loading) return;
+        this.pull.loading = true;
+        this.pull.error = "";
+        try {
+            const data = await simpleApiPost("/api/ext/coder/git_fetch", {
+                sandbox: this.sandbox, subpath: this.subpath,
+            });
+            this.pull.incoming = data.incoming || [];
+            if (!this.pull.incoming.length) {
+                this.error = "already up to date";
+            }
+            await this.refresh();
+        } catch (e) {
+            this.pull.error = this.errorText(e);
+        } finally {
+            this.pull.loading = false;
+        }
+    },
+
+    async doPull() {
+        if (this.pull.pulling) return;
+        this.pull.pulling = true;
+        this.pull.error = "";
+        try {
+            const data = await simpleApiPost("/api/ext/coder/git_pull", {
+                sandbox: this.sandbox, subpath: this.subpath,
+            });
+            if (data && data.pull_failed) {
+                this.conflicts = data.conflicts || [];
+                this.error = "pull finished with conflicts — resolve them below";
+                Alpine.store("ui").openModal("git_conflicts");
+            } else {
+                this.conflicts = [];
+                await this.refresh();
+            }
+        } catch (e) {
+            this.pull.error = this.errorText(e);
+        } finally {
+            this.pull.pulling = false;
+        }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       branch select handler: if "manage branches" is picked, open the
+       manager modal and revert the dropdown to the actual current branch. # */
+    onBranchSelect() {
+        if (this.branch === "__manage__") {
+            this.branch = this._currentBranch || "";
+            this.openBranchManager();
+            return;
+        }
+        this.switchBranch(this.branch);
+    },
+
+    openBranchManager() {
+        this._currentBranch = this.branch;
+        Alpine.store("ui").openModal("git_branch");
+    },
+
+    async closeBranchManager() {
+        Alpine.store("ui").closeModal();
+        await this.refresh(true);
+    },
+
+    async createBranch(name) {
+        if (!name || !name.trim()) return;
+        this.branchModal.error = "";
+        this.branchModal.submitting = true;
+        try {
+            await simpleApiPost("/api/ext/coder/git_branch_create", {
+                sandbox: this.sandbox, subpath: this.subpath, name: name.trim(), checkout: true,
+            });
+            this.branchModal.newName = "";
+            await this.refresh(true);
+        } catch (e) {
+            this.branchModal.error = this.errorText(e);
+        } finally {
+            this.branchModal.submitting = false;
+        }
+    },
+
+    async deleteBranch(name) {
+        this.branchModal.error = "";
+        this.branchModal.submitting = true;
+        try {
+            await simpleApiPost("/api/ext/coder/git_branch_delete", {
+                sandbox: this.sandbox, subpath: this.subpath, name: name, force: true,
+            });
+            this.branchModal.confirming = null;
+            await this.refresh(true);
+        } catch (e) {
+            this.branchModal.error = this.errorText(e);
+        } finally {
+            this.branchModal.submitting = false;
+        }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       blame # */
+    async openBlame(filePath) {
+        this.blame = { path: filePath, lines: [], loading: true };
+        Alpine.store("ui").openModal("git_blame");
+        try {
+            const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}&path=${encodeURIComponent(filePath)}`;
+            const data = await simpleApiFetch("/api/ext/coder/git_blame?" + params);
+            this.blame.lines = data.lines || [];
+        } catch (e) {
+            this.blame.lines = [];
+            this.error = this.errorText(e);
+        } finally {
+            this.blame.loading = false;
+        }
+    },
+
+    closeBlame() {
+        Alpine.store("ui").closeModal();
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       conflicts # */
+    async loadConflicts() {
+        try {
+            const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}`;
+            const data = await simpleApiFetch("/api/ext/coder/git_conflicts?" + params);
+            this.conflicts = data.conflicts || [];
+        } catch (e) {
+            this.conflicts = [];
+        }
+    },
+
+    async resolveConflict(path, strategy) {
+        try {
+            await simpleApiPost("/api/ext/coder/git_resolve", {
+                sandbox: this.sandbox, subpath: this.subpath, path: path, strategy: strategy,
+            });
+            await this.loadConflicts();
+            await this.refresh();
+        } catch (e) {
+            this.error = this.errorText(e);
+        }
+    },
+
+    closeConflicts() {
+        Alpine.store("ui").closeModal();
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       split diff # */
+    async openSplitDiff(c) {
+        this.splitDiff = { active: true, rows: [], loading: true, path: c.path, staged: c.staged, untracked: !!c.untracked };
+        Alpine.store("ui").openModal("git_split_diff");
+        const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}` +
+            `&path=${encodeURIComponent(c.path)}&staged=${c.staged ? 1 : 0}&untracked=${c.untracked ? 1 : 0}`;
+        try {
+            const data = await simpleApiFetch("/api/ext/coder/git_split_diff?" + params);
+            this.splitDiff.rows = data.rows || [];
+        } catch (e) {
+            this.splitDiff.rows = [];
+        } finally {
+            this.splitDiff.loading = false;
+        }
+    },
+
+    closeSplitDiff() {
+        this.splitDiff.active = false;
         Alpine.store("ui").closeModal();
     },
 

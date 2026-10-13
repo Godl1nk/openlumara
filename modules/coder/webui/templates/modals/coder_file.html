@@ -14,10 +14,26 @@
         @keydown.meta.s.prevent="$store.coderPanel.save()"
     >
         <div class="header">
-            <h2 class="coder-editor-title">
-                <span x-text="$store.coderPanel.editor.path"></span>
+            {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+               breadcrumbs: clickable path segments #}
+            <h2 class="coder-editor-title coder-breadcrumbs">
+                <template x-for="(crumb, i) in $store.coderPanel.breadcrumbs()" :key="crumb.path">
+                    <span class="crumb-segment">
+                        <span x-show="i > 0" class="crumb-sep">/</span>
+                        <button type="button" class="crumb-btn" :class="{ current: crumb.is_file }"
+                            x-show="!crumb.is_file"
+                            @click="$store.coderPanel.crumbClick(crumb)"
+                            x-text="crumb.name"
+                            :title="'expand ' + crumb.path"></button>
+                        <span x-show="crumb.is_file" class="crumb-file" x-text="crumb.name"></span>
+                    </span>
+                </template>
                 <span class="coder-dirty-dot" x-show="$store.coderPanel.editor.dirty" title="unsaved changes">●</span>
                 <span class="coder-ro-tag" x-show="$store.coderPanel.read_only">read-only</span>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   autosave indicator #}
+                <span class="coder-autosave-tag" x-show="$store.coderPanel.autosave_interval > 0"
+                    x-text="'auto ' + $store.coderPanel.autosave_interval + 's'"></span>
             </h2>
             <div class="coder-editor-header-actions">
                 {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
@@ -48,6 +64,51 @@
                         </svg>
                     </button>
                 </div>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   revert file to HEAD (with confirm dialog) #}
+                <button
+                    type="button"
+                    class="coder-editor-icon-btn coder-revert-btn"
+                    x-show="!$store.coderPanel.read_only"
+                    :disabled="$store.coderPanel.editor.saving"
+                    @click="$store.coderPanel.revertFile()"
+                    title="revert to last commit"
+                    aria-label="Revert to HEAD"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                        <polyline points="3 4 3 9 8 9"/>
+                    </svg>
+                </button>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   markdown preview toggle (only for .md files) #}
+                <button
+                    type="button"
+                    class="coder-editor-icon-btn coder-md-btn"
+                    :class="{ on: $store.coderPanel.markdown_preview }"
+                    x-show="$store.coderPanel.isMarkdown()"
+                    @click="$store.coderPanel.toggleMarkdownPreview()"
+                    :aria-label="$store.coderPanel.markdown_preview ? 'Hide preview' : 'Show preview'"
+                    :title="$store.coderPanel.markdown_preview ? 'hide preview' : 'markdown preview'"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h4l2 4 2-4h4"/><path d="M6 16v-4"/><path d="M18 16v-4l-2 2"/>
+                    </svg>
+                </button>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   indent guides toggle #}
+                <button
+                    type="button"
+                    class="coder-editor-icon-btn"
+                    :class="{ on: $store.coderPanel.indent_guides }"
+                    @click="$store.coderPanel.toggleIndentGuides()"
+                    title="indent guides"
+                    aria-label="Toggle indent guides"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <path d="M3 4h18"/><path d="M3 8h18"/><path d="M7 12h14"/><path d="M7 16h14"/><path d="M3 4v16"/><path d="M7 8v12"/>
+                    </svg>
+                </button>
                 {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
                    pin to the welcome card's pinned list (localStorage) #}
                 <button
@@ -88,16 +149,25 @@
         </div>
 
         <div class="coder-editor-body">
-            <div class="coder-editor-wrap">
-                {# CodeMirror takes this div over once the lazy library load
-                   resolves; the loading note covers the brief gap #}
-                <div class="coder-cm-host"
-                    x-init="$store.coderPanel.initEditor($el)"
-                    x-data="{ destroy() { $store.coderPanel.destroyEditor() } }"
-                ></div>
-                <div class="coder-editor-loading" x-show="!$store.coderPanel.editor.cmReady && !$store.coderPanel.editor.error">
-                    loading editor&hellip;
+            <div class="coder-editor-split" :class="{ 'has-preview': $store.coderPanel.markdown_preview }">
+                <div class="coder-editor-wrap">
+                    {# CodeMirror takes this div over once the lazy library load
+                       resolves; the loading note covers the brief gap #}
+                    <div class="coder-cm-host"
+                        x-init="$store.coderPanel.initEditor($el)"
+                        x-data="{ destroy() { $store.coderPanel.destroyEditor() } }"
+                    ></div>
+                    <div class="coder-editor-loading" x-show="!$store.coderPanel.editor.cmReady && !$store.coderPanel.editor.error">
+                        loading editor&hellip;
+                    </div>
                 </div>
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   markdown preview pane #}
+                <div class="coder-md-preview"
+                    x-show="$store.coderPanel.markdown_preview"
+                    x-init="$watch('$store.coderPanel.markdown_preview', (v) => { if (v) $store.coderPanel.renderMarkdownPreview($el) })"
+                    :x-data="{}"
+                ></div>
             </div>
 
             {# live caret/selection readout, fed by CodeMirror's cursorActivity #}

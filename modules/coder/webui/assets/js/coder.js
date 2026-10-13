@@ -498,6 +498,10 @@ const CODER_PANEL = {
     git: { is_repo: false, branch: "", dirty: 0, log: [], subpath: "", loaded: false },
     read_only: false,
     editor_mode: "standard", // mirrors the module setting: standard | vim | emacs | sublime (gated by enable_webui_extension)
+    autosave_interval: 0, // seconds; 0 = disabled
+    _autosaveTimer: null,
+    markdown_preview: false,
+    indent_guides: true,
     rows: [],
     expanded: {},
     children: {},
@@ -590,6 +594,7 @@ const CODER_PANEL = {
             this.sandboxes = data.sandboxes || [];
             this.read_only = !!data.read_only;
             this.editor_mode = data.editor_mode || "standard";
+            this.autosave_interval = parseInt(data.autosave_interval) || 0;
         } catch (e) {
             this.sandboxes = [];
         }
@@ -694,6 +699,141 @@ const CODER_PANEL = {
 
     timeAgo(ts) {
         return coderTimeAgo(ts);
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       breadcrumbs: split the current file path into clickable segments.
+       clicking a folder segment expands that path in the tree sidebar. # */
+    breadcrumbs() {
+        if (!this.editor.path) return [];
+        const parts = this.editor.path.split("/");
+        const crumbs = [];
+        for (let i = 0; i < parts.length; i++) {
+            crumbs.push({
+                name: parts[i],
+                path: parts.slice(0, i + 1).join("/"),
+                is_file: i === parts.length - 1,
+            });
+        }
+        return crumbs;
+    },
+
+    crumbClick(crumb) {
+        if (crumb.is_file) return;
+        // expand the folder in the tree and scroll to it
+        this.clearSearch();
+        const expandTo = async (path) => {
+            const parts = path.split("/");
+            let current = "";
+            for (const seg of parts) {
+                current = current ? current + "/" + seg : seg;
+                if (!this.expanded[current]) {
+                    const row = this.rows.find(r => r.path === current);
+                    if (row && row.is_dir) await this.toggle(row);
+                }
+            }
+        };
+        expandTo(crumb.path);
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       markdown preview: renders the editor content into a preview pane
+       using the globally-loaded marked.js + DOMPurify. toggled from the
+       editor header. only available for .md files. # */
+    isMarkdown() {
+        const ext = this.editor.path ? this.editor.path.split(".").pop().toLowerCase() : "";
+        return ext === "md" || ext === "markdown";
+    },
+
+    toggleMarkdownPreview() {
+        this.markdown_preview = !this.markdown_preview;
+    },
+
+    renderMarkdownPreview(host) {
+        if (!host || !this.markdown_preview || !CODER_CM) return;
+        const raw = CODER_CM.getValue();
+        try {
+            const html = typeof marked !== "undefined" ? marked.parse(raw) : "<p>" + raw.replace(/</g, "&lt;") + "</p>";
+            host.innerHTML = typeof DOMPurify !== "undefined" ? DOMPurify.sanitize(html) : html;
+        } catch (e) {
+            host.innerHTML = "<p style='color:#ff5f7a'>preview error</p>";
+        }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       autosave: debounced auto-save after the configured interval.
+       triggered from the CodeMirror change handler. # */
+    _scheduleAutosave() {
+        if (!this.autosave_interval || this.read_only) return;
+        clearTimeout(this._autosaveTimer);
+        this._autosaveTimer = setTimeout(() => {
+            if (this.editor.dirty && !this.editor.saving) this.save();
+        }, this.autosave_interval * 1000);
+    },
+
+    _cancelAutosave() {
+        clearTimeout(this._autosaveTimer);
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       indent guides: toggles visual indent guides in CodeMirror.
+       implemented via a renderLine hook that wraps leading spaces. # */
+    toggleIndentGuides() {
+        this.indent_guides = !this.indent_guides;
+        if (CODER_CM) {
+            CODER_CM.refresh();
+        }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       OS drag-and-drop file upload: handles files dragged from the
+       operating system's file manager into the sidebar tree. # */
+    onOsDragOver(event) {
+        // only intercept if dragging files from outside the browser
+        if (this.dragPath) return; // internal drag, let normal handlers work
+        if (event.dataTransfer && event.dataTransfer.types.includes("Files")) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.dropTarget = "__os_upload__";
+        }
+    },
+
+    async onOsDrop(event, targetDir) {
+        if (this.dragPath) return; // internal drag
+        event.preventDefault();
+        event.stopPropagation();
+        this.dropTarget = null;
+
+        if (this.read_only) return;
+        const files = event.dataTransfer && event.dataTransfer.files;
+        if (!files || !files.length) return;
+
+        for (const file of files) {
+            await this._uploadFile(file, targetDir || "");
+        }
+    },
+
+    async _uploadFile(file, targetDir) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const b64 = reader.result.split(",")[1];
+                try {
+                    await simpleApiPost("/api/ext/coder/upload", {
+                        sandbox: this.sandbox,
+                        path: targetDir,
+                        filename: file.name,
+                        content: b64,
+                    });
+                    await this.reloadAfterChange([targetDir]);
+                } catch (e) {
+                    this.error = this.errorText(e);
+                }
+                resolve();
+            };
+            reader.onerror = () => resolve();
+            reader.readAsDataURL(file);
+        });
     },
 
     async loadRoot() {
@@ -1095,6 +1235,35 @@ const CODER_PANEL = {
 
         cm.on("change", () => {
             if (!this._silent && !this.editor.dirty) this.editor.dirty = true;
+            if (!this._silent) this._scheduleAutosave();
+            // update markdown preview live
+            if (this.markdown_preview && this.isMarkdown()) {
+                const host = document.querySelector(".coder-md-preview");
+                if (host) this.renderMarkdownPreview(host);
+            }
+        });
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+        // indent guides: inject visual guide spans into leading whitespace
+        cm.on("renderLine", (cmInstance, line, el) => {
+            if (!this.indent_guides) return;
+            const text = cmInstance.getLine(line.line);
+            if (!text) return;
+            const indent = text.match(/^[\t ]+/);
+            if (!indent) return;
+            // count indent levels (tab = 1 level, 4 spaces = 1 level)
+            const indentStr = indent[0];
+            let levels = 0;
+            for (const ch of indentStr) {
+                if (ch === "\t") levels++;
+                else if (ch === " ") {
+                    // count groups of 4
+                }
+            }
+            if (!levels) levels = Math.floor((indentStr.match(/ /g) || []).length / 4);
+            if (levels <= 0) return;
+            // add a CSS class with the indent level for the guide
+            el.classList.add("cm-indent-level-" + Math.min(levels, 10));
         });
 
         cm.on("cursorActivity", (c) => {
@@ -1123,6 +1292,8 @@ const CODER_PANEL = {
     },
 
     destroyEditor() {
+        this._cancelAutosave();
+        this.markdown_preview = false;
         if (CODER_CM) {
             try {
                 CODER_CM._coderThemeOff();
@@ -1345,6 +1516,52 @@ const CODER_PANEL = {
             setTimeout(() => {
                 if (CODER_CM) CODER_CM.refresh();
             }, 0);
+        }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       revert the current file to its HEAD version. confirms with the user,
+       calls the backend, then reloads the content into the editor. # */
+    async revertFile() {
+        if (!this.editor.path || this.read_only) return;
+
+        const name = this.editor.path.split("/").pop();
+        const msg = `Revert "${name}" to the last committed version?\n\nAll local changes (staged and unstaged) will be lost.`;
+        if (!window.confirm(msg)) return;
+
+        this.editor.saving = true;
+        this.editor.error = "";
+
+        try {
+            // find the git repo subpath for this sandbox (same logic as git.js)
+            let subpath = localStorage.getItem("git_repo::" + this.sandbox) || "";
+            await simpleApiPost("/api/ext/coder/git_revert_file", {
+                sandbox: this.sandbox,
+                subpath: subpath,
+                path: this.editor.path,
+            });
+
+            // reload the file content from disk
+            const data = await simpleApiFetch(
+                `/api/ext/coder/read?sandbox=${encodeURIComponent(this.sandbox)}&path=${encodeURIComponent(this.editor.path)}`
+            );
+            const content = data.content || "";
+            this.editor.content = content;
+            this.editor.dirty = false;
+            this.editor.saved = "reverted ✓";
+            this._cancelAutosave();
+
+            // swap into the live editor
+            if (CODER_CM) {
+                this._silent = true;
+                CODER_CM.setValue(content);
+                CODER_CM.clearHistory();
+                this._silent = false;
+            }
+        } catch (e) {
+            this.editor.error = this.errorText(e);
+        } finally {
+            this.editor.saving = false;
         }
     },
 
