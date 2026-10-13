@@ -2,12 +2,105 @@
    coder sidebar (sandbox dropdown + lazy file tree) and file edit modal.
    Talks to /api/ext/coder/. the tree is kept flat (rows with depth) so
    alpine renders it with one x-for; children lazy-load on first expand. */
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-// fallback renderer for the highlight underlay when there is no hljs lang
-// (plaintext, huge files, hljs unavailable): the textarea's own text is
-// transparent, so the underlay must always show escaped source.
-function coderEscapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   the file edit modal is CodeMirror 5, vendored under assets/vendor/.
+   vendor/ deliberately sits OUTSIDE assets/css + assets/js so the webui
+   channel's auto-discovery never force-loads it on every page: the
+   library is lazy-loaded (sequentially - addons depend on the core, some
+   modes/addons on others) the first time a file is opened, then kept
+   warm for the rest of the page's life. */
+const CM_BASE = "/ext-assets/coder/vendor/codemirror/";
+
+const CM_CSS = [
+    "lib/codemirror.css",
+    "addon/dialog/dialog.css",
+    "addon/fold/foldgutter.css",
+    "addon/search/matchesonscrollbar.css",
+];
+
+const CM_JS = [
+    "lib/codemirror.js",
+    "addon/comment/comment.js",
+    "addon/dialog/dialog.js",
+    "addon/search/searchcursor.js",
+    "addon/search/search.js",
+    "addon/scroll/annotatescrollbar.js",
+    "addon/search/matchesonscrollbar.js",
+    "addon/edit/matchbrackets.js",
+    "addon/edit/closebrackets.js",
+    "addon/edit/closetag.js",
+    "addon/edit/continuelist.js",
+    "addon/edit/trailingspace.js",
+    "addon/selection/active-line.js",
+    "addon/fold/foldcode.js",
+    "addon/fold/foldgutter.js",
+    "addon/fold/brace-fold.js",
+    "addon/fold/comment-fold.js",
+    "addon/fold/indent-fold.js",
+    "addon/fold/xml-fold.js",
+    "mode/xml/xml.js",
+    "mode/css/css.js",
+    "mode/javascript/javascript.js",
+    "mode/htmlmixed/htmlmixed.js",
+    "mode/jinja2/jinja2.js",
+    "mode/markdown/markdown.js",
+    "mode/python/python.js",
+    "mode/shell/shell.js",
+    "mode/yaml/yaml.js",
+    "mode/toml/toml.js",
+    "mode/properties/properties.js",
+];
+
+// the live editor instance lives OUTSIDE the Alpine store on purpose:
+// a reactive proxy wrapped around a whole CodeMirror would be a world
+// of hurt, and nothing in the templates needs to read it.
+let CODER_CM = null;
+let CODER_CM_LOAD = null;
+
+function coderLoadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("failed to load " + src));
+        document.head.appendChild(s);
+    });
+}
+
+function coderLoadCss(href) {
+    return new Promise((resolve, reject) => {
+        const l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = href;
+        l.onload = resolve;
+        l.onerror = () => reject(new Error("failed to load " + href));
+        document.head.appendChild(l);
+    });
+}
+
+function coderLoadCodeMirror() {
+    if (!CODER_CM_LOAD) {
+        CODER_CM_LOAD = (async () => {
+            await Promise.all(CM_CSS.map((f) => coderLoadCss(CM_BASE + f)));
+            // sequential: script order IS dependency order here
+            for (const f of CM_JS) {
+                await coderLoadScript(CM_BASE + f);
+            }
+            return window.CodeMirror;
+        })().catch((e) => {
+            CODER_CM_LOAD = null; // allow a retry on the next open
+            throw e;
+        });
+    }
+    return CODER_CM_LOAD;
+}
+
+// theme classes defined in coder.css, palette-matched to the
+// github-dark/light code themes the chat uses
+function coderThemeName() {
+    const theme = Alpine.store("theme");
+    return theme && theme.mode === "light" ? "lumara-light" : "lumara";
 }
 
 const CODER_PANEL = {
@@ -21,11 +114,12 @@ const CODER_PANEL = {
     loading: false,
     loaded: false,
     error: "",
-    editor: { path: "", content: "", lang: "", dirty: false, saving: false, error: "", saved: "" },
+    editor: { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false },
     caretLine: 1,
     caretCol: 1,
     selLen: 0,
-    _scrollTop: 0,
+    _reveal: 0, // line to jump to once the loaded file is in the editor
+    _silent: false, // set while swapping files in (keeps change events from dirtying)
 
     // right-click menu + small name-prompt modal (create/rename/move)
     menu: { open: false, x: 0, y: 0, row: null },
@@ -155,293 +249,196 @@ const CODER_PANEL = {
     },
 
     async openFile(row, line) {
-        this.editor = { path: row.path, content: "", lang: "", dirty: false, saving: false, error: "", saved: "" };
-        this.caretLine = 1;
+        const path = row.path;
+        this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM };
+        this._reveal = line && line > 1 ? line : 0;
+        this.caretLine = this._reveal || 1;
         this.caretCol = 1;
         this.selLen = 0;
-        this._scrollTop = 0;
+
+        // always (re-)open: no-op when already mounted, and cancels a close
+        // requested in the same tick (quick-open calls closeModal then
+        // openFile; if Alpine flushed the unmount in between, the new file
+        // would otherwise have no modal to open in)
         Alpine.store("ui").openModal("coder_file");
 
         try {
-            const data = await simpleApiFetch(`/api/ext/coder/read?sandbox=${encodeURIComponent(this.sandbox)}&path=${encodeURIComponent(row.path)}`);
-            this.editor.content = data.content || "";
-            this.editor.lang = this.detectLang(row.path, this.editor.content);
-
-            if (line && line > 1) {
-                this.revealLine(line);
-            }
+            const data = await simpleApiFetch(`/api/ext/coder/read?sandbox=${encodeURIComponent(this.sandbox)}&path=${encodeURIComponent(path)}`);
+            const content = data.content || "";
+            this.editor.content = content;
+            this.editor.mode = this.detectLang(path, content);
+            this.loadFileIntoCm(content);
+            this.revealPending();
         } catch (e) {
             this.editor.error = this.errorText(e);
         }
     },
 
-    // select + center a line after the editor mounts (search results, etc.)
-    revealLine(line) {
-        Alpine.nextTick(() => {
-            const ta = document.querySelector(".coder-editor-modal .coder-textarea");
-            if (!ta) return;
+    // swap a freshly-fetched file into a live editor (modal was already open)
+    loadFileIntoCm(content) {
+        if (!CODER_CM) return;
 
-            const lines = this.editor.content.split("\n");
-            let start = 0;
-            for (let i = 0; i < line - 1 && i < lines.length; i++) {
-                start += lines[i].length + 1;
-            }
+        this._silent = true;
+        CODER_CM.setValue(content);
+        CODER_CM.setOption("mode", this.editor.mode || null);
+        CODER_CM.clearHistory();
+        this._silent = false;
+    },
 
-            const end = Math.min(start + (lines[line - 1] ? lines[line - 1].length : 0), this.editor.content.length);
+    // jump to the pending line (search results / reveal requests)
+    revealPending() {
+        if (!CODER_CM || !this._reveal) return;
 
-            ta.focus();
-            ta.setSelectionRange(start, end);
+        // still fetching: an empty editor would clamp the request to the
+        // top and eat it. openFile calls back into here once content lands
+        if (!this.editor.content && !this.editor.error) return;
 
-            const layout = this.ensureLayout();
-            const row = layout && layout.offsets[line - 1] != null ? layout.offsets[line - 1] : line - 1;
-            ta.scrollTop = Math.max(0, row * 20 - ta.clientHeight / 2);
-
-            this.updateCaret(ta);
-            this.syncHighlight({ target: ta });
-        });
+        const line = Math.max(0, Math.min(this._reveal - 1, CODER_CM.lineCount() - 1));
+        CODER_CM.setCursor({ line: line, ch: 0 });
+        CODER_CM.scrollIntoView({ line: line, ch: 0 }, 120);
+        CODER_CM.focus();
+        this._reveal = 0;
     },
 
     /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-       syntax highlighting for the edit modal. language is resolved ONCE on
-       open (extension map first, highlightAuto fallback for unknown ones)
-       so per-keystroke re-highlights always take the cheap explicit-lang
-       path. output feeds the pre>code.hljs underlay; the .hljs class means
-       the core #code-theme link (github-dark/light, swapped by the theming
-       store) colors it automatically. */
+       CodeMirror mode for a file: extension map first, then a confident
+       highlightAuto guess (hljs is already loaded globally) mapped onto the
+       vendored modes, else plaintext. resolved ONCE on open. */
     detectLang(path, code) {
         const map = {
             py: "python", pyw: "python",
-            js: "javascript", mjs: "javascript", cjs: "javascript",
-            json: "json", jsonl: "json",
-            html: "xml", htm: "xml", xml: "xml", svg: "xml", j2: "xml", jinja: "xml",
-            css: "css", scss: "scss",
-            toml: "ini", ini: "ini", cfg: "ini",
-            yml: "yaml", yaml: "yaml",
+            js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
+            json: "javascript", jsonl: "javascript",
+            html: "htmlmixed", htm: "htmlmixed",
+            xml: "xml", svg: "xml", xsl: "xml", rss: "xml", atom: "xml",
+            j2: "jinja2", jinja: "jinja2",
+            css: "css", scss: "css",
             md: "markdown", markdown: "markdown",
-            sh: "bash", bash: "bash", zsh: "bash",
-            txt: "plaintext",
+            yml: "yaml", yaml: "yaml",
+            sh: "shell", bash: "shell", zsh: "shell",
+            toml: "toml",
+            ini: "properties", cfg: "properties", properties: "properties", env: "properties",
+            txt: "",
         };
 
         const ext = path.includes(".") ? path.split(".").pop().toLowerCase() : "";
-        if (map[ext]) return map[ext];
+        if (map[ext] !== undefined) return map[ext];
 
-        if (typeof hljs === "undefined" || !code) return "plaintext";
+        const guessMap = {
+            python: "python", javascript: "javascript", json: "javascript",
+            xml: "xml", html: "htmlmixed", css: "css", scss: "css",
+            markdown: "markdown", yaml: "yaml", shell: "shell", bash: "shell",
+            ini: "properties", toml: "toml",
+        };
+
+        if (typeof hljs === "undefined" || !code) return "";
 
         try {
             const res = hljs.highlightAuto(code);
-            return res.language && res.relevance >= 5 ? res.language : "plaintext";
+            if (res.language && res.relevance >= 8 && guessMap[res.language]) {
+                return guessMap[res.language];
+            }
+        } catch (e) {}
+
+        return "";
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       CodeMirror lifecycle. initEditor runs from the modal's x-init once
+       the lazy library load resolves (guarded against the modal closing
+       mid-load); destroyEditor runs from Alpine's cleanup() on unmount.
+       everything CodeMirror does natively now: line numbers (wrap-aware),
+       active line, bracket matching/closing, folding, incremental search
+       (ctrl+f/ctrl+h via the dialog addon), comment toggling, undo. */
+    async initEditor(host) {
+        try {
+            await coderLoadCodeMirror();
         } catch (e) {
-            return "plaintext";
+            this.editor.error = "could not load the code editor (" + this.errorText(e) + ")";
+            return;
         }
+
+        // closed while the library was loading
+        if (!host.isConnected) return;
+
+        const cm = CodeMirror(host, {
+            value: this.editor.content,
+            mode: this.editor.mode || null,
+            theme: coderThemeName(),
+            lineNumbers: true,
+            lineWrapping: true,
+            styleActiveLine: true,
+            matchBrackets: true,
+            autoCloseBrackets: !this.read_only,
+            autoCloseTags: !this.read_only,
+            showTrailingSpace: !this.read_only,
+            indentUnit: 4,
+            tabSize: 4,
+            smartIndent: true,
+            readOnly: !!this.read_only,
+            foldGutter: true,
+            gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+            extraKeys: {
+                "Ctrl-S": () => this.save(),
+                "Cmd-S": () => this.save(),
+                "Ctrl-F": "find",
+                "Cmd-F": "find",
+                "F3": "findNext",
+                "Shift-F3": "findPrev",
+                "Ctrl-G": "findNext",
+                "Cmd-G": "findNext",
+                "Shift-Ctrl-G": "findPrev",
+                "Shift-Cmd-G": "findPrev",
+                "Ctrl-H": "replace",
+                "Cmd-Alt-F": "replace",
+                "Ctrl-/": "toggleComment",
+                "Cmd-/": "toggleComment",
+                // keep markdown lists going on Enter, everything else normal.
+                // (must execCommand directly: CM5 treats a function binding's
+                // return value as "handled", not as a command name)
+                "Enter": (editor) => {
+                    editor.execCommand(
+                        editor.getOption("mode") === "markdown"
+                            ? "newlineAndIndentContinueMarkdownList"
+                            : "newlineAndIndent"
+                    );
+                },
+            },
+        });
+
+        CODER_CM = cm;
+        this.editor.cmReady = true;
+
+        cm.on("change", () => {
+            if (!this._silent && !this.editor.dirty) this.editor.dirty = true;
+        });
+
+        cm.on("cursorActivity", (c) => {
+            const cur = c.getCursor();
+            this.caretLine = cur.line + 1;
+            this.caretCol = cur.ch + 1;
+            this.selLen = c.somethingSelected() ? c.getSelection().length : 0;
+        });
+
+        // follow dark/light switches while the modal stays open
+        const onTheme = () => cm.setOption("theme", coderThemeName());
+        window.addEventListener("theme-changed", onTheme);
+        cm._coderThemeOff = () => window.removeEventListener("theme-changed", onTheme);
+
+        this.revealPending();
+        cm.focus();
     },
 
-    // simple memo: re-highlight only when lang or content actually changed
-    _hlKey: "",
-    _hlOut: "",
-
-    highlighted() {
-        const code = this.editor.content || "";
-        const lang = this.editor.lang || "plaintext";
-        const key = lang + "\0" + code;
-
-        if (key === this._hlKey) return this._hlOut;
-
-        let out;
-        if (code.length > 300000 || lang === "plaintext" || typeof hljs === "undefined" || !hljs.getLanguage(lang)) {
-            out = coderEscapeHtml(code);
-        } else {
+    destroyEditor() {
+        if (CODER_CM) {
             try {
-                out = hljs.highlight(code, { language: lang }).value;
-            } catch (e) {
-                out = coderEscapeHtml(code);
-            }
+                CODER_CM._coderThemeOff();
+            } catch (e) {}
+            // the editor's DOM goes away with the modal unmount; dropping the
+            // reference is all the teardown a GC'd CodeMirror needs
+            CODER_CM = null;
         }
-
-        // trailing newline: pre eats it, the textarea doesn't - without the
-        // extra one the last line scrolls out of sync
-        this._hlKey = key;
-        this._hlOut = out + "\n";
-        return this._hlOut;
-    },
-
-    syncHighlight(event) {
-        const ta = event.target;
-        const wrap = ta.closest(".coder-editor-wrap");
-        if (!wrap) return;
-
-        // cheap resize detector: re-measures the wrap layout only when the
-        // textarea's content width actually changed (window/modal resize)
-        if (this.layout && this.layout.width !== ta.clientWidth) {
-            this.ensureLayout();
-        }
-
-        const pre = wrap.querySelector(".coder-hl");
-        if (pre) {
-            pre.scrollTop = ta.scrollTop;
-            pre.scrollLeft = ta.scrollLeft;
-        }
-
-        const gutter = wrap.querySelector(".coder-gutter");
-        if (gutter) gutter.scrollTop = ta.scrollTop;
-
-        this._scrollTop = ta.scrollTop;
-    },
-
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-       line-number gutter + current-line band. both layers ride the same
-       20px integer line-height as the text layers (fractional line-heights
-       accumulate drift between the band and the textarea's real lines). */
-    lineCount() {
-        const c = this.editor.content || "";
-        let n = 1;
-        for (let i = 0; i < c.length; i++) {
-            if (c.charCodeAt(i) === 10) n++;
-        }
-        return n;
-    },
-
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-       wrap-aware layout, vim-style: a wrapped logical line gets its number
-       on the first visual row and BLANK rows for the continuations. since
-       the textarea now soft-wraps, line N no longer sits at (N-1)*20px, so
-       the gutter and the caret band need each line's real visual row count.
-       measured with a hidden mirror div (same font/padding/width as the
-       textarea) holding one div per logical line; heights are read in one
-       batch. cached per content+width; recomputed at most once per
-       keystroke, and only while the editor modal is open. */
-    layout: null, // { key, width, rows: [{ n, visual }], offsets: [] }
-
-    ensureLayout() {
-        const ta = document.querySelector(".coder-editor-modal .coder-textarea");
-        if (!ta) return this.layout;
-
-        const content = this.editor.content || "";
-        const width = ta.clientWidth;
-        if (!width) return this.layout;
-
-        const key = content;
-        if (this.layout && this.layout.key === key && this.layout.width === width) {
-            return this.layout;
-        }
-
-        let mirror = document.getElementById("coder-measure-mirror");
-        if (!mirror) {
-            mirror = document.createElement("div");
-            mirror.id = "coder-measure-mirror";
-            document.body.appendChild(mirror);
-        }
-
-        const cs = window.getComputedStyle(ta);
-        mirror.style.position = "fixed";
-        mirror.style.visibility = "hidden";
-        mirror.style.top = "0";
-        mirror.style.left = "-9999px";
-        mirror.style.boxSizing = "border-box";
-        mirror.style.width = width + "px";
-        mirror.style.padding = cs.padding;
-        mirror.style.font = cs.font;
-        mirror.style.fontFamily = cs.fontFamily;
-        mirror.style.fontSize = cs.fontSize;
-        mirror.style.lineHeight = "20px";
-        mirror.style.letterSpacing = cs.letterSpacing;
-        mirror.style.tabSize = cs.tabSize;
-        mirror.style.whiteSpace = "pre-wrap";
-        mirror.style.overflowWrap = "break-word";
-        mirror.style.wordBreak = "normal";
-
-        const lines = content.split("\n");
-        mirror.textContent = "";
-
-        const frag = document.createDocumentFragment();
-        const divs = [];
-        for (const line of lines) {
-            const d = document.createElement("div");
-            d.style.lineHeight = "20px";
-            // empty divs measure 0px in a pre-wrap mirror; give them a row
-            d.textContent = line === "" ? "\u200b" : line;
-            divs.push(d);
-            frag.appendChild(d);
-        }
-        mirror.appendChild(frag);
-
-        // one forced reflow, then all heights are available
-        const rows = [];
-        const offsets = [];
-        let acc = 0;
-        for (let i = 0; i < divs.length; i++) {
-            const visual = Math.max(1, Math.round(divs[i].offsetHeight / 20));
-            rows.push({ n: i + 1, visual: visual });
-            offsets.push(acc);
-            acc += visual;
-        }
-
-        this.layout = { key, width, rows, offsets };
-        this.layoutTick++;
-        return this.layout;
-    },
-
-    // bumped whenever the measured layout changes, so templates that read
-    // gutterCells() re-render after the first (post-mount) measurement
-    layoutTick: 0,
-
-    // flattened gutter CELLS: number on the first visual row of each
-    // logical line, blank cells for wrapped continuations (vim style).
-    // flattened here rather than in the template: an x-for collection
-    // expression can't reference its own index (Alpine evaluates it
-    // before (cell, i) exist), so ids are precomputed.
-    gutterCells() {
-        this.layoutTick; // reactive dep: repaint when a new layout lands
-
-        // first render can happen before the textarea exists (Alpine walks
-        // top-down): fall back to 1 row per line so numbers show at once,
-        // corrected into place as soon as ensureLayout() can measure
-        const layout = this.ensureLayout();
-        const rows = layout && layout.rows.length
-            ? layout.rows
-            : Array.from({ length: this.lineCount() }, (_, i) => ({ n: i + 1, visual: 1 }));
-
-        const cells = [];
-        for (const r of rows) {
-            for (let k = 0; k < r.visual; k++) {
-                cells.push({ id: r.n + "-" + k, n: k === 0 ? r.n : "" });
-            }
-        }
-        return cells;
-    },
-
-    gutterVars() {
-        const count = this.lineCount();
-        if (count > 5000) return "--coder-gutter-w: 0px";
-        const digits = Math.max(2, String(count).length);
-        return `--coder-gutter-w: ${digits * 9 + 24}px`;
-    },
-
-    updateCaret(el) {
-        if (!el || typeof el.selectionStart !== "number") return;
-
-        const sel = el.selectionStart;
-        const before = el.value.slice(0, sel);
-        let n = 1;
-        let lastNl = -1;
-        for (let i = 0; i < before.length; i++) {
-            if (before.charCodeAt(i) === 10) {
-                n++;
-                lastNl = i;
-            }
-        }
-
-        this.caretLine = n;
-        this.caretCol = sel - lastNl;
-        this.selLen = Math.abs((el.selectionEnd || sel) - sel);
-    },
-
-    activeLineStyle() {
-        const layout = this.ensureLayout();
-        if (!layout || !layout.rows.length) return "opacity: 0";
-
-        // offset in visual rows (wrap-aware), then to pixels
-        const row = layout.offsets[this.caretLine - 1] || 0;
-        return `transform: translateY(${row * 20 - this._scrollTop + 12}px)`;
+        this.editor.cmReady = false;
     },
 
     /* ---- right-click context menu ---- */
@@ -544,7 +541,7 @@ const CODER_PANEL = {
             await simpleApiPost("/api/ext/coder/delete", { sandbox: this.sandbox, path: row.path });
 
             if (this.editor.path === row.path || this.editor.path.startsWith(row.path + "/")) {
-                this.editor = { path: "", content: "", lang: "", dirty: false, saving: false, error: "", saved: "" };
+                this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false };
                 if (Alpine.store("ui").currentModal === "coder_file") Alpine.store("ui").closeModal();
             }
 
@@ -571,21 +568,11 @@ const CODER_PANEL = {
         await this.loadRoot();
     },
 
-    insertTab(event) {
-        const el = event.target;
-        const start = el.selectionStart;
-        const end = el.selectionEnd;
-
-        this.editor.content = this.editor.content.substring(0, start) + "    " + this.editor.content.substring(end);
-        this.editor.dirty = true;
-
-        Alpine.nextTick(() => {
-            el.selectionStart = el.selectionEnd = start + 4;
-        });
-    },
-
     async save() {
         if (this.editor.saving || this.read_only) return;
+
+        // while the editor is live, CodeMirror holds the true content
+        const content = CODER_CM ? CODER_CM.getValue() : this.editor.content;
 
         this.editor.saving = true;
         this.editor.error = "";
@@ -594,9 +581,10 @@ const CODER_PANEL = {
             await simpleApiPost("/api/ext/coder/save", {
                 sandbox: this.sandbox,
                 path: this.editor.path,
-                content: this.editor.content,
+                content: content,
             });
 
+            this.editor.content = content;
             this.editor.dirty = false;
             this.editor.saved = "saved ✓";
         } catch (e) {
@@ -615,7 +603,7 @@ const CODER_PANEL = {
             return;
         }
 
-        this.editor = { path: "", content: "", lang: "", dirty: false, saving: false, error: "", saved: "" };
+        this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false };
         Alpine.store("ui").closeModal();
     },
 
