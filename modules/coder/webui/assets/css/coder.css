@@ -291,6 +291,37 @@
     height: 100%;
 }
 
+.coder-editor-modal .coder-vim-mode-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 2px 7px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: 999px;
+    background: var(--bg-primary, rgba(0, 0, 0, 0.18));
+    color: var(--text-secondary, #999);
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.coder-editor-modal .coder-vim-mode-badge.insert,
+.coder-editor-modal .coder-vim-mode-badge.replace {
+    border-color: rgba(94, 214, 154, 0.45);
+    color: #5ed69a;
+}
+
+.coder-editor-modal .coder-vim-mode-badge.visual {
+    border-color: rgba(254, 188, 46, 0.45);
+    color: #febc2e;
+}
+
+.coder-editor-modal .coder-vim-mode-badge.normal {
+    border-color: rgba(0, 212, 255, 0.35);
+    color: var(--accent, #00d4ff);
+}
+
 .coder-editor-modal .CodeMirror {
     height: 100%;
     background: transparent;

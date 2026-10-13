@@ -57,10 +57,15 @@
 
             {# live caret/selection readout, fed by CodeMirror's cursorActivity #}
             <div class="coder-editor-status" x-show="$store.coderPanel.editor.cmReady">
+                <span
+                    class="coder-vim-mode-badge"
+                    x-show="$store.coderPanel.vim_mode"
+                    :class="$store.coderPanel.editor.vimMode || 'normal'"
+                    x-text="$store.coderPanel.vimModeLabel()"
+                ></span>
                 <span x-text="'ln ' + $store.coderPanel.caretLine + ', col ' + $store.coderPanel.caretCol"></span>
                 <span x-show="$store.coderPanel.selLen > 0" x-text="$store.coderPanel.selLen + ' selected'"></span>
                 <span class="mode" x-text="$store.coderPanel.editor.mode || 'plain text'"></span>
-                <span class="vim-tag" x-show="$store.coderPanel.vim_mode" title="vim keymap enabled">vim</span>
                 <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment</span>
             </div>
 
