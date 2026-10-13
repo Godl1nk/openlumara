@@ -330,6 +330,32 @@
     line-height: 20px;
 }
 
+/* keep CodeMirror's vim/dialog command bar compact */
+.coder-editor-modal .CodeMirror-dialog {
+    padding: 0 6px;
+    min-height: 22px;
+    line-height: 22px;
+}
+
+.coder-editor-modal .CodeMirror-dialog input {
+    height: 20px;
+    min-height: 20px;
+    padding: 0;
+    font-size: 11px;
+    line-height: 20px;
+    vertical-align: middle;
+    /* vim normal mode sets caret-color: transparent on the editor wrapper;
+       the command dialog is a real input and needs its caret back */
+    caret-color: currentColor !important;
+}
+
+.coder-editor-modal .CodeMirror-dialog button {
+    height: 18px;
+    padding: 0 6px;
+    line-height: 18px;
+    vertical-align: middle;
+}
+
 .coder-editor-modal .CodeMirror-lines {
     padding: 10px 0;
 }
