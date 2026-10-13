@@ -14,6 +14,15 @@ let wsClosedAt = null;
 // websocket isn't connected. it's a stub for now
 let sendQueue = [];
 
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+// true while the stream_complete handoff handler is running. ws handlers run
+// per-message and interleave at every await, so a push event landing during
+// the handoff (the backend opens its push gate before stream_complete is even
+// broadcast, and stream_state idle can arrive mid-fold) must NOT reloadChat
+// concurrently: the live turn has no hash, so the index-merge drops it, and
+// stream_complete's fallback then re-pushes it as a duplicate Process turn.
+let streamFinalizing = false;
+
 async function connectWebSocket() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = window.apiToken || '';
@@ -56,11 +65,21 @@ async function connectWebSocket() {
     };
 
     wsSocket.onmessage = async (event) => {
+        let data = null;
         try {
-            const data = JSON.parse(event.data);
+            data = JSON.parse(event.data);
             await handleWebSocketMessage(data);
         } catch (e) {
             console.error('Error parsing WebSocket message:', e);
+        } finally {
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            // safety net so a throwing stream_complete handler can't leave the
+            // finalizing flag stuck (pushes would stop reloading). only cleared
+            // for stream_complete itself, so a push handler resolving mid-
+            // handoff can never clear it early.
+            if (data && data.type === 'stream_complete') {
+                streamFinalizing = false;
+            }
         }
     };
 
@@ -237,6 +256,23 @@ async function handleWebSocketMessage(data) {
             // authoritative history anyway, and pushing first shifted every
             // index by one, making mergeTurnHistory see the entire chat as
             // "changed" and re-parse the markdown of every turn.
+
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            // never reloadChat while a stream is active. the backend opens its
+            // push gate in the send_stream finally, which runs a hair BEFORE
+            // stream_complete is broadcast; reloading in that window merges the
+            // finalized history while the turnHistory tail is still the live
+            // turn, which duplicates the Process turn. stream_complete does its
+            // own reloadChat a frame later anyway, and that one picks the
+            // pushed message up from history. sound + notification still fire.
+            // this also covers defer=False chain-internal pushes, which used to
+            // be able to reload mid-stream for the same reason.
+            if (stream.state !== 'idle' || streamFinalizing) {
+                await AudioManager.play('response_start');
+                await Alpine.store('notifications').send(data.content.content);
+                break;
+            }
+
             await chat.reloadChat();
 
             await AudioManager.play('response_start');
@@ -355,6 +391,11 @@ async function handleWebSocketMessage(data) {
             /*
              * this prevents UI flicker that comes from re-rendering the entire turn history
              */
+
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            // block push-triggered reloads for the duration of the handoff
+            // (cleared in onmessage's finally, also when this handler throws)
+            streamFinalizing = true;
 
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
             // smooth fold: the history chain is collapsed by design, so the
