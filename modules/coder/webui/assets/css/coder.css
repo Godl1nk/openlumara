@@ -638,10 +638,17 @@ div.CodeMirror-lint-tooltip {
     gap: 8px;
 }
 
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   saved-note + save button live in the status bar now (the actions row
+   under the editor was removed); sized down to sit on the 11px baseline */
 .coder-editor-modal .coder-saved-note {
-    margin-right: auto;
-    font-size: 12px;
+    font-size: 11px;
     color: #3fdc97;
+}
+
+.coder-editor-status .coder-action {
+    padding: 3px 12px;
+    font-size: 11px;
 }
 
 .coder-action {
