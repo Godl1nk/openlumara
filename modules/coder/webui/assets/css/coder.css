@@ -168,6 +168,72 @@
     width: min(900px, 94vw);
 }
 
+.coder-editor-modal .coder-editor-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.coder-editor-modal .coder-editor-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: var(--radius-sm, 8px);
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.coder-editor-modal .coder-editor-icon-btn:hover {
+    background: var(--button-bg, rgba(255, 255, 255, 0.08));
+    color: var(--text-primary, #eee);
+    border-color: var(--accent, #00d4ff);
+}
+
+.coder-editor-modal .coder-editor-icon-btn svg {
+    width: 15px;
+    height: 15px;
+}
+
+.coder-editor-modal.maximized {
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.coder-editor-modal.maximized .header {
+    flex: 0 0 auto;
+}
+
+.coder-editor-modal.maximized .coder-editor-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+}
+
+.coder-editor-modal.maximized .coder-editor-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+}
+
+.coder-editor-modal.maximized .coder-editor-status,
+.coder-editor-modal.maximized .coder-editor-errors,
+.coder-editor-modal.maximized .coder-editor-actions {
+    flex: 0 0 auto;
+}
+
 .coder-editor-modal .coder-editor-title {
     display: flex;
     align-items: center;

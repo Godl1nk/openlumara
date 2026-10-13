@@ -215,7 +215,7 @@ const CODER_PANEL = {
     loading: false,
     loaded: false,
     error: "",
-    editor: { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false },
+    editor: { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false },
     caretLine: 1,
     caretCol: 1,
     selLen: 0,
@@ -352,7 +352,7 @@ const CODER_PANEL = {
 
     async openFile(row, line) {
         const path = row.path;
-        this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM };
+        this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM, maximized: false };
         this._reveal = line && line > 1 ? line : 0;
         this.caretLine = this._reveal || 1;
         this.caretCol = 1;
@@ -671,7 +671,7 @@ const CODER_PANEL = {
             await simpleApiPost("/api/ext/coder/delete", { sandbox: this.sandbox, path: row.path });
 
             if (this.editor.path === row.path || this.editor.path.startsWith(row.path + "/")) {
-                this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false };
+                this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false };
                 if (Alpine.store("ui").currentModal === "coder_file") Alpine.store("ui").closeModal();
             }
 
@@ -728,12 +728,24 @@ const CODER_PANEL = {
         }
     },
 
+    toggleMaximize() {
+        this.editor.maximized = !this.editor.maximized;
+
+        // CodeMirror needs to recalculate its scroll/line layout after the
+        // modal box changes size. Give the browser one paint to settle first.
+        if (CODER_CM) {
+            setTimeout(() => {
+                if (CODER_CM) CODER_CM.refresh();
+            }, 0);
+        }
+    },
+
     closeEditor() {
         if (this.editor.dirty && !window.confirm("This file has unsaved changes. Close anyway?")) {
             return;
         }
 
-        this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false };
+        this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false };
         Alpine.store("ui").closeModal();
     },
 
