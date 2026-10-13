@@ -1,0 +1,35 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   git blame modal: shows per-line commit info. opened via $store.ui.openModal('git_blame'). #}
+<template x-if="$store.ui.currentModal === 'git_blame' && $store.gitPanel" x-cloak>
+    <div class="modal coder-editor-modal" @keydown.escape.window="$store.gitPanel.closeBlame()">
+        <div class="header">
+            <h2 class="coder-editor-title">
+                <span>blame:</span>
+                <span x-text="$store.gitPanel.blame.path"></span>
+            </h2>
+            <button class="close" @click="$store.gitPanel.closeBlame()" aria-label="Close blame">&times;</button>
+        </div>
+        <div class="coder-editor-body">
+            <div class="git-blame-body">
+                <template x-if="$store.gitPanel.blame.loading">
+                    <div class="coder-empty">computing blame..</div>
+                </template>
+                <template x-if="!$store.gitPanel.blame.loading">
+                    <table class="git-blame-table">
+                        <thead><tr><th>commit</th><th>author</th><th>date</th><th>summary</th></tr></thead>
+                        <tbody>
+                            <template x-for="(bl, i) in $store.gitPanel.blame.lines" :key="i">
+                                <tr>
+                                    <td class="hash" x-text="bl.hash"></td>
+                                    <td x-text="bl.author"></td>
+                                    <td x-text="bl.date ? new Date(parseInt(bl.date) * 1000).toLocaleDateString() : ''"></td>
+                                    <td class="summary" x-text="bl.summary"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </template>
+            </div>
+        </div>
+    </div>
+</template>

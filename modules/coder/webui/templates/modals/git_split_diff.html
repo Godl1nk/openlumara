@@ -1,0 +1,34 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   side-by-side split diff modal (desktop only, hidden on mobile via CSS).
+   opened via $store.ui.openModal('git_split_diff'). #}
+<template x-if="$store.ui.currentModal === 'git_split_diff' && $store.gitPanel" x-cloak>
+    <div class="modal git-split-diff-modal" @keydown.escape.window="$store.gitPanel.closeSplitDiff()">
+        <div class="header">
+            <h2 class="coder-editor-title">
+                <span x-text="$store.gitPanel.splitDiff.path"></span>
+                <span class="git-ro-tag" x-show="$store.gitPanel.splitDiff.staged">staged</span>
+            </h2>
+            <button class="close" @click="$store.gitPanel.closeSplitDiff()" aria-label="Close split diff">&times;</button>
+        </div>
+        <div class="git-split-body">
+            <template x-if="$store.gitPanel.splitDiff.loading">
+                <div class="coder-empty">loading diff..</div>
+            </template>
+            <template x-if="!$store.gitPanel.splitDiff.loading">
+                <table class="git-split-table">
+                    <colgroup><col class="ln-col"><col class="code-col"><col class="ln-col"><col class="code-col"></colgroup>
+                    <tbody>
+                        <template x-for="(row, i) in $store.gitPanel.splitDiff.rows" :key="i">
+                            <tr :class="'split-' + row.type">
+                                <td class="ln" x-text="row.old_num || ''"></td>
+                                <td class="code" x-text="row.old_text || ' '"></td>
+                                <td class="ln" x-text="row.new_num || ''"></td>
+                                <td class="code" x-text="row.new_text || ' '"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </template>
+        </div>
+    </div>
+</template>

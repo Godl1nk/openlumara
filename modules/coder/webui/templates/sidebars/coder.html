@@ -43,9 +43,9 @@
 
 
     <div class="coder-tree" x-show="!search.active"
-        @dragover="onRootDragOver($event)"
-        @drop="onRootDrop($event)"
-        :class="{ 'drop-target': dropTarget === '__root__' }">
+        @dragover="onRootDragOver($event); onOsDragOver($event)"
+        @drop="onRootDrop($event); onOsDrop($event, '')"
+        :class="{ 'drop-target': dropTarget === '__root__' || dropTarget === '__os_upload__' }">
         <template x-if="loading">
             <div class="coder-empty">loading..</div>
         </template>
@@ -68,8 +68,8 @@
                 @contextmenu.prevent="openMenu($event, row)"
                 @dragstart="onDragStart($event, row)"
                 @dragend="onDragEnd()"
-                @dragover="onRowDragOver($event, row)"
-                @drop="row.is_dir ? onFolderDrop($event, row) : onFileDrop($event, row)"
+                @dragover="onRowDragOver($event, row); if (row.is_dir) onOsDragOver($event)"
+                @drop="row.is_dir ? (onFolderDrop($event, row), onOsDrop($event, row.path)) : (onFileDrop($event, row), onOsDrop($event, ''))"
                 :title="row.path"
             >
                 <span class="coder-chevron" x-show="row.is_dir" :class="{ open: expanded[row.path] }">

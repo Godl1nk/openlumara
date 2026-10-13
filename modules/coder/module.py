@@ -77,6 +77,11 @@ class Coder(core.module.Module):
             },
             "depends": "enable_webui_extension"
         },
+        "autosave_interval": {
+            "default": 0,
+            "description": "Auto-save files after this many seconds of inactivity (0 = disabled). Only applies to the webui editor.",
+            "depends": "enable_webui_extension"
+        },
 
         # blacklists
         "folder_blacklist": {
@@ -756,6 +761,7 @@ class Coder(core.module.Module):
             "sandboxes": await self._get_sandbox_paths(),
             "read_only": bool(self.config.get("read-only")),
             "editor_mode": mode if self.config.get("enable_webui_extension") else "standard",
+            "autosave_interval": int(self.config.get("autosave_interval") or 0),
         }
 
     @webui.route("tree")
@@ -1709,3 +1715,482 @@ class Coder(core.module.Module):
 
         text = raw.decode("utf-8", "replace")
         return {"diff": text if text.strip() else "(no changes)"}
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui routes: git fetch + pull
+    # ------------------------------
+    @webui.route("git_fetch", method="POST")
+    async def _route_git_fetch(self, body=None, query=None):
+        """fetches from remote without merging. returns incoming commits."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, branch = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if not ok:
+            return self.result(branch, success=False)
+
+        ok, out = await self._run_git(root, "remote")
+        remotes = out.split() if ok else []
+        if not remotes:
+            return self.result("this repo has no remotes", success=False)
+        remote = "origin" if "origin" in remotes else remotes[0]
+
+        rc, raw = await self._run_git_bytes(root, "fetch", remote, "--prune", timeout=120)
+        out = raw.decode("utf-8", "replace").strip()
+        if rc != 0:
+            return self.result(out or "git fetch failed", success=False)
+
+        # what's incoming after fetch
+        ok, upstream = await self._run_git(root, "rev-parse", "--abbrev-ref", "@{u}")
+        incoming = []
+        if ok and "/" in upstream.strip():
+            rc2, raw2 = await self._run_git_bytes(
+                root, "log", "--pretty=%h%x09%s", f"HEAD..{upstream.strip()}", "-n100"
+            )
+            if rc2 == 0:
+                for line in raw2.decode("utf-8", "replace").splitlines():
+                    if not line.strip():
+                        continue
+                    if "\t" in line:
+                        h, msg = line.split("\t", 1)
+                    else:
+                        h, msg = line, ""
+                    incoming.append({"hash": h.strip(), "msg": msg})
+
+        return {"output": out, "incoming": incoming, "branch": branch}
+
+    @webui.route("git_pull", method="POST")
+    async def _route_git_pull(self, body=None, query=None):
+        """pulls from remote. returns output or conflict info."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, branch = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if not ok or branch == "HEAD":
+            return self.result("detached HEAD: switch to a branch before pulling", success=False)
+
+        rc, raw = await self._run_git_bytes(root, "pull", timeout=120)
+        out = raw.decode("utf-8", "replace").strip()
+
+        if rc != 0:
+            # check if there are conflicts
+            _, conflict_raw = await self._run_git_bytes(root, "diff", "--name-only", "--diff-filter=U")
+            conflicts = [l for l in conflict_raw.decode("utf-8", "replace").splitlines() if l.strip()]
+            if conflicts:
+                return {"conflicts": conflicts, "output": out, "pull_failed": True}
+            return self.result(out or "git pull failed", success=False)
+
+        return self.result(out or "pulled")
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui routes: branch create / delete
+    # -------------------------------------
+    @webui.route("git_branch_create", method="POST")
+    async def _route_git_branch_create(self, body=None, query=None):
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        name = (body or {}).get("name", "").strip()
+        checkout = bool((body or {}).get("checkout", True))
+
+        if not sandbox or not name:
+            return self.result("sandbox and name are both required", success=False)
+
+        # basic branch name validation
+        if not regex.match(r"^[a-zA-Z0-9._/\-]+$", name):
+            return self.result("invalid branch name: use letters, digits, dots, slashes, hyphens, underscores", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if checkout:
+            ok, out = await self._run_git(root, "switch", "-c", name)
+        else:
+            ok, out = await self._run_git(root, "branch", name)
+        if not ok:
+            return self.result(out, success=False)
+
+        return self.result(out or f"created branch {name}")
+
+    @webui.route("git_branch_delete", method="POST")
+    async def _route_git_branch_delete(self, body=None, query=None):
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        name = (body or {}).get("name", "").strip()
+        force = bool((body or {}).get("force", False))
+
+        if not sandbox or not name:
+            return self.result("sandbox and name are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        # refuse to delete the current branch
+        _, current = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if current.strip() == name:
+            return self.result("cannot delete the branch you are currently on", success=False)
+
+        args = ["branch", "-D" if force else "-d", name]
+        ok, out = await self._run_git(root, *args)
+        if not ok:
+            return self.result(out, success=False)
+
+        return self.result(out or f"deleted branch {name}")
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui route: git blame
+    # -----------------------
+    @webui.route("git_blame")
+    async def _route_git_blame(self, body=None, query=None):
+        """returns blame annotations for a file: per-line commit hash,
+        author, date, and summary. uses --line-porcelain for structured data."""
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+        rel_path = (query or {}).get("path", "")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, [rel_path])
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        abs_path = os.path.normpath(os.path.join(root, rel_path))
+
+        rc, raw = await self._run_git_bytes(
+            root, "blame", "--line-porcelain", "--", abs_path, timeout=30
+        )
+        if rc != 0:
+            return self.result(raw.decode("utf-8", "replace").strip() or "git blame failed", success=False)
+
+        # parse porcelain format: each line starts with
+        # <hash> <orig-line> <final-line> [<num-lines-in-hunk>]
+        # followed by header lines (author, author-time, summary, etc.)
+        # then a \t-prefixed content line.
+        lines_out = []
+        current = {}
+        text = raw.decode("utf-8", "replace")
+
+        for line in text.split("\n"):
+            if line.startswith("\t"):
+                # content line ends the record for this line
+                current["content"] = line[1:]
+                if current.get("hash"):
+                    lines_out.append({
+                        "hash": current.get("hash", "")[:7],
+                        "author": current.get("author", ""),
+                        "date": current.get("author-time", ""),
+                        "summary": current.get("summary", ""),
+                    })
+                current = {}
+            elif " " in line:
+                parts = line.split(" ", 1)
+                key = parts[0]
+                val = parts[1] if len(parts) > 1 else ""
+                if regex.match(r"^[0-9a-f]{40}$", key):
+                    current["hash"] = val.split(" ")[0] if " " in val else val
+                    # actually the first field IS the hash
+                    current["hash"] = key
+                elif key in ("author", "author-time", "summary", "committer", "committer-time"):
+                    current[key] = val
+
+        return {"lines": lines_out}
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui routes: conflict detection + resolution
+    # -----------------------------------------------
+    @webui.route("git_conflicts")
+    async def _route_git_conflicts(self, body=None, query=None):
+        """lists files with merge conflicts."""
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        rc, raw = await self._run_git_bytes(root, "diff", "--name-only", "--diff-filter=U")
+        if rc != 0:
+            return {"conflicts": []}
+
+        conflicts = [l.strip() for l in raw.decode("utf-8", "replace").splitlines() if l.strip()]
+        return {"conflicts": conflicts}
+
+    @webui.route("git_resolve", method="POST")
+    async def _route_git_resolve(self, body=None, query=None):
+        """resolves a conflicted file: strategy is 'ours', 'theirs', or 'both'."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        rel_path = (body or {}).get("path", "")
+        strategy = (body or {}).get("strategy", "ours")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+        if strategy not in ("ours", "theirs", "both"):
+            return self.result("strategy must be 'ours', 'theirs', or 'both'", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, [rel_path])
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if strategy == "ours":
+            ok, out = await self._run_git(root, "checkout", "--ours", "--", rel_path)
+        elif strategy == "theirs":
+            ok, out = await self._run_git(root, "checkout", "--theirs", "--", rel_path)
+        else:
+            # "both": concatenate both sides without conflict markers
+            abs_path = os.path.normpath(os.path.join(root, rel_path))
+            try:
+                with open(abs_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                # strip conflict markers, keep both sides
+                resolved = regex.sub(
+                    r"<<<<<<< [^\n]*\n(.*?)=======\n(.*?)>>>>>>> [^\n]*\n",
+                    lambda m: m.group(1) + m.group(2),
+                    content,
+                    flags=regex.DOTALL,
+                )
+                with open(abs_path, "w", encoding="utf-8") as f:
+                    f.write(resolved)
+                ok = True
+                out = "resolved (both)"
+            except Exception as e:
+                ok = False
+                out = str(e)
+
+        if not ok:
+            return self.result(out, success=False)
+
+        # stage the resolved file
+        abs_path = os.path.normpath(os.path.join(root, rel_path))
+        await self._run_git(root, "add", "--", abs_path)
+
+        return self.result(f"resolved {rel_path} ({strategy})")
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui route: revert a file to HEAD
+    # ------------------------------------
+    @webui.route("git_revert_file", method="POST")
+    async def _route_git_revert_file(self, body=None, query=None):
+        """restores a file to its HEAD version, discarding all local
+        modifications (staged and unstaged). the webui confirms before
+        calling this."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        rel_path = (body or {}).get("path", "")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, [rel_path])
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        abs_path = os.path.normpath(os.path.join(root, rel_path))
+
+        # restore from HEAD (works for both tracked-modified and staged-modified)
+        ok, out = await self._run_git(root, "restore", "--source=HEAD", "--staged", "--worktree", "--", abs_path)
+        if not ok:
+            return self.result(out, success=False)
+
+        return self.result(f"reverted {rel_path} to HEAD")
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui route: file upload (drag from OS into tree)
+    # ---------------------------------------------------
+    @webui.route("upload", method="POST")
+    async def _route_upload(self, body=None, query=None):
+        """writes a file from a base64-encoded payload into the sandbox.
+        used by the webui's drag-and-drop-from-OS upload. auto-creates
+        parent dirs. refuses if the target already exists."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        rel_path = (body or {}).get("path", "")
+        content_b64 = (body or {}).get("content", "")
+        filename = (body or {}).get("filename", "")
+
+        if not sandbox or not rel_path or not filename:
+            return self.result("sandbox, path and filename are all required", success=False)
+
+        # sanitize filename: strip path separators
+        safe_name = regex.sub(r"[/\\]", "_", filename)
+        target_rel = rel_path.rstrip("/") + "/" + safe_name if rel_path else safe_name
+
+        try:
+            target = await self._get_sandbox_subpath(sandbox, target_rel)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if os.path.exists(target):
+            return self.result(f"file already exists: {target_rel}", success=False)
+
+        # decode base64
+        import base64
+        try:
+            raw = base64.b64decode(content_b64)
+        except Exception:
+            return self.result("invalid base64 content", success=False)
+
+        # size guard: 10MB max
+        if len(raw) > 10_000_000:
+            return self.result("file too large (max 10MB)", success=False)
+
+        try:
+            parent = os.path.dirname(target)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(target, "wb") as f:
+                f.write(raw)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        return self.result(f"uploaded {target_rel}")
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui route: split diff (side-by-side data)
+    # ---------------------------------------------
+    @webui.route("git_split_diff")
+    async def _route_git_split_diff(self, body=None, query=None):
+        """returns structured side-by-side diff data for the split view.
+        each row: { old_num, old_text, new_num, new_text, type }
+        type: 'equal', 'add', 'del', 'mod'"""
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+        rel_path = (query or {}).get("path", "")
+        staged = (query or {}).get("staged", "") in ("1", "true")
+        untracked = (query or {}).get("untracked", "") in ("1", "true")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, [rel_path])
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        abs_path = os.path.normpath(os.path.join(root, rel_path))
+
+        # get unified diff, then parse into side-by-side rows
+        if untracked:
+            rc, raw = await self._run_git_bytes(
+                root, "diff", "--no-index", "--", os.devnull, abs_path
+            )
+        elif staged:
+            rc, raw = await self._run_git_bytes(root, "diff", "--staged", "--", abs_path)
+        else:
+            rc, raw = await self._run_git_bytes(root, "diff", "--", abs_path)
+
+        if rc not in (0, 1):
+            return self.result(raw.decode("utf-8", "replace").strip() or "git diff failed", success=False)
+
+        text = raw.decode("utf-8", "replace")
+        rows = self._parse_split_diff(text)
+        return {"rows": rows}
+
+    def _parse_split_diff(self, unified_text):
+        """parses unified diff into side-by-side rows."""
+        rows = []
+        old_line = 0
+        new_line = 0
+        del_buffer = []
+        add_buffer = []
+
+        def flush_buffers():
+            nonlocal del_buffer, add_buffer
+            # pair up dels and adds as 'mod' rows
+            while del_buffer and add_buffer:
+                d = del_buffer.pop(0)
+                a = add_buffer.pop(0)
+                rows.append({
+                    "old_num": d[0], "old_text": d[1],
+                    "new_num": a[0], "new_text": a[1],
+                    "type": "mod",
+                })
+            # leftovers are pure del or add
+            for d in del_buffer:
+                rows.append({"old_num": d[0], "old_text": d[1], "new_num": None, "new_text": None, "type": "del"})
+            for a in add_buffer:
+                rows.append({"old_num": None, "old_text": None, "new_num": a[0], "new_text": a[1], "type": "add"})
+            del_buffer = []
+            add_buffer = []
+
+        for line in unified_text.split("\n"):
+            hunk = regex.match(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", line)
+            if hunk:
+                flush_buffers()
+                old_line = int(hunk.group(1))
+                new_line = int(hunk.group(2))
+                continue
+
+            if line.startswith("---") or line.startswith("+++") or line.startswith("\\"):
+                continue
+
+            if line.startswith("-"):
+                flush_buffers() if add_buffer else None
+                del_buffer.append((old_line, line[1:]))
+                old_line += 1
+            elif line.startswith("+"):
+                add_buffer.append((new_line, line[1:]))
+                new_line += 1
+            elif line.startswith(" "):
+                flush_buffers()
+                rows.append({
+                    "old_num": old_line, "old_text": line[1:],
+                    "new_num": new_line, "new_text": line[1:],
+                    "type": "equal",
+                })
+                old_line += 1
+                new_line += 1
+
+        flush_buffers()
+        return rows
