@@ -153,6 +153,10 @@ CHAT_STORE = {
         this.chat = result;
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        // resplit trailing content runs (pushed announcements) into separate
+        // assistant bubbles, same as reloadChat()
+        (result.turn_history || []).forEach(resplitHistoryTurn);
         this.turnHistory = result.turn_history;
         this.currentTokenUsage = result.token_usage;
 
@@ -198,6 +202,10 @@ CHAT_STORE = {
         this.chat = result;
         this.selectedChat = chatId;
         this.selectedCategory = result.category;
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        // resplit trailing content runs (pushed announcements) into separate
+        // assistant bubbles, same as reloadChat()
+        (result.turn_history || []).forEach(resplitHistoryTurn);
         this.turnHistory = result.turn_history;
         this.currentTokenUsage = result.token_usage;
 
@@ -591,6 +599,10 @@ CHAT_STORE = {
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
         this.currentTokenUsage = result.token_usage;
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        // resplit trailing content runs (pushed announcements) into separate
+        // assistant bubbles, same as reloadChat()
+        (result.turn_history || []).forEach(resplitHistoryTurn);
         this.turnHistory = result.turn_history;
 
         // the new chat may live in a category the dropdown doesn't list yet
