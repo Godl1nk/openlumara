@@ -1,9 +1,10 @@
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
    git sidebar tab for the coder module: status, stage/unstage, commit,
    branch switching, log, and a diff viewer modal. talks to the
-   /api/ext/coder/git_* routes. follows the sandbox selected in the coder
-   sidebar when it can. */
+   /api/ext/coder/git_* routes. has its own sandbox picker: it does NOT
+   follow the coder filetree tab. */
 const GIT_PANEL = {
+    sandboxes: [],
     sandbox: "",
     subpath: "",
     repos: [],
@@ -26,22 +27,26 @@ const GIT_PANEL = {
     },
 
     async refresh(force = false) {
-        const coder = Alpine.store("coderPanel");
-        if (coder && coder.sandbox) {
-            if (this.sandbox !== coder.sandbox) {
-                // coder switched sandboxes: our repo selection is stale
-                this.subpath = "";
-                this.repos = [];
-                this._autoPicked = false;
-            }
-            this.sandbox = coder.sandbox;
-        } else if (!this.sandbox) {
+        // own sandbox picker (header button forces a rescan of both the
+        // sandbox list and the repos inside the selected sandbox)
+        if (!this.sandboxes.length || force) {
             try {
-                const data = await simpleApiFetch("/api/ext/coder/sandboxes") || {};
-                this.sandbox = (data.sandboxes || [])[0] || "";
+                const sd = await simpleApiFetch("/api/ext/coder/sandboxes") || {};
+                this.sandboxes = sd.sandboxes || [];
             } catch (e) {
-                this.sandbox = "";
+                this.sandboxes = [];
             }
+        }
+
+        // selection vanished (sandbox removed from config): fall back
+        if (this.sandbox && !this.sandboxes.includes(this.sandbox)) {
+            this.sandbox = "";
+            this.subpath = "";
+            this.repos = [];
+            this._autoPicked = false;
+        }
+        if (!this.sandbox && this.sandboxes.length) {
+            this.sandbox = this.sandboxes[0];
         }
 
         if (!this.sandbox) {
@@ -118,6 +123,15 @@ const GIT_PANEL = {
         }
     },
 
+    async switchSandbox() {
+        // sandbox already bound via x-model. repos are per-sandbox, so the
+        // whole repo selection resets when the sandbox changes
+        this.subpath = "";
+        this.repos = [];
+        this._autoPicked = false;
+        await this.refresh();
+    },
+
     async switchRepo() {
         // subpath already bound via x-model. a manual choice wins from now
         // on: never auto-hop over the user's selection again
@@ -125,11 +139,10 @@ const GIT_PANEL = {
         await this.refresh();
     },
 
-
-
     repoLabel(repo) {
-        if (!repo) return this.sandbox + " (root)";
-        return this.sandbox + " / " + repo;
+        // the sandbox has its own select above, so labels are relative
+        if (!repo) return "(root)";
+        return repo;
     },
 
     stage(path) { return this._gitPost("git_stage", { paths: [path] }); },

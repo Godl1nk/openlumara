@@ -13,23 +13,6 @@
     gap: var(--gap, 6px);
 }
 
-.git-panel .git-sandbox {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 4px;
-    gap: 8px;
-}
-
-.git-panel .git-sandbox-name {
-    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
-    font-size: 11px;
-    color: var(--text-secondary, #999);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .git-panel .git-body {
     flex: 1;
     overflow-y: auto;
@@ -94,6 +77,12 @@
 .git-panel .coder-select:focus {
     outline: none;
     border-color: var(--accent, #00d4ff);
+}
+
+/* badge sits with the header buttons, not floating mid-row */
+.git-panel .coder-header .coder-readonly-badge {
+    margin-left: auto;
+    margin-right: 6px;
 }
 
 .git-panel .coder-readonly-badge {
