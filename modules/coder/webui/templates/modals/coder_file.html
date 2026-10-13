@@ -6,6 +6,7 @@
    Auto-discovered, opened via $store.ui.openModal('coder_file'). #}
 <template x-if="$store.ui.currentModal === 'coder_file' && $store.coderPanel && $store.coderPanel.editor.path" x-cloak>
     <div class="modal coder-editor-modal"
+        :class="{ maximized: $store.coderPanel.editor.maximized }"
         @keydown.escape.window="!$store.coderPanel.vim_mode && $store.coderPanel.closeEditor()"
         @keydown.ctrl.s.prevent="$store.coderPanel.save()"
         @keydown.meta.s.prevent="$store.coderPanel.save()"
@@ -16,7 +17,29 @@
                 <span class="coder-dirty-dot" x-show="$store.coderPanel.editor.dirty" title="unsaved changes">●</span>
                 <span class="coder-ro-tag" x-show="$store.coderPanel.read_only">read-only</span>
             </h2>
-            <button class="close" @click="$store.coderPanel.closeEditor()" aria-label="Close file editor">&times;</button>
+            <div class="coder-editor-header-actions">
+                <button
+                    type="button"
+                    class="coder-editor-icon-btn"
+                    @click="$store.coderPanel.toggleMaximize()"
+                    :aria-label="$store.coderPanel.editor.maximized ? 'Unmaximize file editor' : 'Maximize file editor'"
+                    :title="$store.coderPanel.editor.maximized ? 'Unmaximize' : 'Maximize'"
+                >
+                    <svg x-show="!$store.coderPanel.editor.maximized" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                        <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                        <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                        <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                    </svg>
+                    <svg x-show="$store.coderPanel.editor.maximized" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M4 9h3a2 2 0 0 0 2-2V4" />
+                        <path d="M14 4h3a2 2 0 0 1 2 2v3" />
+                        <path d="M20 15h-3a2 2 0 0 0-2 2v3" />
+                        <path d="M10 20H7a2 2 0 0 1-2-2v-3" />
+                    </svg>
+                </button>
+                <button class="close" @click="$store.coderPanel.closeEditor()" aria-label="Close file editor">&times;</button>
+            </div>
         </div>
 
         <div class="coder-editor-body">
