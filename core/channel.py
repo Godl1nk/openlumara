@@ -122,11 +122,14 @@ class Channel:
         """Consumes messages from the queue and triggers on_push sequentially"""
         while not getattr(self, "_shutting_down", False):
             try:
-                # wait with pushing messages into the channel until the toolcall chain is complete
+                # wait with pushing messages into the channel until the turn is complete
                 message, defer = await self.push_queue.get()
                 if defer:
                     await self._chain_idle.wait()
-                    
+                    # add to context only after the gate opens, so the message
+                    # lands strictly after the assistant's final message
+                    await self.context.chat.messages.add(message)
+
                 await self.on_push(self.format_message(message))
                 self.push_queue.task_done()
             except asyncio.CancelledError:
@@ -233,13 +236,7 @@ class Channel:
         pass
 
     async def push(self, message, defer=True):
-        """
-        push a message to the push queue, which will instantly display it in all channels
-
-        if defer is True (default), the message is held until the current toolcall chain
-        (if any) has finished, so announcements don't interleave with agentic output.
-        pass defer=False for messages that are part of the chain itself.
-        """
+        """push a message to the push queue, which will instantly display it in all channels"""
 
         if not hasattr(self, "push_queue"):
             return False
@@ -247,13 +244,16 @@ class Channel:
         # message can be either a str or a dict.
         # if dict, just use it as-is
         # otherwise, turn it into an openAI message dict
-        if isinstance(message, dict):
-            await self.context.chat.messages.add(message)
-            await self.push_queue.put((message, defer))
-        else:
+        if not isinstance(message, dict):
             message = {"role": "assistant", "content": str(message)}
+
+        # deferred messages are added to context by _push_consumer() once the
+        # turn is done, so they can't end up between the toolcall chain and
+        # the final message
+        if not defer:
             await self.context.chat.messages.add(message)
-            await self.push_queue.put((message, defer))
+
+        await self.push_queue.put((message, defer))
 
     # --------------------
     # Helper methods
@@ -602,6 +602,14 @@ class Channel:
     async def send(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         """sends a message to the AI from within the current channel"""
 
+        # reset push defer flag
+        self._chain_idle.clear()
+        try:
+            return await self._send_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs)
+        finally:
+            self._chain_idle.set()
+
+    async def _send_inner(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         # preprocessing (API connection logic, command processing, user message module hooks, etc)
         processed = await self._send_preprocess(message, files, commands_authorized)
         match processed["type"]:
@@ -631,17 +639,12 @@ class Channel:
             # process() does all the toolcalling, but it also returns the raw toolcall stream for our own use
             final_message = None
 
-            # set the flag that makes channel pushes show up after the toolcall chain is finished
-            self._chain_idle.clear()
-            try:
-                async for sub_token in self.tc_manager.process(
-                    assistant_message,
-                    push=True
-                ):
-                    if sub_token.get("type") == "final":
-                        final_message = sub_token.get("content")
-            finally:
-                self._chain_idle.set()
+            async for sub_token in self.tc_manager.process(
+                assistant_message,
+                push=True
+            ):
+                if sub_token.get("type") == "final":
+                    final_message = sub_token.get("content")
 
             if final_message:
                 await self._send_postprocess(final_message)
@@ -655,6 +658,15 @@ class Channel:
     async def send_stream(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         """sends a message to the AI from within the current channel, streaming version"""
 
+        # reset push defer flag
+        self._chain_idle.clear()
+        try:
+            async for token in self._send_stream_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs):
+                yield token
+        finally:
+            self._chain_idle.set()
+
+    async def _send_stream_inner(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         # preprocessing (API connection logic, command processing, user message module hooks, etc)
         # this also adds the user's message to context, so we don't need to do that in this function
         processed = await self._send_preprocess(message, files, commands_authorized)
@@ -740,19 +752,12 @@ class Channel:
 
                     # the AI has decided to call a tool, so now we start the recursive toolcall loop (aka agentic loop)
                     # AI calls tool -> gets response -> decides whether it needs to call more tools -> does so if needed -> gets response -> rinse and repeat
+                    async for sub_token in self.tc_manager.process(toolcall_request):
+                        if sub_token.get("type") == "final":
+                            # this is the final message in the recursive toolcalling loop, so we add it to context
+                            await self.context.chat.messages.add(sub_token.get("content"))
 
-                    # set the flag that makes channel pushes show up after the toolcall chain is finished
-                    self._chain_idle.clear()
-                    try:
-                        async for sub_token in self.tc_manager.process(toolcall_request):
-                            if sub_token.get("type") == "final":
-                                # this is the final message in the recursive toolcalling loop, so we add it to context
-                                await self.context.chat.messages.add(sub_token.get("content"))
-
-                            yield sub_token
-                    finally:
-                        # mark the toolcall chain as idle so message pushes can come through
-                        self._chain_idle.set()
+                        yield sub_token
                 elif token_type == "tool":
                     # this is a toolcall response.. we only need to yield it
                     pass
