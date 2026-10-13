@@ -186,26 +186,55 @@
     background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
 }
 
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   status dot instead of a text badge; the state name shows on hover via a
+   CSS tooltip (title attr carries the same text for keyboard readers).
+   colors match the old badges: changed=amber, staged=green, new=red. */
 .git-panel .git-badge {
+    position: relative;
     flex: 0 0 auto;
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    padding: 2px 6px;
-    border-radius: 20px;
-    border: 1px solid rgba(254, 188, 46, 0.4);
-    color: #febc2e;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #febc2e;
+    box-shadow: 0 0 0 1px rgba(254, 188, 46, 0.25);
 }
 
 .git-panel .git-badge.staged {
-    border-color: rgba(63, 220, 151, 0.4);
-    color: #3fdc97;
+    background: #3fdc97;
+    box-shadow: 0 0 0 1px rgba(63, 220, 151, 0.25);
 }
 
 .git-panel .git-badge.untracked {
-    border-color: rgba(255, 95, 122, 0.4);
-    color: #ff5f7a;
+    background: #ff5f7a;
+    box-shadow: 0 0 0 1px rgba(255, 95, 122, 0.25);
+}
+
+.git-panel .git-badge::after {
+    content: attr(title);
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1;
+    white-space: nowrap;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: var(--bg-primary, #1e1e24);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+    color: var(--text-primary, #ddd);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    z-index: 30;
+}
+
+.git-panel .git-badge:hover::after {
+    opacity: 1;
 }
 
 .git-panel .git-path {
