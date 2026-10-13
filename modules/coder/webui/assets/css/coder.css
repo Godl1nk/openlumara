@@ -370,6 +370,46 @@
     border-right: 1px solid var(--border-color, rgba(127, 127, 127, 0.18));
 }
 
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   diff points (file opened from the git sidebar's diff view): header
+   prev/next group, added-line backgrounds, and the deletion-site gutter
+   that only exists while marks are active. */
+.coder-editor-modal .coder-diff-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 7px;
+    margin-right: 1px;
+    border-right: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.coder-editor-modal .coder-diff-count {
+    min-width: 3.4em;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.coder-editor-modal .CodeMirror-linebackground.cm-diff-add {
+    background: rgba(63, 220, 151, 0.10);
+}
+
+.coder-editor-modal .CodeMirror-gutter.cm-diff-gutter {
+    min-width: 5px;
+}
+
+.cm-diff-del-mark {
+    display: block;
+    box-sizing: border-box;
+    width: 4px;
+    height: 1.2em;
+    margin: 0 auto;
+    border-radius: 2px;
+    background: #ff5f7a;
+}
+
 .coder-editor-loading {
     position: absolute;
     inset: 0;

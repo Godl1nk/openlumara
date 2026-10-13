@@ -72,6 +72,14 @@ function coderLoadVim() {
 let CODER_CM = null;
 let CODER_CM_LOAD = null;
 
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   diff-point state (marks handed over by the git sidebar's diff view).
+   CodeMirror line handles live OUTSIDE the Alpine store, same reasoning
+   as CODER_CM: reactive proxies around editor internals are a bad time.
+   spec = { adds: [1-based lines], dels: [...], label }; adds/dels hold the
+   applied line handles; points holds the nav handles (sorted). */
+let CODER_DIFF = { spec: null, adds: [], dels: [], points: [] };
+
 function coderLoadScript(src) {
     return new Promise((resolve, reject) => {
         const s = document.createElement("script");
@@ -240,6 +248,8 @@ const CODER_PANEL = {
     caretLine: 1,
     caretCol: 1,
     selLen: 0,
+    // diff points opened from the git sidebar (see CODER_DIFF above)
+    diff: { active: false, count: 0, idx: -1, label: "" },
     _reveal: 0, // line to jump to once the loaded file is in the editor
     _silent: false, // set while swapping files in (keeps change events from dirtying)
 
@@ -371,9 +381,13 @@ const CODER_PANEL = {
         this.rebuild();
     },
 
-    async openFile(row, line) {
+    // marks: optional { adds, dels, label } diff-point spec handed over by
+    // the git sidebar's "edit" button (see git.js editFile)
+    async openFile(row, line, marks) {
         const path = row.path;
         this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM, maximized: false, vimMode: "normal", vimSubMode: "" };
+        this.clearDiffMarks();
+        if (marks) CODER_DIFF.spec = marks;
         this._reveal = line && line > 1 ? line : 0;
         this.caretLine = this._reveal || 1;
         this.caretCol = 1;
@@ -392,6 +406,7 @@ const CODER_PANEL = {
             this.editor.mode = this.detectLang(path, content);
             this.loadFileIntoCm(content);
             this.revealPending();
+            this.applyDiffMarks();
         } catch (e) {
             this.editor.error = this.errorText(e);
         }
@@ -421,6 +436,120 @@ const CODER_PANEL = {
         CODER_CM.scrollIntoView({ line: line, ch: 0 }, 120);
         CODER_CM.focus();
         this._reveal = 0;
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       diff points (git sidebar -> editor). added lines get a green
+       background, deletion sites a red bar in a gutter that only exists
+       while marks are active. everything keyed on LINE HANDLES, not line
+       numbers, so the marks follow their line when edits shift the text
+       above them. called from openFile (content just landed) and
+       initEditor (editor just came up); both guard on the other half. */
+    applyDiffMarks() {
+        if (!CODER_CM || !CODER_DIFF.spec) return;
+        // still fetching: same guard as revealPending
+        if (!this.editor.content && !this.editor.error) return;
+
+        const cm = CODER_CM;
+        const spec = CODER_DIFF.spec;
+        this.clearDiffMarks();
+        CODER_DIFF.spec = spec; // clearDiffMarks wiped it; we're re-applying
+
+        const last = cm.lastLine();
+        const clamp = (n) => Math.max(0, Math.min(n - 1, last));
+
+        for (const n of new Set(spec.adds.map(clamp))) {
+            const h = cm.getLineHandle(n);
+            cm.addLineClass(h, "background", "cm-diff-add");
+            CODER_DIFF.adds.push(h);
+        }
+
+        if (spec.dels.length) {
+            if (cm.getOption("gutters").indexOf("cm-diff-gutter") === -1) {
+                cm.setOption("gutters", cm.getOption("gutters").concat("cm-diff-gutter"));
+            }
+            for (const n of new Set(spec.dels.map(clamp))) {
+                const h = cm.getLineHandle(n);
+                const el = document.createElement("div");
+                el.className = "cm-diff-del-mark";
+                el.title = "line(s) deleted here";
+                cm.setGutterMarker(h, "cm-diff-gutter", el);
+                CODER_DIFF.dels.push(h);
+            }
+        }
+
+        // navigation points: every deletion site + the start of each
+        // contiguous run of added lines, sorted
+        const nums = new Set(spec.dels.map(clamp));
+        let prev = -2;
+        for (const n of [...new Set(spec.adds.map(clamp))].sort((a, b) => a - b)) {
+            if (n !== prev + 1) nums.add(n);
+            prev = n;
+        }
+
+        CODER_DIFF.points = [...nums].sort((a, b) => a - b).map((n) => cm.getLineHandle(n));
+        this.diff = {
+            active: CODER_DIFF.points.length > 0,
+            count: CODER_DIFF.points.length,
+            idx: -1,
+            label: spec.label || "changes",
+        };
+    },
+
+    clearDiffMarks() {
+        this.diff = { active: false, count: 0, idx: -1, label: "" };
+
+        const old = CODER_DIFF;
+        CODER_DIFF = { spec: null, adds: [], dels: [], points: [] };
+
+        if (!CODER_CM) return;
+        for (const h of old.adds) {
+            try { CODER_CM.removeLineClass(h, "background", "cm-diff-add"); } catch (e) {}
+        }
+        for (const h of old.dels) {
+            try { CODER_CM.setGutterMarker(h, "cm-diff-gutter", null); } catch (e) {}
+        }
+        if (old.dels.length && CODER_CM.getOption("gutters").indexOf("cm-diff-gutter") !== -1) {
+            CODER_CM.setOption("gutters", CODER_CM.getOption("gutters").filter((g) => g !== "cm-diff-gutter"));
+        }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       cycle through the diff points (F8 / shift+F8 / header buttons).
+       NOTE: CM5 line handles have NO live .line property - the number is
+       computed by walking the line's parent tree, exposed as
+       cm.getLineNumber(handle), which returns null once the line has been
+       deleted. So resolve every handle through that API and skip the dead
+       ones instead of reading handle.line. */
+    diffJump(dir) {
+        const cm = CODER_CM;
+        const pts = CODER_DIFF.points;
+        const n = pts ? pts.length : 0;
+        if (!cm || !n) return;
+
+        let idx = this.diff.idx;
+        let line = null;
+        for (let step = 0; step < n; step++) {
+            idx += dir;
+            if (idx >= n) idx = 0;
+            else if (idx < 0) idx = n - 1;
+
+            line = cm.getLineNumber(pts[idx]);
+            if (line != null) break;
+        }
+        if (line == null) return; // every point's line is gone
+
+        this.diff.idx = idx;
+        const pos = { line: line, ch: 0 };
+        cm.setCursor(pos);
+        cm.scrollIntoView(pos, 120);
+        cm.focus();
+    },
+
+    diffLabel() {
+        const d = this.diff;
+        if (!d.active) return "";
+        return d.idx < 0 ? d.count + " " + d.label : (d.idx + 1) + " / " + d.count;
     },
 
     /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
@@ -541,6 +670,10 @@ const CODER_PANEL = {
                 "Cmd-Alt-F": "replace",
                 "Ctrl-Alt-G": coderJumpToLine,
                 "Cmd-Alt-G": coderJumpToLine,
+                // jump between diff points when the file was opened from
+                // the git sidebar's diff view (no-ops otherwise)
+                "F8": () => this.diffJump(1),
+                "Shift-F8": () => this.diffJump(-1),
                 "Ctrl-/": "toggleComment",
                 "Cmd-/": "toggleComment",
                 // markdown keeps its lists going (that command falls back
@@ -607,6 +740,7 @@ const CODER_PANEL = {
         cm._coderThemeOff = () => window.removeEventListener("theme-changed", onTheme);
 
         this.revealPending();
+        this.applyDiffMarks();
         cm.focus();
     },
 
@@ -619,6 +753,8 @@ const CODER_PANEL = {
             // reference is all the teardown a GC'd CodeMirror needs
             CODER_CM = null;
         }
+        // CODER_CM is gone; this just drops the state + handle references
+        this.clearDiffMarks();
         this.editor.cmReady = false;
     },
 
@@ -805,6 +941,7 @@ const CODER_PANEL = {
             return;
         }
 
+        this.clearDiffMarks();
         this.editor = { path: "", content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: false, maximized: false, vimMode: "normal", vimSubMode: "" };
         Alpine.store("ui").closeModal();
     },

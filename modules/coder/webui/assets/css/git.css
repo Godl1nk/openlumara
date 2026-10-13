@@ -499,3 +499,44 @@
 .git-diff-modal .git-diff-line.meta {
     color: var(--text-secondary, #999);
 }
+
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   "open in editor" button in the diff modal header; equivalents for the
+   coder.css classes scoped to .coder-editor-modal */
+.git-diff-modal .coder-editor-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.git-diff-modal .coder-editor-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.git-diff-modal .coder-editor-icon-btn:hover:not(:disabled) {
+    background: var(--button-bg, rgba(255, 255, 255, 0.08));
+    color: var(--text-primary, #eee);
+    border-color: var(--accent, #00d4ff);
+}
+
+.git-diff-modal .coder-editor-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.git-diff-modal .coder-editor-icon-btn svg {
+    width: 15px;
+    height: 15px;
+}
