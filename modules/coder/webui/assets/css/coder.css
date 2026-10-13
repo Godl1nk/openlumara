@@ -274,6 +274,61 @@
     opacity: 0.65;
 }
 
+.coder-editor-status .vim-tag {
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 20px;
+    border: 1px solid rgba(63, 220, 151, 0.4);
+    color: #3fdc97;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* completion dropdown + lint tooltips get appended to document.body,
+   so they're styled globally (the theme vars live on :root and reach
+   them fine). z-index above modals, chrome matching the context menu. */
+.CodeMirror-hints {
+    background: var(--bg-tertiary, #232329);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+    border-radius: 8px;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    z-index: 1300;
+}
+
+.CodeMirror-hint {
+    color: var(--text-primary, #eee);
+}
+
+li.CodeMirror-hint-active {
+    background: rgba(0, 212, 255, 0.18);
+    color: #fff;
+}
+
+.CodeMirror-lint-tooltip {
+    background-color: var(--bg-tertiary, #232329);
+    color: var(--text-primary, #eee);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+    border-radius: 8px;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    z-index: 1300;
+}
+
+/* the vendored lint.css squiggles are tuned for light pages; dotted
+    underlines read better on both of our themes */
+.cm-lint-error {
+    background-image: none;
+    border-bottom: 2px dotted #ff5f7a;
+}
+
+.cm-lint-warning {
+    background-image: none;
+    border-bottom: 2px dotted #d4a72c;
+}
+
 /* ---- lumara dark theme (github dark palette) ---- */
 
 .cm-s-lumara.CodeMirror { color: #c9d1d9; }

@@ -1,8 +1,8 @@
 {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
    coder file edit modal: views + edits a file from the sidebar tree with
-   CodeMirror 5 (vendored + lazy-loaded, see coder.js). cleanup() hands
-   the editor back when the x-if unmounts. saves are gated by the coder
-   module's treesitter syntax check.
+   CodeMirror 5 (vendored + lazy-loaded, see coder.js). The x-data
+   destroy() hook hands the editor back when the x-if unmounts. Saves are
+   gated by the coder module's treesitter syntax check.
    Auto-discovered, opened via $store.ui.openModal('coder_file'). #}
 <template x-if="$store.ui.currentModal === 'coder_file' && $store.coderPanel && $store.coderPanel.editor.path" x-cloak>
     <div class="modal coder-editor-modal"
@@ -24,7 +24,8 @@
                 {# CodeMirror takes this div over once the lazy library load
                    resolves; the loading note covers the brief gap #}
                 <div class="coder-cm-host"
-                    x-init="$store.coderPanel.initEditor($el); cleanup(() => $store.coderPanel.destroyEditor())"
+                    x-init="$store.coderPanel.initEditor($el)"
+                    x-data="{ destroy() { $store.coderPanel.destroyEditor() } }"
                 ></div>
                 <div class="coder-editor-loading" x-show="!$store.coderPanel.editor.cmReady && !$store.coderPanel.editor.error">
                     loading editor&hellip;
@@ -36,7 +37,8 @@
                 <span x-text="'ln ' + $store.coderPanel.caretLine + ', col ' + $store.coderPanel.caretCol"></span>
                 <span x-show="$store.coderPanel.selLen > 0" x-text="$store.coderPanel.selLen + ' selected'"></span>
                 <span class="mode" x-text="$store.coderPanel.editor.mode || 'plain text'"></span>
-                <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+/ comment</span>
+                <span class="vim-tag" x-show="$store.coderPanel.vim_mode" title="vim keymap enabled">vim</span>
+                <span class="hints">ctrl+s save &middot; ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment &middot; ctrl+space complete</span>
             </div>
 
             <div class="coder-editor-errors" x-show="$store.coderPanel.editor.error" x-text="$store.coderPanel.editor.error"></div>
