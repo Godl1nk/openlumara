@@ -1,0 +1,28 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   commit log modal for the git sidebar: hash + subject per row.
+   opened via $store.gitPanel.openLog() from the log button in the
+   sidebar header. #}
+<template x-if="$store.ui.currentModal === 'git_log' && $store.gitPanel" x-cloak>
+    <div class="modal git-log-modal" @keydown.escape.window="$store.gitPanel.closeLog()">
+        <div class="header">
+            <h2 class="coder-editor-title">
+                <span>commit log</span>
+                <span class="git-ro-tag" x-text="$store.gitPanel.branch"></span>
+            </h2>
+            <button class="close" @click="$store.gitPanel.closeLog()" aria-label="Close log">&times;</button>
+        </div>
+
+        <div class="git-log-body">
+            <template x-if="!$store.gitPanel.log.length">
+                <div class="coder-empty">no commits found</div>
+            </template>
+
+            <template x-for="entry in $store.gitPanel.log" :key="entry.hash">
+                <div class="git-log-entry">
+                    <span class="h" x-text="entry.hash"></span>
+                    <span x-text="entry.msg"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+</template>
