@@ -1,0 +1,185 @@
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   shell terminal styles: black screen, white monospace text, blinking
+   block cursor. used by both the sidebar panel and the pop-out modal. */
+
+.term {
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    border-radius: var(--radius-sm, 8px);
+    overflow: hidden;
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    min-width: 0;
+    position: relative;
+}
+
+.term-panel {
+    flex: 1;
+    min-height: 0;
+}
+
+/* faint pop-out button floating in the top-right of the sidebar panel;
+   barely there until you look at it */
+.term-panel .term-popout {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(232, 232, 234, 0.4);
+    opacity: 0.5;
+    cursor: pointer;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.term-panel .term-popout:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.term-panel .term-popout svg {
+    width: 13px;
+    height: 13px;
+}
+
+.term .term-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    cursor: text;
+    padding: 8px 10px 10px;
+}
+
+.term .term-out {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    scrollbar-width: thin;
+}
+
+.term .term-line {
+    font-size: 12px;
+    line-height: 1.5;
+    color: #e8e8ea;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.term .term-line-cmd {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.term .term-line-cmd::before {
+    content: "lumara:~$ ";
+    color: #3fdc97;
+    font-weight: 400;
+}
+
+.term .term-line-err {
+    color: #ff7b72;
+}
+
+.term .term-line-info {
+    color: #79c0ff;
+}
+
+.term .term-line-dim {
+    color: #6e7681;
+}
+
+.term .term-line-running {
+    color: #6e7681;
+}
+
+.term .term-inputline {
+    position: relative;
+    display: flex;
+    align-items: baseline;
+    font-size: 12px;
+    line-height: 1.5;
+    flex: 0 0 auto;
+    min-height: 1.5em;
+}
+
+.term .term-prompt {
+    color: #3fdc97;
+    margin-right: 6px;
+    flex: 0 0 auto;
+}
+
+.term .term-typed {
+    color: #ffffff;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.term .term-cursor {
+    display: inline-block;
+    width: 1ch;
+    height: 1.15em;
+    margin-left: 1px;
+    background: #e8e8ea;
+    vertical-align: text-bottom;
+    animation: term-blink 1.1s step-end infinite;
+}
+
+@keyframes term-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+/* the real input sits invisibly over the rendered line: it captures keys
+   while the typed span + block cursor do the showing.
+   the selector is deliberately heavy: core modals/fields.css styles
+   `.modal input[type="text"]` as a form field (0,2,1) and its :focus/
+   :hover variants reach (0,3,1), which turned the capture input into a
+   visible white box inside the pop-out modal. matching the pseudo-states
+   here keeps the terminal line identical in sidebar and modal. */
+.term .term-inputline input.term-capture,
+.term .term-inputline input.term-capture:focus,
+.term .term-inputline input.term-capture:hover {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: transparent;
+    caret-color: transparent;
+    font: inherit;
+    padding: 0;
+    margin: 0;
+    outline: none;
+    box-shadow: none;
+    border-radius: 0;
+    transition: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* ---- pop-out modal ---- */
+
+.shell-modal {
+    width: min(920px, 94vw);
+}
+
+/* the modal is the frame: the screen sits flush under the header with no
+   border of its own. bottom corners mirror the modal radius so the black
+   screen never pokes past the rounded modal edge. */
+.shell-modal .term-modal-term {
+    height: min(64vh, 560px);
+    margin: 0;
+    border: none;
+    border-radius: 0 0 var(--radius-sm, 8px) var(--radius-sm, 8px);
+}

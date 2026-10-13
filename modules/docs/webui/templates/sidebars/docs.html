@@ -1,0 +1,57 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   docs sidebar tab: folder dropdown + lazy file tree, files open in the
+   doc_viewer modal. logic lives in assets/js/docs.js (DOCS_PANEL). #}
+<div class="docs-panel" x-data="docsPanelComponent()" x-intersect.enter="refresh()">
+
+    <div class="docs-header">
+        <span class="docs-title">Docs</span>
+        <button type="button" class="docs-icon-btn" title="Refresh" @click="refresh(true)">
+            {% include 'svg/reload.svg' %}
+        </button>
+    </div>
+
+    <div class="docs-folder">
+        <select class="docs-select" aria-label="Documentation folder" x-model="folder" @change="onFolderChange()">
+            <template x-for="f in folders" :key="f">
+                <option :value="f" x-text="f"></option>
+            </template>
+        </select>
+    </div>
+
+    <div class="docs-tree">
+        <template x-if="loading">
+            <div class="docs-empty">loading..</div>
+        </template>
+
+        <template x-if="!loading && !folder">
+            <div class="docs-empty">no doc folders configured in the docs module settings</div>
+        </template>
+
+        <template x-if="!loading && folder && rows.length === 0">
+            <div class="docs-empty">this folder is empty</div>
+        </template>
+
+        <template x-for="row in rows" :key="row.path">
+            <div
+                class="docs-row"
+                :class="{ file: !row.dir }"
+                :style="`padding-left: ${8 + row.depth * 14}px`"
+                @click="row.dir ? toggle(row) : openFile(row)"
+                :title="row.path"
+            >
+                <span class="docs-chevron" x-show="row.dir" :class="{ open: expanded[row.path] }">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
+                <span class="docs-icon" x-show="row.dir">
+                    {% include 'svg/folder.svg' %}
+                </span>
+                <span class="docs-icon" x-show="!row.dir">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </span>
+                <span class="docs-name" x-text="row.name"></span>
+            </div>
+        </template>
+    </div>
+
+    <div class="docs-footer" x-show="error" x-text="error"></div>
+</div>

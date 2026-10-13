@@ -1,4 +1,5 @@
 import core
+import channels.webui.api as webui
 import os
 
 class Docs(core.module.Module):
@@ -91,9 +92,70 @@ class Docs(core.module.Module):
             return self.result(f"Folder '{folder}' does not exist within the docs module configuration.", success=False)
         
         target_path = core.sandbox_path(folder_path, path)
-            
+
         try:
             with open(target_path, 'r', encoding="utf-8") as f:
                 return self.result(f.read())
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui extension routes for the docs sidebar browser.
+    # private methods are ignored by the tool loader; @webui.route exposes
+    # them under /api/ext/docs/<path>.
+
+    @webui.route("folders")
+    async def _route_folders(self, body=None, query=None):
+        """doc folder basenames for the sidebar dropdown"""
+        return await self._get_folder_names()
+
+    @webui.route("list")
+    async def _route_list(self, body=None, query=None):
+        """one directory level: {subfolders: [...], files: [...]} relative paths"""
+        folder = (query or {}).get("folder", "")
+        subfolder = (query or {}).get("subfolder", "") or None
+
+        if not folder:
+            return self.result("no folder given", success=False)
+
+        folder_path = await self._get_folder_path(folder)
+        if not folder_path:
+            return self.result(f"folder '{folder}' does not exist", success=False)
+
+        if subfolder and subfolder.startswith(folder):
+            subfolder = subfolder[len(folder):]
+
+        try:
+            base_path = core.sandbox_path(folder_path, subfolder or "")
+            contents = os.listdir(base_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        prefix = f"{subfolder}/" if subfolder else ""
+        dirs = sorted([f"{prefix}{d}" for d in contents if os.path.isdir(os.path.join(base_path, d))])
+        files = sorted([f"{prefix}{f}" for f in contents if os.path.isfile(os.path.join(base_path, f))])
+
+        return {"subfolders": dirs, "files": files}
+
+    @webui.route("read")
+    async def _route_read(self, body=None, query=None):
+        """raw text of a doc file"""
+        folder = (query or {}).get("folder", "")
+        path = (query or {}).get("path", "")
+
+        if not folder or not path:
+            return self.result("folder and path are both required", success=False)
+
+        folder_path = await self._get_folder_path(folder)
+        if not folder_path:
+            return self.result(f"folder '{folder}' does not exist", success=False)
+
+        if path.startswith(folder):
+            path = path[len(folder):]
+
+        try:
+            target_path = core.sandbox_path(folder_path, path)
+            with open(target_path, 'r', encoding="utf-8") as f:
+                return {"path": path, "content": f.read()}
         except Exception as e:
             return self.result(str(e), success=False)

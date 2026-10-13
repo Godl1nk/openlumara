@@ -7,6 +7,7 @@ import signal
 import sys
 
 import core
+import channels.webui.api as webui
 
 # thanks to qrkadem for coming up with this solution! i was overthinking this all along.
 # i thought i needed to create a second container next to the one openlumara runs in,
@@ -741,3 +742,24 @@ class Shell(core.module.Module):
             return "Image rebuilt successfully. Container restarted with new image."
         else:
             return "Image build failed. Check logs for details."
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui extension routes for the terminal sidebar panel / modal.
+    # commands run through the exact same sandboxed run() path the AI
+    # uses, so timeouts, output limits and container isolation all apply.
+
+    @webui.route("run", method="POST")
+    async def _route_run(self, body=None, query=None):
+        command = str((body or {}).get("command", "")).strip()
+        if not command:
+            return self.result("no command given", success=False)
+
+        return await self.run(command)
+
+    @webui.route("status")
+    async def _route_status(self, body=None, query=None):
+        """human-readable sandbox setup info, shown as the terminal banner"""
+        try:
+            return self._get_setup()
+        except Exception as e:
+            return f"sandbox not initialized: {core.detail_error(e)}"

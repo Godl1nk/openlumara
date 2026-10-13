@@ -1,0 +1,54 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   calendar sidebar tab: upcoming events grouped by day, with quick
+   add/edit/delete. logic lives in assets/js/calendar.js (CALENDAR_PANEL). #}
+<div class="cal-panel" x-data="calendarPanelComponent()" x-intersect.enter="refresh()">
+
+    <div class="cal-header">
+        <span class="cal-title">Calendar</span>
+        <div class="cal-header-actions">
+            <button type="button" class="cal-icon-btn" title="Add event" @click="openCreate()">
+                {% include 'svg/add.svg' %}
+            </button>
+            <button type="button" class="cal-icon-btn" title="Refresh" @click="refresh(true)">
+                {% include 'svg/reload.svg' %}
+            </button>
+        </div>
+    </div>
+
+    <div class="cal-list">
+        <template x-if="loading">
+            <div class="cal-empty">loading events..</div>
+        </template>
+
+        <template x-if="!loading && events.length === 0">
+            <div class="cal-empty">no upcoming events</div>
+        </template>
+
+        <template x-for="group in groups()" :key="group.key">
+            <div class="cal-day-group">
+                <div class="cal-day-label" x-text="group.label"></div>
+                <template x-for="ev in group.items" :key="ev.id">
+                    <article class="cal-card" :class="{ past: isPast(ev) }">
+                        <span class="cal-time" x-text="fmtTime(ev.date)"></span>
+                        <div class="cal-card-body">
+                            <span class="cal-card-title" x-text="ev.title"></span>
+                            <span class="cal-bell" x-show="ev.notify" title="notification on">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                            </span>
+                        </div>
+                        <div class="cal-actions">
+                            <button type="button" class="cal-action icon" title="Edit event" aria-label="Edit event" @click="openEdit(ev)">
+                                {% include 'svg/pencil.svg' %}
+                            </button>
+                            <button type="button" class="cal-action icon danger" title="Delete event" aria-label="Delete event" @click="remove(ev)">
+                                {% include 'svg/trash.svg' %}
+                            </button>
+                        </div>
+                    </article>
+                </template>
+            </div>
+        </template>
+    </div>
+
+    <div class="cal-footer" x-show="error" x-text="error"></div>
+</div>

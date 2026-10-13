@@ -1,0 +1,98 @@
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   tutorial welcome panel styles. */
+
+.tut-panel {
+    position: relative;
+    width: min(560px, 100%);
+    box-sizing: border-box;
+    margin-top: 18px;
+    padding: 16px 18px 14px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: var(--radius, 12px);
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.04));
+    text-align: left;
+}
+
+.tut-panel .tut-dismiss {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary, #999);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.tut-panel .tut-dismiss:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.08));
+    color: var(--text-primary, #eee);
+}
+
+.tut-panel .tut-heading {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary, #eee);
+    margin-bottom: 12px;
+}
+
+.tut-panel .tut-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+@media (max-width: 520px) {
+    .tut-panel .tut-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.tut-panel .tut-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text-secondary, #aaa);
+}
+
+.tut-panel .tut-item-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent, #00d4ff);
+}
+
+.tut-panel .tut-item strong {
+    color: var(--text-primary, #eee);
+    font-weight: 600;
+}
+
+.tut-panel .tut-commands {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+}
+
+.tut-panel .tut-cmd {
+    font-size: 11.5px;
+    color: var(--text-secondary, #999);
+}
+
+.tut-panel .tut-cmd code {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11px;
+    color: var(--text-primary, #eee);
+}

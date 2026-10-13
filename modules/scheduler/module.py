@@ -1,6 +1,7 @@
 import datetime
 import asyncio
 import core
+import channels.webui.api as webui
 import ulid
 import re
 
@@ -589,7 +590,12 @@ Use tools if needed. For simple reminders, do not use tools.
             if trigger_time is None:
                 return self.result("error: invalid schedule parameters (zero interval)", False)
 
-            resolved_channel = self.config.get("notification_channel") or channel or (self.channel.name if self.channel else None)
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+            # an explicit channel should win over the configured default
+            # (the tool docstring promises "defaults to your preferred
+            # channel" only when none is given). previously the config
+            # default (always set) made the parameter unreachable.
+            resolved_channel = channel or self.config.get("notification_channel") or (self.channel.name if self.channel else None)
             if not resolved_channel:
                 return self.result("error: no channel context available", False)
 
@@ -764,3 +770,195 @@ Use tools if needed. For simple reminders, do not use tools.
         self._signal_reschedule()
 
         return self.result("job deleted")
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui extension routes for the jobs sidebar panel and job modal.
+    # private methods are ignored by the tool loader; @webui.route exposes
+    # them under /api/ext/scheduler/<path>.
+
+    def _ui_build_recur(self, mode: str, duration: str, time_str: str, weekday):
+        """builds a recurrence dict from the modal's form fields.
+        returns (recur, error) - exactly one of them is None."""
+        recur = {
+            "weeks": 0, "days": 0, "hours": 0, "minutes": 0, "seconds": 0,
+            "target_weekday": None, "weekdays_only": False,
+        }
+
+        if mode == "relative":
+            pattern = r'(\d+)\s*([wdhms])'
+            matches = re.findall(pattern, (duration or "").strip())
+            if not matches:
+                return None, "invalid duration. use something like '2d 4h 30m'"
+
+            for val, unit in matches:
+                val = int(val)
+                if unit == "w":
+                    recur["weeks"] = val
+                elif unit == "d":
+                    recur["days"] = val
+                elif unit == "h":
+                    recur["hours"] = val
+                elif unit == "m":
+                    recur["minutes"] = val
+                elif unit == "s":
+                    recur["seconds"] = val
+            return recur, None
+
+        # clock mode: specific time of day
+        parts = (time_str or "").split(":")
+        if len(parts) < 2:
+            return None, "invalid time format, use HH:MM"
+
+        try:
+            recur["target_hour"] = int(parts[0])
+            recur["target_minute"] = int(parts[1])
+            if len(parts) == 3:
+                recur["target_second"] = int(parts[2])
+        except ValueError:
+            return None, "invalid time format, use HH:MM"
+
+        if not (0 <= recur["target_hour"] <= 23 and 0 <= recur["target_minute"] <= 59):
+            return None, "time out of range"
+
+        if weekday == "weekdays":
+            recur["weekdays_only"] = True
+        elif weekday is not None and str(weekday) != "":
+            try:
+                wd = int(weekday)
+            except ValueError:
+                return None, "invalid weekday"
+            if not (0 <= wd <= 6):
+                return None, "weekday must be between 0 (Monday) and 6 (Sunday)"
+            recur["target_weekday"] = wd
+
+        return recur, None
+
+    @webui.route("list")
+    async def _route_list(self, body=None, query=None):
+        """all jobs with a human-readable schedule, soonest first"""
+        self.schedule.load()
+
+        items = []
+        for job in self.schedule:
+            items.append({
+                "id": job.get("id"),
+                "action": job.get("action", ""),
+                "channel": job.get("channel", ""),
+                "trigger_time": job.get("trigger_time", ""),
+                "recurring": bool(job.get("recurring")),
+                "recurs_in": job.get("recurs_in"),
+                "display": self._format_job_time(job),
+            })
+
+        items.sort(key=lambda j: j.get("trigger_time") or "9999")
+        return items
+
+    @webui.route("channels")
+    async def _route_channels(self, body=None, query=None):
+        """available channels for the job form"""
+        return core.channel.get_available_channels()
+
+    @webui.route("create", method="POST")
+    async def _route_create(self, body=None, query=None):
+        body = body or {}
+
+        action = str(body.get("action", "")).strip()
+        if not action:
+            return self.result("job action cannot be empty", success=False)
+
+        recur, error = self._ui_build_recur(
+            mode=body.get("mode", "relative"),
+            duration=body.get("duration", ""),
+            time_str=body.get("time", ""),
+            weekday=body.get("weekday"),
+        )
+        if error:
+            return self.result(error, success=False)
+
+        if body.get("recurring") and not self.config.get("allow_recurring_jobs"):
+            return self.result("recurring jobs are disabled in the scheduler settings", success=False)
+
+        trigger_time = self._calculate_next_trigger(recur)
+        if trigger_time is None:
+            return self.result("invalid schedule parameters (zero interval)", success=False)
+
+        resolved_channel = body.get("channel") or self.config.get("notification_channel") or (self.channel.name if self.channel else None)
+        if not resolved_channel:
+            return self.result("no channel available", success=False)
+
+        job_id = str(ulid.ULID())
+        self.schedule.append({
+            "id": job_id,
+            "action": action,
+            "channel": str(resolved_channel).lower().strip(),
+            "trigger_time": trigger_time.isoformat(),
+            "recurring": bool(body.get("recurring")),
+            "recurs_in": recur if body.get("recurring") else None,
+        })
+        self.schedule.save()
+        self._signal_reschedule()
+
+        return self.result(f"job added. ID: {job_id}")
+
+    @webui.route("update", method="POST")
+    async def _route_update(self, body=None, query=None):
+        """full rebuild of a job from the modal's form fields. rebuilds
+        instead of forwarding to edit_job because edit_job merges old and
+        new recurrence fields, which breaks switching between relative
+        and clock modes."""
+        body = body or {}
+        job_id = body.get("id")
+        if not job_id:
+            return self.result("no job id given", success=False)
+
+        self.schedule.load()
+        index = self._get_index(job_id)
+        if index == -1:
+            return self.result("job does not exist", success=False)
+
+        action = str(body.get("action", "")).strip()
+        if not action:
+            return self.result("job action cannot be empty", success=False)
+
+        recur, error = self._ui_build_recur(
+            mode=body.get("mode", "relative"),
+            duration=body.get("duration", ""),
+            time_str=body.get("time", ""),
+            weekday=body.get("weekday"),
+        )
+        if error:
+            return self.result(error, success=False)
+
+        if body.get("recurring") and not self.config.get("allow_recurring_jobs"):
+            return self.result("recurring jobs are disabled in the scheduler settings", success=False)
+
+        trigger_time = self._calculate_next_trigger(recur)
+        if trigger_time is None:
+            return self.result("invalid schedule parameters (zero interval)", success=False)
+
+        existing = self.schedule[index]
+        resolved_channel = body.get("channel") or existing.get("channel") or self.config.get("notification_channel")
+        if not resolved_channel:
+            return self.result("no channel available", success=False)
+
+        self.schedule[index] = {
+            "id": job_id,
+            "action": action,
+            "channel": str(resolved_channel).lower().strip(),
+            "trigger_time": trigger_time.isoformat(),
+            "recurring": bool(body.get("recurring")),
+            "recurs_in": recur if body.get("recurring") else None,
+        }
+        self.schedule.save()
+        self._signal_reschedule()
+
+        return self.result("job edited")
+
+    @webui.route("delete", method="POST")
+    async def _route_delete(self, body=None, query=None):
+        job_id = (body or {}).get("id")
+        if not job_id:
+            return self.result("no job id given", success=False)
+
+        self.schedule.load()
+        return await self.remove_job(job_id)

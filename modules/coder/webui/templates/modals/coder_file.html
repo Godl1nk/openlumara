@@ -1,0 +1,74 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   coder file edit modal: views + edits a file from the sidebar tree.
+   saves are gated by the coder module's treesitter syntax check.
+   Auto-discovered, opened via $store.ui.openModal('coder_file'). #}
+<template x-if="$store.ui.currentModal === 'coder_file' && $store.coderPanel && $store.coderPanel.editor.path" x-cloak>
+    <div class="modal coder-editor-modal" @keydown.escape.window="$store.coderPanel.closeEditor()">
+        <div class="header">
+            <h2 class="coder-editor-title">
+                <span x-text="$store.coderPanel.editor.path"></span>
+                <span class="coder-dirty-dot" x-show="$store.coderPanel.editor.dirty" title="unsaved changes">●</span>
+                <span class="coder-ro-tag" x-show="$store.coderPanel.read_only">read-only</span>
+            </h2>
+            <button class="close" @click="$store.coderPanel.closeEditor()" aria-label="Close file editor">&times;</button>
+        </div>
+
+        <div class="coder-editor-body">
+            {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+               highlighted underlay + transparent-text textarea on top: the
+               pre shows hljs-colored text (theme comes from the core
+               #code-theme link), the textarea captures all input. scroll
+               positions are synced in coder.js (syncHighlight). #}
+            <div class="coder-editor-wrap" :style="$store.coderPanel.gutterVars()"
+                x-init="$nextTick(() => $store.coderPanel.ensureLayout())">
+                <div class="coder-active-line" aria-hidden="true" :style="$store.coderPanel.activeLineStyle()"></div>
+
+                {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+                   flattened visual rows from the wrap-aware layout: number
+                   on a line's first row, blank cells for continuations,
+                   exactly like vim's number column with wrap on #}
+                <div class="coder-gutter" aria-hidden="true" x-show="$store.coderPanel.lineCount() <= 5000">
+                    <template x-if="$store.coderPanel.lineCount() <= 5000">
+                        <div>
+                            <template x-for="cell in $store.coderPanel.gutterCells()" :key="cell.id">
+                                <div class="coder-gutter-num" :class="{ active: cell.n === $store.coderPanel.caretLine }" x-text="cell.n"></div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <pre class="coder-hl" aria-hidden="true"><code class="hljs" x-html="$store.coderPanel.highlighted()"></code></pre>
+                <textarea
+                    class="coder-textarea"
+                    spellcheck="false"
+                    autocomplete="off"
+                    wrap="soft"
+                    :readonly="$store.coderPanel.read_only"
+                    x-model="$store.coderPanel.editor.content"
+                    @input="$store.coderPanel.editor.dirty = true; $store.coderPanel.updateCaret($event.target); $store.coderPanel.ensureLayout()"
+                    @scroll="$store.coderPanel.syncHighlight($event)"
+                    @click="$store.coderPanel.updateCaret($event.target)"
+                    @keyup="$store.coderPanel.updateCaret($event.target)"
+                    @keydown.ctrl.s.prevent="$store.coderPanel.save()"
+                    @keydown.meta.s.prevent="$store.coderPanel.save()"
+                    @keydown.tab.prevent="$store.coderPanel.insertTab($event)"
+                ></textarea>
+            </div>
+
+            <div class="coder-editor-errors" x-show="$store.coderPanel.editor.error" x-text="$store.coderPanel.editor.error"></div>
+
+            <div class="coder-editor-actions">
+                <span class="coder-saved-note" x-show="$store.coderPanel.editor.saved && !$store.coderPanel.editor.dirty" x-text="$store.coderPanel.editor.saved"></span>
+                <button type="button" class="coder-action" @click="$store.coderPanel.closeEditor()">close</button>
+                <button
+                    type="button"
+                    class="coder-action primary"
+                    x-show="!$store.coderPanel.read_only"
+                    :disabled="$store.coderPanel.editor.saving || !$store.coderPanel.editor.dirty"
+                    @click="$store.coderPanel.save()"
+                    x-text="$store.coderPanel.editor.saving ? 'saving..' : 'save (ctrl+s)'"
+                ></button>
+            </div>
+        </div>
+    </div>
+</template>

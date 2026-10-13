@@ -1,0 +1,267 @@
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   scheduler sidebar panel + job modal styles, kept module-scoped. */
+
+.sched-panel {
+    padding: 7px;
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: var(--gap, 6px);
+}
+
+.sched-panel .sched-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px;
+}
+
+.sched-panel .sched-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sched-panel .sched-header-actions {
+    display: flex;
+    gap: 2px;
+}
+
+.sched-panel .sched-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+}
+
+.sched-panel .sched-icon-btn:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+    color: var(--text-primary, #eee);
+}
+
+.sched-panel .sched-icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.sched-panel .sched-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 2px;
+}
+
+.sched-panel .sched-empty {
+    padding: 16px 8px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+}
+
+.sched-panel .sched-card {
+    padding: 9px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.sched-panel .sched-card:hover .sched-actions {
+    opacity: 1;
+}
+
+.sched-panel .sched-card-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sched-panel .sched-when {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent, #00d4ff);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sched-panel .sched-channel {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 20px;
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.08));
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    color: var(--text-secondary, #999);
+    flex: 0 0 auto;
+}
+
+.sched-panel .sched-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.sched-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+    border-radius: var(--radius-sm, 8px);
+    background: none;
+    color: var(--text-primary, #eee);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.sched-action:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.08));
+}
+
+.sched-action.primary {
+    background: var(--accent, #00d4ff);
+    border-color: var(--accent, #00d4ff);
+    color: #0b0b10;
+    font-weight: 600;
+}
+
+.sched-action.primary:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.sched-panel .sched-action.icon {
+    padding: 4px;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-secondary, #999);
+}
+
+.sched-panel .sched-action.icon:hover {
+    color: var(--text-primary, #eee);
+}
+
+.sched-panel .sched-action.icon.danger:hover {
+    color: #ff5f7a;
+    background: rgba(255, 95, 122, 0.12);
+}
+
+.sched-panel .sched-action.icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.sched-panel .sched-action-text {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-primary, #eee);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.sched-panel .sched-next {
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+}
+
+.sched-panel .sched-footer {
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #ff5f7a;
+    text-align: center;
+}
+
+/* ---- job modal (rendered in the core modal area, outside .sched-panel) ---- */
+
+.sched-job-modal .sched-job-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sched-field-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary, #999);
+}
+
+.sched-input,
+.sched-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.sched-input:focus,
+.sched-textarea:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.sched-field-row {
+    display: flex;
+    gap: 10px;
+}
+
+.sched-field-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.sched-check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-primary, #eee);
+    cursor: pointer;
+}
+
+.sched-job-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.sched-job-modal .sched-footer {
+    font-size: 12px;
+    color: #ff5f7a;
+    text-align: center;
+}

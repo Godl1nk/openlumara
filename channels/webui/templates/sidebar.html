@@ -21,15 +21,13 @@
     <nav class="sidebar-tabbar" aria-label="Sidebar tabs">
         <button type="button" class="sidebar-tab"
             :class="{ 'active': sidebarTab === '' }"
-            :disabled="$store.stream.state !== 'idle'"
             title="Chats"
             @click="sidebarTab = ''">
-            {% include 'svg/home.svg' %}
+            {% include 'svg/chat.svg' %}
         </button>
         {% for panel in extension_sidebars() %}
         <button type="button" class="sidebar-tab ext"
             :class="{ 'active': sidebarTab === '{{ panel.module }}/{{ panel.name }}' }"
-            :disabled="$store.stream.state !== 'idle'"
             title="{{ panel.label }}"
             @click="sidebarTab = '{{ panel.module }}/{{ panel.name }}'">
             {{ panel.icon }}

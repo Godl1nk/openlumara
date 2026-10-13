@@ -1,0 +1,370 @@
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   git sidebar tab + diff viewer modal styles (coder module). */
+
+.git-panel {
+    padding: 7px;
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: var(--gap, 6px);
+}
+
+.git-panel .git-sandbox {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+    gap: 8px;
+}
+
+.git-panel .git-sandbox-name {
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.git-panel .git-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0 8px;
+}
+
+/* equivalents for the shared classes that coder.css scopes to .coder-panel */
+
+.git-panel .coder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px;
+}
+
+.git-panel .coder-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.git-panel .coder-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+}
+
+.git-panel .coder-icon-btn:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+    color: var(--text-primary, #eee);
+}
+
+.git-panel .coder-icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.git-panel .coder-select {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.git-panel .coder-select:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.git-panel .coder-readonly-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 95, 122, 0.4);
+    color: #ff5f7a;
+    flex: 0 0 auto;
+}
+
+.git-panel .coder-empty {
+    padding: 16px 8px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+}
+
+.git-panel .coder-footer {
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #ff5f7a;
+    text-align: center;
+}
+
+.git-panel .git-repo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13 */
+.git-panel .git-branchrow,
+.git-panel .git-reporow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* sits directly in .git-body (which carries the horizontal padding), same
+   as .git-repo below it, so both selects line up edge to edge */
+.git-panel .git-reporow {
+    margin-bottom: 8px;
+}
+
+
+.git-panel .git-branch-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    color: var(--text-secondary, #999);
+}
+
+.git-panel .git-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-secondary, #999);
+}
+
+.git-panel .git-count {
+    color: var(--text-primary, #ddd);
+}
+
+.git-panel .git-bulk {
+    display: flex;
+    gap: 2px;
+}
+
+.git-panel button.inline {
+    width: auto;
+    padding: 2px 8px;
+    font-size: 10.5px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    color: var(--text-secondary, #999);
+}
+
+.git-panel .git-changes {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.git-panel .git-change {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    min-width: 0;
+}
+
+.git-panel .git-change:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+}
+
+.git-panel .git-badge {
+    flex: 0 0 auto;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 20px;
+    border: 1px solid rgba(254, 188, 46, 0.4);
+    color: #febc2e;
+}
+
+.git-panel .git-badge.staged {
+    border-color: rgba(63, 220, 151, 0.4);
+    color: #3fdc97;
+}
+
+.git-panel .git-badge.untracked {
+    border-color: rgba(255, 95, 122, 0.4);
+    color: #ff5f7a;
+}
+
+.git-panel .git-path {
+    flex: 1;
+    min-width: 0;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    color: var(--text-primary, #ddd);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.git-panel .git-path:hover {
+    color: var(--accent, #00d4ff);
+}
+
+.git-panel .git-stage-btn {
+    width: 22px;
+    height: 22px;
+}
+
+.git-panel .git-stage-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+.git-panel .git-commit {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 2px;
+}
+
+.git-panel .git-message {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-family: inherit;
+    font-size: 12px;
+    resize: vertical;
+    min-height: 54px;
+}
+
+.git-panel .git-message:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.git-panel .git-commit-btn {
+    align-self: flex-end;
+}
+
+.git-panel .git-logtoggle {
+    padding-top: 2px;
+}
+
+.git-panel .git-log {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-bottom: 6px;
+}
+
+.git-panel .git-log-entry {
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 5px;
+    color: var(--text-secondary, #bbb);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.git-panel .git-log-entry .h {
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    color: var(--accent, #00d4ff);
+    margin-right: 6px;
+    opacity: 0.8;
+}
+
+/* ---- diff viewer modal ---- */
+
+.git-diff-modal {
+    width: min(900px, 94vw);
+}
+
+.git-diff-modal .coder-editor-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-family: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    font-weight: 500;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.git-diff-modal .git-ro-tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid rgba(63, 220, 151, 0.4);
+    color: #3fdc97;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex: 0 0 auto;
+}
+
+.git-diff-modal .git-diff-body {
+    margin: 0;
+    padding: 12px 14px 16px;
+    max-height: min(70vh, 640px);
+    overflow: auto;
+    font-family: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    tab-size: 4;
+}
+
+.git-diff-modal .git-diff-line {
+    padding: 0 6px;
+    border-radius: 3px;
+}
+
+.git-diff-modal .git-diff-line.add {
+    background: rgba(40, 200, 64, 0.10);
+    color: #3fdc97;
+}
+
+.git-diff-modal .git-diff-line.del {
+    background: rgba(255, 95, 122, 0.10);
+    color: #ff8095;
+}
+
+.git-diff-modal .git-diff-line.hunk {
+    color: var(--accent, #00d4ff);
+    opacity: 0.75;
+    margin-top: 4px;
+}
+
+.git-diff-modal .git-diff-line.meta {
+    color: var(--text-secondary, #999);
+}

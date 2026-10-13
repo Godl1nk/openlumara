@@ -1,4 +1,5 @@
 import core
+import channels.webui.api as webui
 import datetime
 import ulid
 import asyncio
@@ -285,3 +286,124 @@ class Calendar(core.module.Module):
             output.append(f"{event.get('id')}: on {event['date']}: {event['title']}")
 
         return self.result("\n".join(output))
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui extension routes for the calendar sidebar panel and event modal.
+    # private methods are ignored by the tool loader; @webui.route exposes
+    # them under /api/ext/calendar/<path>.
+
+    def _ui_parse_dt(self, date_str: str, time_str: str):
+        """parses 'YYYY-MM-DD' + 'HH:MM' into a datetime. raises ValueError."""
+        return datetime.datetime.strptime(f"{date_str.strip()} {time_str.strip()}", "%Y-%m-%d %H:%M")
+
+    @webui.route("upcoming")
+    async def _route_upcoming(self, body=None, query=None):
+        """events from the start of today until `days` days ahead, soonest first"""
+        self.events.load()
+
+        days = 14
+        try:
+            days = int((query or {}).get("days", 14) or 14)
+        except ValueError:
+            days = 14
+        days = max(1, min(days, 365))
+
+        now = datetime.datetime.now()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = now + datetime.timedelta(days=days)
+
+        items = []
+        for event in self.events:
+            try:
+                event_date = datetime.datetime.fromisoformat(event["date"])
+            except (ValueError, KeyError, TypeError):
+                continue
+
+            if start <= event_date <= end:
+                items.append({
+                    "id": event.get("id"),
+                    "title": event.get("title", ""),
+                    "date": event.get("date", ""),
+                    "notify": bool(event.get("notify")),
+                    "notify_channel": event.get("notify_channel"),
+                })
+
+        items.sort(key=lambda e: e["date"])
+        return items
+
+    @webui.route("channels")
+    async def _route_channels(self, body=None, query=None):
+        """available notification channels for the event form"""
+        return core.channel.get_available_channels()
+
+    @webui.route("create", method="POST")
+    async def _route_create(self, body=None, query=None):
+        body = body or {}
+
+        title = str(body.get("title", "")).strip()
+        if not title:
+            return self.result("event title cannot be empty", success=False)
+
+        try:
+            dt = self._ui_parse_dt(str(body.get("date", "")), str(body.get("time", "00:00")))
+        except ValueError:
+            return self.result("invalid date/time. expected YYYY-MM-DD and HH:MM", success=False)
+
+        return await self.add_event(
+            title=title,
+            year=dt.year,
+            month=dt.month,
+            day=dt.day,
+            hour=dt.hour,
+            minute=dt.minute,
+            should_notify=bool(body.get("notify", True)),
+            notify_channel=body.get("notify_channel") or None,
+        )
+
+    @webui.route("update", method="POST")
+    async def _route_update(self, body=None, query=None):
+        """full update from the event modal. unlike edit_event, notify=False
+        actually disables the notification (edit_event's `or` merge can't)."""
+        event_id = (body or {}).get("id")
+        if not event_id:
+            return self.result("no event id given", success=False)
+
+        self.events.load()
+        index = await self._get_event_by_id(event_id)
+        if index < 0:
+            return self.result("event with that ID does not exist", success=False)
+
+        event = self.events[index]
+        title = str((body or {}).get("title", "")).strip()
+        if title:
+            event["title"] = title
+
+        if body.get("date"):
+            try:
+                dt = self._ui_parse_dt(str(body.get("date", "")), str(body.get("time", "00:00")))
+            except ValueError:
+                return self.result("invalid date/time. expected YYYY-MM-DD and HH:MM", success=False)
+            event["date"] = datetime.datetime.isoformat(dt)
+
+        if "notify" in body:
+            event["notify"] = bool(body.get("notify"))
+        if body.get("notify_channel"):
+            event["notify_channel"] = body.get("notify_channel")
+
+        self.events.save()
+
+        # (re)schedule the notification if it's on; stale timers for moved
+        # events simply no-op because notify gets consumed on fire.
+        if event.get("notify"):
+            await self._schedule_notification(event)
+
+        return self.result(f"event {event['id']} edited")
+
+    @webui.route("delete", method="POST")
+    async def _route_delete(self, body=None, query=None):
+        event_id = (body or {}).get("id")
+        if not event_id:
+            return self.result("no event id given", success=False)
+
+        self.events.load()
+        return await self.delete_event(event_id)

@@ -1,0 +1,598 @@
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   coder sidebar tree + file edit modal styles, kept module-scoped. */
+
+.coder-panel {
+    padding: 7px;
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: var(--gap, 6px);
+}
+
+.coder-panel .coder-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px;
+}
+
+.coder-panel .coder-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.coder-panel .coder-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+}
+
+.coder-panel .coder-icon-btn:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+    color: var(--text-primary, #eee);
+}
+
+.coder-panel .coder-icon-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.coder-panel .coder-sandbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 2px;
+}
+
+.coder-panel .coder-select {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.coder-panel .coder-select:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.coder-panel .coder-readonly-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 95, 122, 0.4);
+    color: #ff5f7a;
+    flex: 0 0 auto;
+}
+
+.coder-panel .coder-tree {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0 2px;
+}
+
+.coder-panel .coder-empty {
+    padding: 16px 8px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+}
+
+.coder-panel .coder-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    min-width: 0;
+}
+
+.coder-panel .coder-row:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+}
+
+.coder-panel .coder-row.dim {
+    opacity: 0.45;
+}
+
+.coder-panel .coder-chevron {
+    display: inline-flex;
+    color: var(--text-secondary, #999);
+    transition: transform 0.12s ease;
+    flex: 0 0 auto;
+}
+
+.coder-panel .coder-chevron.open {
+    transform: rotate(90deg);
+}
+
+.coder-panel .coder-chevron svg {
+    width: 13px;
+    height: 13px;
+}
+
+.coder-panel .coder-icon {
+    display: inline-flex;
+    color: var(--text-secondary, #999);
+    flex: 0 0 auto;
+}
+
+.coder-panel .coder-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.coder-panel .coder-name {
+    font-size: 12.5px;
+    color: var(--text-primary, #eee);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coder-panel .coder-footer {
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #ff5f7a;
+    text-align: center;
+}
+
+/* ---- file edit modal (rendered in the core modal area) ---- */
+
+.coder-editor-modal {
+    width: min(900px, 94vw);
+}
+
+.coder-editor-modal .coder-editor-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-family: "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    font-weight: 500;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.coder-editor-modal .coder-dirty-dot {
+    color: #febc2e;
+    font-size: 11px;
+}
+
+.coder-editor-modal .coder-ro-tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 95, 122, 0.4);
+    color: #ff5f7a;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-family: inherit;
+}
+
+.coder-editor-modal .coder-editor-body {
+    padding: 12px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* ---- highlighted editor (underlay + transparent textarea) ----
+   the wrap owns border/radius/background; pre and textarea stack inside it
+   with identical font metrics so glyphs align exactly. text colors come
+   from the core #code-theme link via .hljs, so the editor follows the
+   app's dark/light theme like chat code blocks do. */
+
+.coder-editor-modal .coder-editor-wrap {
+    position: relative;
+    height: min(58vh, 520px);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, #0d0d10);
+    overflow: hidden;
+}
+
+.coder-editor-modal .coder-editor-wrap:focus-within {
+    border-color: var(--accent, #00d4ff);
+}
+
+/* all editor layers share an INTEGER line-height (20px): fractional values
+   accumulate sub-pixel drift between the textarea's real lines and the
+   absolutely-positioned gutter/band, visible as misalignment far down the
+   file. --coder-gutter-w is set inline by coder.js (digit-count aware). */
+
+.coder-editor-modal .coder-hl {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 12px 12px 12px calc(var(--coder-gutter-w, 44px) + 12px);
+    box-sizing: border-box;
+    overflow: hidden;
+    pointer-events: none;
+    background: transparent;
+}
+
+.coder-editor-modal .coder-hl code {
+    display: block;
+    background: transparent;
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 20px;
+    tab-size: 4;
+    /* soft wrap, matching the textarea's own wrapping exactly */
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: normal;
+}
+
+.coder-editor-modal .coder-textarea,
+.coder-editor-modal .coder-textarea:focus {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 12px 12px 12px calc(var(--coder-gutter-w, 44px) + 12px);
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--text-primary, #eee);
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 20px;
+    tab-size: 4;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    resize: none;
+    outline: none;
+    box-shadow: none;
+}
+
+/* barely-there brighten across the full width of the caret's line */
+.coder-editor-modal .coder-active-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: rgba(127, 127, 127, 0.07);
+    pointer-events: none;
+    will-change: transform;
+}
+
+/* line numbers: its own scroll container, scrollTop mirrored from the
+   textarea. top/bottom padding match the text layers exactly. */
+.coder-editor-modal .coder-gutter {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--coder-gutter-w, 44px);
+    padding: 12px 8px 12px 10px;
+    box-sizing: border-box;
+    overflow: hidden;
+    pointer-events: none;
+    text-align: right;
+    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 20px;
+    color: var(--text-secondary, #8a8a94);
+    opacity: 0.6;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    user-select: none;
+}
+
+.coder-editor-modal .coder-gutter-num {
+    height: 20px;
+    line-height: 20px;
+}
+
+.coder-editor-modal .coder-gutter-num.active {
+    color: var(--text-primary, #eee);
+    opacity: 1;
+}
+
+.coder-editor-modal .coder-editor-errors {
+    font-size: 12px;
+    color: #ff5f7a;
+    white-space: pre-wrap;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.coder-editor-modal .coder-editor-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.coder-editor-modal .coder-saved-note {
+    margin-right: auto;
+    font-size: 12px;
+    color: #3fdc97;
+}
+
+.coder-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+    border-radius: var(--radius-sm, 8px);
+    background: none;
+    color: var(--text-primary, #eee);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.coder-action:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.08));
+}
+
+.coder-action.primary {
+    background: var(--accent, #00d4ff);
+    border-color: var(--accent, #00d4ff);
+    color: #0b0b10;
+    font-weight: 600;
+}
+
+.coder-action.primary:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* ---- right-click context menu (fixed: escapes the sidebar's overflow) ---- */
+
+.coder-menu {
+    position: fixed;
+    z-index: 1200;
+    min-width: 172px;
+    padding: 5px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-tertiary, #232329);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.coder-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-primary, #eee);
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.coder-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.coder-menu-item.danger {
+    color: #ff5f7a;
+}
+
+.coder-menu-sep {
+    margin: 4px 6px;
+    border: none;
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+/* ---- in-sidebar search ---- */
+
+.coder-panel .coder-searchrow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 2px;
+}
+
+.coder-panel .coder-search {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.15));
+    color: var(--text-primary, #eee);
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.coder-panel .coder-search:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.coder-panel .coder-search-mode,
+.coder-panel .coder-search-clear {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 30px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary, #999);
+    font-size: 11px;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    cursor: pointer;
+}
+
+.coder-panel .coder-search-mode.on {
+    color: var(--accent, #00d4ff);
+    border-color: var(--accent, #00d4ff);
+}
+
+.coder-panel .coder-search-mode:hover,
+.coder-panel .coder-search-clear:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+    color: var(--text-primary, #eee);
+}
+
+.coder-panel .coder-results {
+    gap: 2px;
+}
+
+.coder-panel .coder-result {
+    padding: 5px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.coder-panel .coder-result:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+}
+
+.coder-panel .coder-result-file {
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coder-panel .coder-result-file .ln {
+    color: var(--accent, #00d4ff);
+}
+
+.coder-panel .coder-result-line {
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-primary, #ddd);
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.85;
+}
+
+/* ---- drag & drop ---- */
+
+.coder-panel .coder-row {
+    /* plain arrow: rows are draggable but a grab cursor read as noise */
+    cursor: default;
+}
+
+.coder-panel .coder-row.drop-target,
+.coder-panel .coder-tree.drop-target {
+    background: rgba(0, 212, 255, 0.12);
+    box-shadow: inset 0 0 0 1px var(--accent, #00d4ff);
+}
+
+/* ---- fuzzy quick-open modal ---- */
+
+.coder-quick-modal {
+    width: min(560px, 92vw);
+}
+
+.coder-quick-modal .coder-quick-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.coder-quick-modal .coder-quick-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-primary, rgba(0, 0, 0, 0.2));
+    color: var(--text-primary, #eee);
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+}
+
+.coder-quick-modal .coder-quick-input:focus {
+    outline: none;
+    border-color: var(--accent, #00d4ff);
+}
+
+.coder-quick-modal .coder-quick-list {
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.coder-quick-modal .coder-quick-item {
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-primary, #ddd);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coder-quick-modal .coder-quick-item.active {
+    background: rgba(0, 212, 255, 0.14);
+    color: var(--text-primary, #fff);
+}
+
+.coder-quick-modal .coder-quick-empty {
+    padding: 14px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+}
+
+/* ---- small name-prompt modal ---- */
+
+.coder-prompt-modal {
+    width: min(420px, 92vw);
+}
+
+.coder-prompt-modal .coder-prompt-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.coder-prompt-modal .coder-prompt-error {
+    font-size: 12px;
+    color: #ff5f7a;
+    white-space: pre-wrap;
+}

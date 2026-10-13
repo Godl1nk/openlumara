@@ -1,0 +1,90 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   scheduler job modal: create + edit. Auto-discovered, opened via
+   $store.ui.openModal('scheduler_job'). Shares the schedulerPanel store. #}
+<template x-if="$store.ui.currentModal === 'scheduler_job' && $store.schedulerPanel && $store.schedulerPanel.editing" x-cloak>
+    <div class="modal sched-job-modal" @keydown.escape.window="$store.schedulerPanel.closeModal()">
+        <div class="header">
+            <h2 x-text="$store.schedulerPanel.editing.id ? 'Edit job' : 'New job'"></h2>
+            <button class="close" @click="$store.schedulerPanel.closeModal()" aria-label="Close job editor">&times;</button>
+        </div>
+
+        <div class="sched-job-body">
+            <label class="sched-field-label" for="sched-job-action">what should the AI do?</label>
+            <textarea
+                id="sched-job-action"
+                class="sched-textarea"
+                rows="4"
+                placeholder="e.g. remind me to drink water"
+                x-model="$store.schedulerPanel.form.action"
+            ></textarea>
+
+            <div class="sched-field-row">
+                <div class="sched-field-col">
+                    <label class="sched-field-label" for="sched-job-mode">trigger</label>
+                    <select id="sched-job-mode" class="sched-input" x-model="$store.schedulerPanel.form.mode">
+                        <option value="relative">in a while (relative)</option>
+                        <option value="clock">at a time of day (clock)</option>
+                    </select>
+                </div>
+                <div class="sched-field-col">
+                    <label class="sched-field-label" for="sched-job-channel">channel</label>
+                    <select id="sched-job-channel" class="sched-input" x-model="$store.schedulerPanel.form.channel">
+                        <option value="">default</option>
+                        <template x-for="ch in $store.schedulerPanel.channels" :key="ch">
+                            <option :value="ch" x-text="ch"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+
+            <div x-show="$store.schedulerPanel.form.mode === 'relative'">
+                <label class="sched-field-label" for="sched-job-duration">duration</label>
+                <input
+                    id="sched-job-duration"
+                    class="sched-input"
+                    placeholder="e.g. 30m, 2h, 1d 4h"
+                    x-model="$store.schedulerPanel.form.duration"
+                >
+            </div>
+
+            <div x-show="$store.schedulerPanel.form.mode === 'clock'" class="sched-field-row">
+                <div class="sched-field-col">
+                    <label class="sched-field-label" for="sched-job-time">time</label>
+                    <input id="sched-job-time" class="sched-input" type="time" x-model="$store.schedulerPanel.form.time">
+                </div>
+                <div class="sched-field-col" x-show="$store.schedulerPanel.form.recurring">
+                    <label class="sched-field-label" for="sched-job-weekday">repeat</label>
+                    <select id="sched-job-weekday" class="sched-input" x-model="$store.schedulerPanel.form.weekday">
+                        <option value="">every day</option>
+                        <option value="weekdays">weekdays only</option>
+                        <option value="0">every Monday</option>
+                        <option value="1">every Tuesday</option>
+                        <option value="2">every Wednesday</option>
+                        <option value="3">every Thursday</option>
+                        <option value="4">every Friday</option>
+                        <option value="5">every Saturday</option>
+                        <option value="6">every Sunday</option>
+                    </select>
+                </div>
+            </div>
+
+            <label class="sched-check-row">
+                <input type="checkbox" x-model="$store.schedulerPanel.form.recurring">
+                <span>recurring</span>
+            </label>
+
+            <div class="sched-job-actions">
+                <button type="button" class="sched-action" @click="$store.schedulerPanel.closeModal()">cancel</button>
+                <button
+                    type="button"
+                    class="sched-action primary"
+                    :disabled="$store.schedulerPanel.saving || !$store.schedulerPanel.form.action.trim()"
+                    @click="$store.schedulerPanel.save()"
+                    x-text="$store.schedulerPanel.saving ? 'saving..' : 'save'"
+                ></button>
+            </div>
+
+            <div class="sched-footer" x-show="$store.schedulerPanel.error" x-text="$store.schedulerPanel.error"></div>
+        </div>
+    </div>
+</template>
