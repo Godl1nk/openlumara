@@ -284,29 +284,14 @@
     letter-spacing: 0.04em;
 }
 
-/* completion dropdown + lint tooltips get appended to document.body,
-   so they're styled globally (the theme vars live on :root and reach
-   them fine). z-index above modals, chrome matching the context menu. */
-.CodeMirror-hints {
-    background: var(--bg-tertiary, #232329);
-    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));
-    border-radius: 8px;
-    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
-    font-size: 12px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-    z-index: 1300;
-}
+/* lint tooltips get appended to document.body, so styled globally (the
+   theme vars live on :root and reach them fine).
 
-.CodeMirror-hint {
-    color: var(--text-primary, #eee);
-}
-
-li.CodeMirror-hint-active {
-    background: rgba(0, 212, 255, 0.18);
-    color: #fff;
-}
-
-.CodeMirror-lint-tooltip {
+   NOTE the element-prefixed selector: lint.css is lazy-loaded AFTER
+   this file with the editor, so a same-specificity rule there (its
+   default is z-index 4!) would otherwise win by load order and bury
+   the tooltip behind the modal. div. outranks it regardless of order. */
+div.CodeMirror-lint-tooltip {
     background-color: var(--bg-tertiary, #232329);
     color: var(--text-primary, #eee);
     border: 1px solid var(--border-color, rgba(255, 255, 255, 0.14));

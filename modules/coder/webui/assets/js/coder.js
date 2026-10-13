@@ -17,7 +17,6 @@ const CM_CSS = [
     "addon/dialog/dialog.css",
     "addon/fold/foldgutter.css",
     "addon/search/matchesonscrollbar.css",
-    "addon/hint/show-hint.css",
     "addon/lint/lint.css",
 ];
 
@@ -44,14 +43,6 @@ const CM_JS = [
     "addon/fold/xml-fold.js",
     "addon/fold/markdown-fold.js",
     "addon/lint/lint.js",
-    "addon/hint/show-hint.js",
-    "addon/hint/anyword-hint.js",
-    "addon/hint/xml-hint.js",
-    "addon/hint/html-hint.js",
-    "addon/hint/css-hint.js",
-    "addon/hint/javascript-hint.js",
-    // no python-hint.js exists in CM5 (checked the package manifest):
-    // python falls through to anyword completion, which is the intent
     "mode/xml/xml.js",
     "mode/css/css.js",
     "mode/javascript/javascript.js",
@@ -194,14 +185,6 @@ function coderContinueLineComment(cm) {
     }
     cm.replaceSelections(replacements, "end", "+");
     return true;
-}
-
-// ctrl+space: mode-aware completion (js/py/css/html/xml hints), word
-// completion from the file itself as the fallback for everything else
-function coderComplete(cm) {    const mode = String(cm.getOption("mode") || "");
-    const helpers = (window.CodeMirror && CodeMirror.hint) || {};
-    const helper = helpers[mode] || helpers.anyword;
-    if (helper) cm.showHint({ hint: helper, completeSingle: false });
 }
 
 // ctrl+alt+g: prompt for a line number via the dialog addon
@@ -536,7 +519,6 @@ const CODER_PANEL = {
                 "Cmd-Alt-G": coderJumpToLine,
                 "Ctrl-/": "toggleComment",
                 "Cmd-/": "toggleComment",
-                "Ctrl-Space": coderComplete,
                 // markdown keeps its lists going (that command falls back
                 // to newlineAndIndent on its own outside lists); line
                 // comments continue their prefix; everything else a plain
