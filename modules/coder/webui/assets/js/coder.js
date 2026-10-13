@@ -125,6 +125,12 @@ function coderThemeName() {
     return theme && theme.mode === "light" ? "lumara-light" : "lumara";
 }
 
+// maximized is a persisted preference (localStorage, same pattern as
+// coder_sandbox): once you go big, every later open stays big
+function coderMaxStored() {
+    try { return localStorage.getItem("coder_editor_maximized") === "1"; } catch (e) { return false; }
+}
+
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
    live lint: hands the buffer to the coder module's treesitter check
    (the same one that gates saves) and maps its diagnostics onto CM
@@ -385,7 +391,7 @@ const CODER_PANEL = {
     // the git sidebar's "edit" button (see git.js editFile)
     async openFile(row, line, marks) {
         const path = row.path;
-        this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM, maximized: false, vimMode: "normal", vimSubMode: "" };
+        this.editor = { path: path, content: "", mode: "", dirty: false, saving: false, error: "", saved: "", cmReady: !!CODER_CM, maximized: coderMaxStored(), vimMode: "normal", vimSubMode: "" };
         this.clearDiffMarks();
         if (marks) CODER_DIFF.spec = marks;
         this._reveal = line && line > 1 ? line : 0;
@@ -926,6 +932,7 @@ const CODER_PANEL = {
 
     toggleMaximize() {
         this.editor.maximized = !this.editor.maximized;
+        try { localStorage.setItem("coder_editor_maximized", this.editor.maximized ? "1" : "0"); } catch (e) {}
 
         // CodeMirror needs to recalculate its scroll/line layout after the
         // modal box changes size. Give the browser one paint to settle first.
