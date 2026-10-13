@@ -789,6 +789,47 @@ class Coder(core.module.Module):
         entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()))
         return {"path": rel_path, "entries": entries}
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    @webui.route("files")
+    async def _route_files(self, body=None, query=None):
+        """full recursive file list of a sandbox (relative, slash-separated)
+        for the ctrl+p quick-open modal. hidden + blacklisted folders are
+        skipped. deliberately UNCAPPED: os.walk is depth-first, so an early
+        cap silently starved every folder that sorts after the one that ate
+        the budget. the frontend caps the scored matches instead."""
+        sandbox = (query or {}).get("sandbox", "")
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            target = await self._get_full_sandbox_path(sandbox)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if not target or not os.path.isdir(target):
+            return self.result("sandbox not found", success=False)
+
+        blacklist = self.config.get("folder_blacklist") or []
+
+        files = []
+        try:
+            for recursive_path, folders, filenames in os.walk(target):
+                # prune hidden + blacklisted branches in place so os.walk
+                # never descends into them (same trick folder_grep uses)
+                folders[:] = [d for d in folders if not d.startswith(".") and d not in blacklist]
+
+                for name in filenames:
+                    if name.startswith("."):
+                        continue
+                    full = os.path.join(recursive_path, name)
+                    rel = os.path.relpath(full, target).replace(os.sep, "/")
+                    files.append(rel)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        files.sort()
+        return {"files": files}
+
     @webui.route("read")
     async def _route_read(self, body=None, query=None):
         """raw text of a file, for the edit modal"""
@@ -1111,34 +1152,11 @@ class Coder(core.module.Module):
 
         return {"results": results, "truncated": truncated}
 
-    @webui.route("files")
-    async def _route_files(self, body=None, query=None):
-        """flat recursive file list of a sandbox (for fuzzy quick-open).
-        skips hidden/blacklisted folders, caps at 3000 entries."""
-        sandbox = (query or {}).get("sandbox", "")
-
-        if not sandbox:
-            return self.result("no sandbox given", success=False)
-
-        try:
-            root = await self._get_full_sandbox_path(sandbox)
-        except Exception as e:
-            return self.result(str(e), success=False)
-
-        blacklist = self.config.get("folder_blacklist") or []
-        files = []
-
-        for (dirpath, dirnames, filenames) in os.walk(root):
-            dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in blacklist]
-
-            for fname in filenames:
-                if fname.startswith("."):
-                    continue
-                files.append(os.path.relpath(os.path.join(dirpath, fname), root).replace(os.sep, "/"))
-                if len(files) >= 3000:
-                    return {"files": files, "truncated": True}
-
-        return {"files": files, "truncated": False}
+    # NOTE: the /files route lives up in the main webui-routes block
+    # (_route_files, uncapped). there used to be a second, duplicate
+    # _route_files here (3000-entry cap + truncated flag) left over from
+    # scaffolding; python binds the LAST definition in a class body, so it
+    # silently shadowed the real one. do not re-add one.
 
     # ---------------------
     # webui routes: git

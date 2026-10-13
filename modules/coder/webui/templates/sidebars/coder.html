@@ -1,9 +1,9 @@
 {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
    coder sidebar tab: sandbox dropdown + lazy file tree; clicking a file
    opens the coder_file edit modal. logic lives in assets/js/coder.js. #}
-<div class="coder-panel" x-data="coderPanelComponent()" x-intersect.enter="refresh()"
-    @keydown.ctrl.p.window="openQuickOpen($event)"
-    @keydown.meta.p.window="openQuickOpen($event)">
+{# ctrl+p is bound once in coder.js (capture listener) — no Alpine
+   keydown bindings here, they'd double-fire with it #}
+<div class="coder-panel" x-data="coderPanelComponent()" x-intersect.enter="refresh()">
 
     <div class="coder-header">
         <span class="coder-title">Coder</span>
@@ -23,22 +23,24 @@
 
     {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
        recursive sandbox search: results replace the tree until cleared.
-       .* toggles regex mode. #}
+       auto-runs with a debounce while typing (runSearch clears again on
+       an empty query). .* toggles regex mode. #}
     <div class="coder-searchrow">
         <input
             type="text"
             class="coder-search"
-            placeholder="search sandbox.. enter to go"
+            placeholder="search here or press ctrl+p"
             aria-label="Search sandbox"
             autocomplete="off"
             spellcheck="false"
             x-model="search.query"
-            @keydown.enter="runSearch()"
+            @input.debounce.400ms="runSearch()"
             @keydown.escape="clearSearch()"
         >
-        <button type="button" class="coder-search-mode" :class="{ on: search.regex }" title="regex mode" @click="search.regex = !search.regex">.*</button>
+        <button type="button" class="coder-search-mode" :class="{ on: search.regex }" title="regex mode" @click="search.regex = !search.regex; runSearch()">.*</button>
         <button type="button" class="coder-search-clear" x-show="search.active" title="back to tree" @click="clearSearch()">&times;</button>
     </div>
+
 
     <div class="coder-tree" x-show="!search.active"
         @dragover="onRootDragOver($event)"

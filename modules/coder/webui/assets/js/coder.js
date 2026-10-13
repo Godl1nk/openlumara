@@ -785,6 +785,13 @@ const CODER_PANEL = {
             try {
                 CODER_CM._coderThemeOff();
             } catch (e) {}
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+            // sync the latest text back into the store before letting go,
+            // so unsaved edits survive a modal swap (ctrl+p quick-open
+            // unmounts the file modal; closeQuick reopens it from here)
+            try {
+                this.editor.content = CODER_CM.getValue();
+            } catch (e) {}
             // the editor's DOM goes away with the modal unmount; dropping the
             // reference is all the teardown a GC'd CodeMirror needs
             CODER_CM = null;
@@ -1073,6 +1080,14 @@ const CODER_PANEL = {
     quickNav(delta) {
         const max = this.quickMatches().length - 1;
         this.quick.idx = Math.max(0, Math.min(this.quick.idx + delta, max));
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+        // keep the active row visible: rAF fires after Alpine's reactive
+        // DOM update, so the .active class has already moved
+        requestAnimationFrame(() => {
+            const el = document.querySelector(".coder-quick-list .coder-quick-item.active");
+            if (el) el.scrollIntoView({ block: "nearest" });
+        });
     },
 
     quickEnter() {
@@ -1087,6 +1102,10 @@ const CODER_PANEL = {
 
     closeQuick() {
         Alpine.store("ui").closeModal();
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+        // if the file editor was open behind quick-open, fall back into it
+        // (content was synced in destroyEditor, dirty flag intact)
+        if (this.editor.path) Alpine.store("ui").openModal("coder_file");
     },
 
     /* ---- drag & drop moving ---- */
@@ -1227,35 +1246,66 @@ const CODER_PANEL = {
 };
 
 // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-// tiny fuzzy scorer for quick-open: subsequence match with bonuses for
-// consecutive runs and path-segment starts; shorter paths win ties.
+// strict fuzzy scorer for quick-open. the very first version gave every
+// subsequence a positive score, so scattered junk letters matched
+// everything. rules:
+//  - always scored against the full path (an earlier basename-only rule
+//    was reverted: too surprising)
+//  - consecutive runs and path-segment starts pay; gaps cost; crossing a
+//    "/" costs a little extra but stays possible
+//  - hits that land entirely in the filename get a bonus so they rank
+//    above deep-path matches
+//  - results must end up strictly positive to be shown at all
 function coderFuzzyScore(text, q) {
     let ti = 0;
     let score = 0;
     let run = 0;
+    let firstFound = -1;
 
     for (let qi = 0; qi < q.length; qi++) {
         const found = text.indexOf(q[qi], ti);
         if (found === -1) return 0;
 
-        if (found === ti) {
+        const gap = found - ti;
+        if (gap === 0) {
             run++;
-            score += 4 + run;
+            score += 5 + run * 2;
         } else {
             run = 0;
-            score += 1;
+            let crossed = 0;
+            for (let i = ti; i < found; i++) {
+                if (text[i] === "/") crossed++;
+            }
+            score += 1 - Math.min(gap, 10) - crossed * 3;
         }
 
         if (found === 0 || text[found - 1] === "/") score += 6;
+        if (firstFound === -1) firstFound = found;
         ti = found + 1;
     }
 
-    return score - Math.min(text.length, 60) / 60;
+    // entire match lives in the filename: prefer it over path matches
+    if (firstFound > text.lastIndexOf("/")) score += 5;
+
+    // shorter names win ties; junk-scoring matches sink below zero and
+    // get filtered out by the s > 0 check in quickMatches
+    return score - Math.min(text.length, 60) / 10;
 }
 
 document.addEventListener("alpine:init", () => {
     Alpine.store("coderPanel", CODER_PANEL);
 });
+
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+// ctrl+p / cmd+p -> fuzzy quick-open. capture phase so we get the key
+// before the browser (print dialog) or CodeMirror does; openQuickOpen
+// itself no-ops (leaving print alone) unless the coder sidebar is visible.
+window.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+        && String(event.key).toLowerCase() === "p") {
+        CODER_PANEL.openQuickOpen(event);
+    }
+}, true);
 
 // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
 // fresh Proxy per mount (see shell.js shellTermComponent for why x-data
