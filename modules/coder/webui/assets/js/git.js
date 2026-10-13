@@ -32,12 +32,9 @@ const GIT_PANEL = {
     // branch management (manage-branches modal state)
     branchModal: { newName: "", confirming: null, submitting: false, error: "" },
     _currentBranch: "",
-    // blame
-    blame: { path: "", lines: [], loading: false },
     // conflicts
     conflicts: [],
-    // split diff
-    splitDiff: { active: false, rows: [], loading: false },
+
 
     async refresh(force = false) {
         // own sandbox picker (header button forces a rescan of both the
@@ -363,27 +360,6 @@ const GIT_PANEL = {
     },
 
     /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-       blame # */
-    async openBlame(filePath) {
-        this.blame = { path: filePath, lines: [], loading: true };
-        Alpine.store("ui").openModal("git_blame");
-        try {
-            const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}&path=${encodeURIComponent(filePath)}`;
-            const data = await simpleApiFetch("/api/ext/coder/git_blame?" + params);
-            this.blame.lines = data.lines || [];
-        } catch (e) {
-            this.blame.lines = [];
-            this.error = this.errorText(e);
-        } finally {
-            this.blame.loading = false;
-        }
-    },
-
-    closeBlame() {
-        Alpine.store("ui").closeModal();
-    },
-
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
        conflicts # */
     async loadConflicts() {
         try {
@@ -411,27 +387,7 @@ const GIT_PANEL = {
         Alpine.store("ui").closeModal();
     },
 
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-       split diff # */
-    async openSplitDiff(c) {
-        this.splitDiff = { active: true, rows: [], loading: true, path: c.path, staged: c.staged, untracked: !!c.untracked };
-        Alpine.store("ui").openModal("git_split_diff");
-        const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}` +
-            `&path=${encodeURIComponent(c.path)}&staged=${c.staged ? 1 : 0}&untracked=${c.untracked ? 1 : 0}`;
-        try {
-            const data = await simpleApiFetch("/api/ext/coder/git_split_diff?" + params);
-            this.splitDiff.rows = data.rows || [];
-        } catch (e) {
-            this.splitDiff.rows = [];
-        } finally {
-            this.splitDiff.loading = false;
-        }
-    },
 
-    closeSplitDiff() {
-        this.splitDiff.active = false;
-        Alpine.store("ui").closeModal();
-    },
 
     async doPush() {
         if (this.push.pushing) return;
@@ -463,16 +419,22 @@ const GIT_PANEL = {
     },
 
     openDiff(c) {
-        this.diff = { path: c.path, staged: c.staged, untracked: !!c.untracked, lines: ["loading.."], loading: true };
+        this.diff = { path: c.path, staged: c.staged, untracked: !!c.untracked, lines: ["loading.."], rows: [], loading: true };
         Alpine.store("ui").openModal("git_diff");
 
         const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}` +
             `&path=${encodeURIComponent(c.path)}&staged=${c.staged ? 1 : 0}&untracked=${c.untracked ? 1 : 0}`;
 
-        simpleApiFetch(`/api/ext/coder/git_diff?${params}`)
+        // fetch unified (mobile) and split (desktop) in parallel
+        const unified = simpleApiFetch(`/api/ext/coder/git_diff?${params}`)
             .then(d => { this.diff.lines = String(d.diff || "(no changes)").split("\n"); })
-            .catch(e => { this.diff.lines = [this.errorText(e)]; })
-            .finally(() => { this.diff.loading = false; });
+            .catch(e => { this.diff.lines = [this.errorText(e)]; });
+
+        const split = simpleApiFetch(`/api/ext/coder/git_split_diff?${params}`)
+            .then(d => { this.diff.rows = d.rows || []; })
+            .catch(() => { this.diff.rows = []; });
+
+        Promise.all([unified, split]).finally(() => { this.diff.loading = false; });
     },
 
     closeDiff() {
