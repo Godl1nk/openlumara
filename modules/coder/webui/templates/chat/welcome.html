@@ -80,7 +80,8 @@
 
         {# ---- git strip: repo · branch · dirty/clean, then the 5 most
               recent commits in the git log modal's hash+subject format ---- #}
-        <div class="coder-welcome-git" x-show="panel.git.loaded && panel.git.is_repo" x-cloak>
+        <div class="coder-welcome-git" x-show="panel.git.loaded && panel.git.is_repo" x-cloak
+            :class="{ 'gw-has-above': panel.pinned.length || panel.recents.length }">
             <div class="gw-head">
                 <span class="gw-repo" x-text="panel.git.subpath ? panel.git.subpath.split('/').pop() : panel.sandbox"
                     :title="panel.sandbox + '/' + (panel.git.subpath || '')"></span>

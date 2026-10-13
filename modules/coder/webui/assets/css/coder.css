@@ -1133,6 +1133,9 @@ div.CodeMirror-lint-tooltip {
     min-width: 0;
     font-size: 11px;
     color: var(--text-secondary, #999);
+}
+
+.coder-welcome .coder-welcome-git.gw-has-above {
     border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.07));
     padding-top: 10px;
 }
