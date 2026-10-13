@@ -63,11 +63,7 @@ class Coder(core.module.Module):
             "depends": "insert_sandbox_paths_into_system_prompt"
         },
 
-        # webui editor extensions (umbrella toggle; sub-settings hang off it)
-        "enable_webui_extension": {
-            "default": False,
-            "description": "Master switch for the optional webui file-editor extensions. Currently gates vim mode."
-        },
+        # webui editor extensions (umbrella toggle is auto-detected from the module's webui folder)
         "vim_mode": {
             "default": False,
             "description": "Vim keybindings (normal/insert/visual, motions, text objects) in the webui file editor.",
