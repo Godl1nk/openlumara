@@ -1,0 +1,16 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   doc viewer modal: renders a doc file (markdown via marked, fallback <pre>).
+   Auto-discovered, opened via $store.ui.openModal('doc_viewer'). #}
+<template x-if="$store.ui.currentModal === 'doc_viewer' && $store.docsPanel && $store.docsPanel.viewer.open" x-cloak>
+    <div class="modal doc-viewer-modal" @keydown.escape.window="$store.docsPanel.closeViewer()">
+        <div class="header">
+            <h2 class="doc-viewer-title" x-text="$store.docsPanel.viewer.path"></h2>
+            <button class="close" @click="$store.docsPanel.closeViewer()" aria-label="Close document">&times;</button>
+        </div>
+
+        <div class="doc-viewer-body">
+            <div class="doc-viewer-error" x-show="$store.docsPanel.viewer.error" x-text="$store.docsPanel.viewer.error"></div>
+            <div class="doc-viewer-content" x-show="!$store.docsPanel.viewer.error" x-html="$store.docsPanel.viewer.html"></div>
+        </div>
+    </div>
+</template>

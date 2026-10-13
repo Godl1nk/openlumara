@@ -1,0 +1,48 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   scheduler sidebar tab: all scheduled jobs with edit/delete and a
+   create modal. logic lives in assets/js/scheduler.js (SCHEDULER_PANEL). #}
+<div class="sched-panel" x-data="schedulerPanelComponent()" x-intersect.enter="refresh()">
+
+    <div class="sched-header">
+        <span class="sched-title">Jobs</span>
+        <div class="sched-header-actions">
+            <button type="button" class="sched-icon-btn" title="Add job" @click="openCreate()">
+                {% include 'svg/add.svg' %}
+            </button>
+            <button type="button" class="sched-icon-btn" title="Refresh" @click="refresh(true)">
+                {% include 'svg/reload.svg' %}
+            </button>
+        </div>
+    </div>
+
+    <div class="sched-list">
+        <template x-if="loading">
+            <div class="sched-empty">loading jobs..</div>
+        </template>
+
+        <template x-if="!loading && jobs.length === 0">
+            <div class="sched-empty">no scheduled jobs</div>
+        </template>
+
+        <template x-for="job in jobs" :key="job.id">
+            <article class="sched-card">
+                <div class="sched-card-top">
+                    <span class="sched-when" x-text="job.display"></span>
+                    <span class="sched-channel" x-show="job.channel" x-text="job.channel"></span>
+                    <div class="sched-actions">
+                        <button type="button" class="sched-action icon" title="Edit job" aria-label="Edit job" @click="openEdit(job)">
+                            {% include 'svg/pencil.svg' %}
+                        </button>
+                        <button type="button" class="sched-action icon danger" title="Delete job" aria-label="Delete job" @click="remove(job)">
+                            {% include 'svg/trash.svg' %}
+                        </button>
+                    </div>
+                </div>
+                <p class="sched-action-text" x-text="job.action"></p>
+                <div class="sched-next" x-show="!job.recurring && job.trigger_time" x-text="'next: ' + fmtWhen(job.trigger_time)"></div>
+            </article>
+        </template>
+    </div>
+
+    <div class="sched-footer" x-show="error" x-text="error"></div>
+</div>

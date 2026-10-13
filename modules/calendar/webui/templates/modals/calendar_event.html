@@ -1,0 +1,63 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   calendar event modal: create + edit. Auto-discovered from templates/modals/,
+   opened via $store.ui.openModal('calendar_event'). Shares the calendarPanel store. #}
+<template x-if="$store.ui.currentModal === 'calendar_event' && $store.calendarPanel && $store.calendarPanel.editing" x-cloak>
+    <div class="modal cal-event-modal" @keydown.escape.window="$store.calendarPanel.closeModal()">
+        <div class="header">
+            <h2 x-text="$store.calendarPanel.editing.id ? 'Edit event' : 'New event'"></h2>
+            <button class="close" @click="$store.calendarPanel.closeModal()" aria-label="Close event editor">&times;</button>
+        </div>
+
+        <div class="cal-event-body">
+            <label class="cal-field-label" for="cal-ev-title">title</label>
+            <input
+                id="cal-ev-title"
+                class="cal-input"
+                placeholder="appointment, deadline,.."
+                x-model="$store.calendarPanel.form.title"
+                @keydown.enter.prevent="$store.calendarPanel.save()"
+            >
+
+            <div class="cal-field-row">
+                <div class="cal-field-col">
+                    <label class="cal-field-label" for="cal-ev-date">date</label>
+                    <input id="cal-ev-date" class="cal-input" type="date" x-model="$store.calendarPanel.form.date">
+                </div>
+                <div class="cal-field-col">
+                    <label class="cal-field-label" for="cal-ev-time">time</label>
+                    <input id="cal-ev-time" class="cal-input" type="time" x-model="$store.calendarPanel.form.time">
+                </div>
+            </div>
+
+            <label class="cal-check-row">
+                <input type="checkbox" x-model="$store.calendarPanel.form.notify">
+                <span>notify me</span>
+            </label>
+
+            <template x-if="$store.calendarPanel.form.notify">
+                <div>
+                    <label class="cal-field-label" for="cal-ev-channel">notify via</label>
+                    <select id="cal-ev-channel" class="cal-input" x-model="$store.calendarPanel.form.channel">
+                        <option value="">default channel</option>
+                        <template x-for="ch in $store.calendarPanel.channels" :key="ch">
+                            <option :value="ch" x-text="ch"></option>
+                        </template>
+                    </select>
+                </div>
+            </template>
+
+            <div class="cal-event-actions">
+                <button type="button" class="cal-action" @click="$store.calendarPanel.closeModal()">cancel</button>
+                <button
+                    type="button"
+                    class="cal-action primary"
+                    :disabled="$store.calendarPanel.saving || !$store.calendarPanel.form.title.trim() || !$store.calendarPanel.form.date"
+                    @click="$store.calendarPanel.save()"
+                    x-text="$store.calendarPanel.saving ? 'saving..' : 'save'"
+                ></button>
+            </div>
+
+            <div class="cal-footer" x-show="$store.calendarPanel.error" x-text="$store.calendarPanel.error"></div>
+        </div>
+    </div>
+</template>

@@ -1,0 +1,39 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   tutorial welcome panel: the getting-started instructions that used to be
+   injected into the system prompt now render right on the welcome page.
+   dismissible per-browser (localStorage); disabling the tutorial module
+   removes this panel entirely. #}
+
+{% macro below_message() %}
+<div class="tut-panel" x-data="{ dismissed: localStorage.getItem('tutorial_welcome_hidden') === '1' }" x-show="!dismissed" x-cloak>
+    <button type="button" class="tut-dismiss" title="Hide this panel (you can re-enable it by re-enabling the tutorial module settings later)" @click="localStorage.setItem('tutorial_welcome_hidden', '1'); dismissed = true" aria-label="Dismiss tutorial">&times;</button>
+
+    <div class="tut-heading">getting started with openlumara</div>
+
+    <div class="tut-grid">
+        <div class="tut-item">
+            <span class="tut-item-title">make it yours</span>
+            <span>open the <strong>settings</strong> (gear icon, top of the chat) to toggle channels &amp; modules and tweak their settings.</span>
+        </div>
+        <div class="tut-item">
+            <span class="tut-item-title">modules do the magic</span>
+            <span>modules give the AI tools, add commands, run things in the background and shape its system prompt. try enabling a few!</span>
+        </div>
+        <div class="tut-item">
+            <span class="tut-item-title">ask me anything</span>
+            <span>the <strong>docs</strong> module is on by default: ask me about openlumara itself and I'll look it up. browse it in the <strong>docs</strong> sidebar tab too.</span>
+        </div>
+        <div class="tut-item">
+            <span class="tut-item-title">turn this off</span>
+            <span>don't need this anymore? disable the <strong>tutorial</strong> module in settings &rarr; modules.</span>
+        </div>
+    </div>
+
+    <div class="tut-commands">
+        <span class="tut-cmd"><code>/new</code> new chat</span>
+        <span class="tut-cmd"><code>/stop</code> cancel what the AI is doing</span>
+        <span class="tut-cmd"><code>/compress</code> summarize old context (revert by deleting a message above the dotted line)</span>
+        <span class="tut-cmd"><code>/config</code> change settings from chat</span>
+    </div>
+</div>
+{% endmacro %}

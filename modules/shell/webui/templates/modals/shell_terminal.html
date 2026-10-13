@@ -1,0 +1,42 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   shell pop-out terminal modal: same store as the sidebar terminal panel,
+   so output history and pending input carry over both ways. Auto-discovered,
+   opened via $store.ui.openModal('shell_terminal'). #}
+<template x-if="$store.ui.currentModal === 'shell_terminal' && $store.shellTerm" x-cloak>
+    <div class="modal shell-modal" @keydown.escape.window="$store.shellTerm.closeModal()">
+        <div class="header">
+            <h2>Terminal</h2>
+            <button class="close" @click="$store.shellTerm.closeModal()" aria-label="Close terminal">&times;</button>
+        </div>
+
+        <div class="term term-modal-term" x-data="shellTermComponent()" x-init="$nextTick(() => { $refs.inputEl && $refs.inputEl.focus(); })">
+            <div class="term-screen" @click="focusInput($el)" x-ref="screen">
+                <div class="term-out" x-ref="out">
+                    <template x-for="(line, i) in lines" :key="i">
+                        <div class="term-line" :class="'term-line-' + line.type"><span x-text="line.text"></span></div>
+                    </template>
+                    <div class="term-line term-line-running" x-show="running"><span>...</span></div>
+                </div>
+
+                <div class="term-inputline">
+                    <span class="term-prompt">lumara:~$</span>
+                    <span class="term-typed" x-text="input"></span><span class="term-cursor" x-show="!running">&nbsp;</span>
+                    <input
+                        type="text"
+                        class="term-capture"
+                        x-ref="inputEl"
+                        x-model="input"
+                        autocomplete="off"
+                        autocorrect="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        aria-label="Terminal command input"
+                        @keydown.enter.prevent="submit()"
+                        @keydown.up.prevent="histUp()"
+                        @keydown.down.prevent="histDown()"
+                    >
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

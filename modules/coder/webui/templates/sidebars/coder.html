@@ -1,0 +1,139 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   coder sidebar tab: sandbox dropdown + lazy file tree; clicking a file
+   opens the coder_file edit modal. logic lives in assets/js/coder.js. #}
+<div class="coder-panel" x-data="coderPanelComponent()" x-intersect.enter="refresh()"
+    @keydown.ctrl.p.window="openQuickOpen($event)"
+    @keydown.meta.p.window="openQuickOpen($event)">
+
+    <div class="coder-header">
+        <span class="coder-title">Coder</span>
+        <button type="button" class="coder-icon-btn" title="Refresh tree" @click="refresh(true)">
+            {% include 'svg/reload.svg' %}
+        </button>
+    </div>
+
+    <div class="coder-sandbox">
+        <select class="coder-select" aria-label="Sandbox" x-model="sandbox" @change="onSandboxChange()">
+            <template x-for="s in sandboxes" :key="s">
+                <option :value="s" x-text="s"></option>
+            </template>
+        </select>
+        <span class="coder-readonly-badge" x-show="read_only" title="the coder module is in read-only mode">read-only</span>
+    </div>
+
+    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       recursive sandbox search: results replace the tree until cleared.
+       .* toggles regex mode. #}
+    <div class="coder-searchrow">
+        <input
+            type="text"
+            class="coder-search"
+            placeholder="search sandbox.. enter to go"
+            aria-label="Search sandbox"
+            autocomplete="off"
+            spellcheck="false"
+            x-model="search.query"
+            @keydown.enter="runSearch()"
+            @keydown.escape="clearSearch()"
+        >
+        <button type="button" class="coder-search-mode" :class="{ on: search.regex }" title="regex mode" @click="search.regex = !search.regex">.*</button>
+        <button type="button" class="coder-search-clear" x-show="search.active" title="back to tree" @click="clearSearch()">&times;</button>
+    </div>
+
+    <div class="coder-tree" x-show="!search.active"
+        @dragover="onRootDragOver($event)"
+        @drop="onRootDrop($event)"
+        :class="{ 'drop-target': dropTarget === '__root__' }">
+        <template x-if="loading">
+            <div class="coder-empty">loading..</div>
+        </template>
+
+        <template x-if="!loading && !sandboxes.length">
+            <div class="coder-empty">no sandboxes configured in the coder settings</div>
+        </template>
+
+        <template x-if="!loading && sandbox && rows.length === 0">
+            <div class="coder-empty">this sandbox is empty</div>
+        </template>
+
+        <template x-for="row in rows" :key="row.path">
+            <div
+                class="coder-row"
+                :class="{ dim: row.hidden || row.blacklisted, 'drop-target': dropTarget === row.path }"
+                :style="`padding-left: ${8 + row.depth * 14}px`"
+                draggable="true"
+                @click="row.is_dir ? toggle(row) : openFile(row)"
+                @contextmenu.prevent="openMenu($event, row)"
+                @dragstart="onDragStart($event, row)"
+                @dragend="onDragEnd()"
+                @dragover="onRowDragOver($event, row)"
+                @drop="row.is_dir ? onFolderDrop($event, row) : onFileDrop($event, row)"
+                :title="row.path"
+            >
+                <span class="coder-chevron" x-show="row.is_dir" :class="{ open: expanded[row.path] }">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
+                <span class="coder-icon" x-show="row.is_dir">
+                    {% include 'svg/folder.svg' %}
+                </span>
+                <span class="coder-icon" x-show="!row.is_dir">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </span>
+                <span class="coder-name" x-text="row.name"></span>
+            </div>
+        </template>
+    </div>
+
+    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       search results: click jumps straight to the line in the editor #}
+    <div class="coder-tree coder-results" x-show="search.active" x-cloak>
+        <template x-if="search.running">
+            <div class="coder-empty">searching..</div>
+        </template>
+
+        <template x-if="!search.running && search.error">
+            <div class="coder-empty" x-text="search.error"></div>
+        </template>
+
+        <template x-if="!search.running && !search.error && search.results.length === 0 && search.done">
+            <div class="coder-empty">no matches</div>
+        </template>
+
+        <template x-if="search.truncated">
+            <div class="coder-empty">showing first 200 matches - refine your query</div>
+        </template>
+
+        <template x-for="(r, i) in search.results" :key="i">
+            <div class="coder-result" @click="openResult(r)" :title="`${r.file}:${r.line}`">
+                <div class="coder-result-file">
+                    <span class="p" x-text="r.file"></span><span class="ln" x-text="':' + r.line"></span>
+                </div>
+                <div class="coder-result-line" x-text="r.text"></div>
+            </div>
+        </template>
+    </div>
+
+    <div class="coder-footer" x-show="error" x-text="error"></div>
+
+    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+       right-click menu. position:fixed so the sidebar's overflow never
+       clips it; closes on any outside click or Escape. New file/folder on
+       both entry types: on a file they target the folder that contains
+       the file (openPrompt resolves the parent either way). #}
+    <template x-if="menu.open">
+        <div class="coder-menu" :style="`left: ${menu.x}px; top: ${menu.y}px`"
+            @click.window="closeMenu()"
+            @keydown.escape.window="closeMenu()">
+            <button type="button" class="coder-menu-item" @click="menuAction((row) => openPrompt('new_file', row))">New file</button>
+            <button type="button" class="coder-menu-item" @click="menuAction((row) => openPrompt('new_folder', row))">New folder</button>
+            <hr class="coder-menu-sep">
+            <button type="button" class="coder-menu-item" @click="menuAction((row) => openPrompt('rename', row))">Rename</button>
+            <button type="button" class="coder-menu-item" @click="menuAction((row) => openPrompt('move', row))">Move</button>
+            <button type="button" class="coder-menu-item" x-show="!read_only" @click="menuAction((row) => duplicateRow(row))">Duplicate</button>
+            <button type="button" class="coder-menu-item" @click="menuAction((row) => copyPath(row))">Copy path</button>
+            <hr class="coder-menu-sep">
+            <button type="button" class="coder-menu-item" @click="menuAction((row) => askAI(row))">Ask AI</button>
+            <button type="button" class="coder-menu-item danger" @click="menuAction((row) => deleteRow(row))">Delete</button>
+        </div>
+    </template>
+</div>

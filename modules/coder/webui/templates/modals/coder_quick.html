@@ -1,0 +1,38 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   fuzzy quick-open modal (ctrl+p / cmd+p). file list comes from
+   /api/ext/coder/files, scored client-side. #}
+<template x-if="$store.ui.currentModal === 'coder_quick' && $store.coderPanel" x-cloak>
+    <div class="modal coder-quick-modal" @keydown.escape.window="$store.coderPanel.closeQuick()">
+        <div class="coder-quick-body">
+            <input
+                type="text"
+                class="coder-quick-input"
+                placeholder="type to find a file.."
+                aria-label="Find file"
+                autocomplete="off"
+                spellcheck="false"
+                x-model="$store.coderPanel.quick.query"
+                @input="$store.coderPanel.quick.idx = 0"
+                @keydown.down.prevent="$store.coderPanel.quickNav(1)"
+                @keydown.up.prevent="$store.coderPanel.quickNav(-1)"
+                @keydown.enter.prevent="$store.coderPanel.quickEnter()"
+                x-init="$nextTick(() => $el.focus())"
+            >
+
+            <div class="coder-quick-list">
+                <template x-for="(f, i) in $store.coderPanel.quickMatches()" :key="f">
+                    <div
+                        class="coder-quick-item"
+                        :class="{ active: i === $store.coderPanel.quick.idx }"
+                        @click="$store.coderPanel.quickOpenFile(f)"
+                        @mouseenter="$store.coderPanel.quick.idx = i"
+                    >
+                        <span x-text="f"></span>
+                    </div>
+                </template>
+
+                <div class="coder-quick-empty" x-show="!$store.coderPanel.quickMatches().length">no match</div>
+            </div>
+        </div>
+    </div>
+</template>

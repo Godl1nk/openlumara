@@ -1,0 +1,42 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   shell sidebar tab: a linux-style terminal running commands in the
+   module's sandbox. shares its state with the pop-out modal
+   (modals/shell_terminal.html) via the shellTerm store.
+   borderless chrome: no titlebar here, just a faint pop-out button
+   floating in the top-right corner (brightens on hover). clearing is
+   still possible via the 'clear' command or the modal's titlebar. #}
+<div class="term term-panel" x-data="shellTermComponent()" x-intersect.enter="boot()">
+
+    <button type="button" class="term-popout" title="Pop out to full window" aria-label="Pop out terminal" @click="popout()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+    </button>
+
+    <div class="term-screen" @click="focusInput($el)" x-ref="screen">
+        <div class="term-out" x-ref="out">
+            <template x-for="(line, i) in lines" :key="i">
+                <div class="term-line" :class="'term-line-' + line.type"><span x-text="line.text"></span></div>
+            </template>
+            <div class="term-line term-line-running" x-show="running"><span>...</span></div>
+        </div>
+
+        <div class="term-inputline">
+            <span class="term-prompt">lumara:~$</span>
+            <span class="term-typed" x-text="input"></span><span class="term-cursor" x-show="!running">&nbsp;</span>
+            <input
+                type="text"
+                class="term-capture"
+                x-ref="inputEl"
+                x-model="input"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                aria-label="Terminal command input"
+                @keydown.enter.prevent="submit()"
+                @keydown.up.prevent="histUp()"
+                @keydown.down.prevent="histDown()"
+                @keydown.ctrl.l.prevent="$refs.inputEl.blur()"
+            >
+        </div>
+    </div>
+</div>

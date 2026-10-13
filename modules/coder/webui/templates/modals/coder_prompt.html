@@ -1,0 +1,38 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   tiny name-prompt modal powering the sidebar context menu: new file /
+   new folder / rename / move. state lives in coderPanel.prompt.
+   Auto-discovered, opened via $store.ui.openModal('coder_prompt'). #}
+<template x-if="$store.ui.currentModal === 'coder_prompt' && $store.coderPanel && $store.coderPanel.prompt.mode" x-cloak>
+    <div class="modal coder-prompt-modal" @keydown.escape.window="$store.coderPanel.closePrompt()">
+        <div class="header">
+            <h2 class="coder-editor-title" x-text="$store.coderPanel.prompt.title"></h2>
+            <button class="close" @click="$store.coderPanel.closePrompt()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="coder-prompt-body">
+            <input
+                type="text"
+                x-model="$store.coderPanel.prompt.value"
+                :placeholder="$store.coderPanel.prompt.hint"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Name"
+                @keydown.enter.prevent="$store.coderPanel.submitPrompt()"
+                x-init="$nextTick(() => { $el.focus(); $el.select(); })"
+            >
+
+            <div class="coder-prompt-error" x-show="$store.coderPanel.prompt.error" x-text="$store.coderPanel.prompt.error"></div>
+
+            <div class="coder-editor-actions">
+                <button type="button" class="coder-action" @click="$store.coderPanel.closePrompt()">cancel</button>
+                <button
+                    type="button"
+                    class="coder-action primary"
+                    :disabled="$store.coderPanel.prompt.submitting"
+                    @click="$store.coderPanel.submitPrompt()"
+                    x-text="$store.coderPanel.prompt.submitting ? 'working..' : 'ok'"
+                ></button>
+            </div>
+        </div>
+    </div>
+</template>

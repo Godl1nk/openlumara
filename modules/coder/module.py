@@ -1,10 +1,12 @@
 import core
+import channels.webui.api as webui
 import os
 import importlib
 import shutil
 import regex
 import glob
 import fnmatch
+import subprocess
 import tree_sitter_language_pack as tslp
 
 class Coder(core.module.Module):
@@ -720,3 +722,736 @@ class Coder(core.module.Module):
                     return "read-only mode disabled"
                 else:
                     return "read-only mode enabled"
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    # webui extension routes for the coder sidebar (sandbox dropdown +
+    # lazy file tree + edit modal). private methods are ignored by the tool
+    # loader; @webui.route exposes them under /api/ext/coder/<path>.
+    # saves run through the same treesitter syntax gate as coder_file_edit.
+
+    # files the webui editor refuses to open (binary / huge)
+    ui_max_read_bytes = 1_000_000
+
+    @webui.route("sandboxes")
+    async def _route_sandboxes(self, body=None, query=None):
+        """sandbox names for the dropdown + whether the module is read-only"""
+        return {
+            "sandboxes": await self._get_sandbox_paths(),
+            "read_only": bool(self.config.get("read-only")),
+        }
+
+    @webui.route("tree")
+    async def _route_tree(self, body=None, query=None):
+        """one directory level of a sandbox. path is relative to the sandbox
+        root ('' = root). returns entries sorted folders-first."""
+        sandbox = (query or {}).get("sandbox", "")
+        rel_path = (query or {}).get("path", "") or ""
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            target = await self._get_sandbox_subpath(sandbox, rel_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if not os.path.isdir(target):
+            return self.result("not a folder", success=False)
+
+        blacklist = self.config.get("folder_blacklist") or []
+        entries = []
+        try:
+            for name in os.listdir(target):
+                full = os.path.join(target, name)
+                is_dir = os.path.isdir(full)
+                child_rel = os.path.normpath(os.path.join(rel_path, name)).replace(os.sep, "/")
+                entries.append({
+                    "name": name,
+                    "path": child_rel,
+                    "is_dir": is_dir,
+                    "hidden": name.startswith("."),
+                    "blacklisted": is_dir and name in blacklist,
+                })
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        entries.sort(key=lambda e: (not e["is_dir"], e["name"].lower()))
+        return {"path": rel_path, "entries": entries}
+
+    @webui.route("read")
+    async def _route_read(self, body=None, query=None):
+        """raw text of a file, for the edit modal"""
+        sandbox = (query or {}).get("sandbox", "")
+        rel_path = (query or {}).get("path", "")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            target = await self._get_sandbox_subpath(sandbox, rel_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        try:
+            size = os.path.getsize(target)
+            if size > self.ui_max_read_bytes:
+                return self.result(f"file is too large to edit in the webui ({size} bytes)", success=False)
+
+            with open(target, 'r', encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            return self.result("this looks like a binary file and can't be edited here", success=False)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        return {"path": rel_path, "content": content, "read_only": bool(self.config.get("read-only"))}
+
+    @webui.route("save", method="POST")
+    async def _route_save(self, body=None, query=None):
+        """writes the modal's content back to disk, gated by the same
+        syntax check coder_file_edit uses. refuses in read-only mode."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        rel_path = (body or {}).get("path", "")
+        content = (body or {}).get("content", "")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            target = await self._get_sandbox_subpath(sandbox, rel_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        syntax_errors = await self._check_syntax(content, target)
+        if syntax_errors:
+            return self.result({"errors": syntax_errors, "message": "Syntax errors detected! File was not written to disk."}, success=False)
+
+        try:
+            with open(target, 'w', encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        return self.result(f"saved {rel_path}")
+
+    @webui.route("create", method="POST")
+    async def _route_create(self, body=None, query=None):
+        """creates an empty file or a folder (webui context menu). empty
+        files always pass syntax, so no treesitter gate here."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        rel_path = (body or {}).get("path", "")
+        is_dir = bool((body or {}).get("is_dir"))
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            target = await self._get_sandbox_subpath(sandbox, rel_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        try:
+            if is_dir:
+                os.makedirs(target, exist_ok=False)
+            else:
+                # 'x' mode: fails if the file exists, no TOCTOU
+                parent = os.path.dirname(target)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                with open(target, 'x') as f:
+                    f.write("")
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        return self.result(f"created {rel_path}")
+
+    @webui.route("move", method="POST")
+    async def _route_move(self, body=None, query=None):
+        """renames or moves an entry: src -> dst, both sandbox-relative.
+        rename is just a move within the same parent."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        src = (body or {}).get("src", "")
+        dst = (body or {}).get("dst", "")
+
+        if not sandbox or not src or not dst:
+            return self.result("sandbox, src and dst are all required", success=False)
+
+        try:
+            src_path = await self._get_sandbox_subpath(sandbox, src)
+            dst_path = await self._get_sandbox_subpath(sandbox, dst)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if os.path.exists(dst_path):
+            return self.result(f"destination already exists: {dst}", success=False)
+
+        try:
+            parent = os.path.dirname(dst_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            shutil.move(src_path, dst_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        return self.result(f"moved {src} -> {dst}")
+
+    @webui.route("delete", method="POST")
+    async def _route_delete(self, body=None, query=None):
+        """deletes a file, or a folder recursively. the webui confirms
+        before calling this; the AI-facing tools stay stricter on purpose."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        rel_path = (body or {}).get("path", "")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            target = await self._get_sandbox_subpath(sandbox, rel_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        try:
+            if os.path.isdir(target):
+                shutil.rmtree(target)
+            else:
+                os.remove(target)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        return self.result(f"deleted {rel_path}")
+
+    @webui.route("duplicate", method="POST")
+    async def _route_duplicate(self, body=None, query=None):
+        """copies a file or folder next to the original as 'name copy.ext'
+        (numbered if taken)."""
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        rel_path = (body or {}).get("path", "")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            src = await self._get_sandbox_subpath(sandbox, rel_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if not os.path.exists(src):
+            return self.result(f"not found: {rel_path}", success=False)
+
+        parent_rel = os.path.dirname(rel_path)
+        base = os.path.basename(rel_path)
+
+        if os.path.isdir(src):
+            stem, ext = base, ""
+        else:
+            stem, ext = os.path.splitext(base)
+
+        n = 1
+        while True:
+            suffix = " copy" if n == 1 else f" copy {n}"
+            new_name = stem + suffix + ext
+            candidate = os.path.join(os.path.dirname(src), new_name)
+            if not os.path.exists(candidate):
+                break
+            n += 1
+
+        try:
+            if os.path.isdir(src):
+                shutil.copytree(src, candidate)
+            else:
+                shutil.copy2(src, candidate)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        new_rel = (parent_rel + "/" if parent_rel else "") + new_name
+        return self.result(f"duplicated to {new_rel}")
+
+    # ----------------------------
+    # webui routes: sandbox search
+    # ----------------------------
+    @webui.route("search", method="POST")
+    async def _route_search(self, body=None, query=None):
+        """recursive literal (or regex) text search across a sandbox.
+        skips hidden/blacklisted folders and binary/huge files, like
+        folder_grep does, but returns flat results for the sidebar UI."""
+        sandbox = (body or {}).get("sandbox", "")
+        needle = (body or {}).get("query", "")
+        use_regex = bool((body or {}).get("regex"))
+        max_matches = min(int((body or {}).get("max_matches") or 200), 500)
+
+        if not sandbox or not needle:
+            return self.result("sandbox and query are both required", success=False)
+
+        try:
+            root = await self._get_full_sandbox_path(sandbox)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        pattern = None
+        if use_regex:
+            try:
+                pattern = regex.compile(needle, regex.IGNORECASE)
+            except Exception as e:
+                return self.result(f"invalid regex: {e}", success=False)
+
+        blacklist = self.config.get("folder_blacklist") or []
+        results = []
+        truncated = False
+
+        for (dirpath, dirnames, filenames) in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in blacklist]
+
+            for fname in filenames:
+                if fname.startswith("."):
+                    continue
+
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    if os.path.getsize(fpath) > self.ui_max_read_bytes:
+                        continue
+
+                    with open(fpath, 'r', encoding="utf-8") as f:
+                        for line_num, line in enumerate(f, 1):
+                            if pattern:
+                                try:
+                                    hit = pattern.search(line, timeout=self.regex_timeout)
+                                except TimeoutError:
+                                    continue
+                            else:
+                                hit = needle.lower() in line.lower()
+
+                            if hit:
+                                results.append({
+                                    "file": os.path.relpath(fpath, root).replace(os.sep, "/"),
+                                    "line": line_num,
+                                    "text": line.rstrip()[:300],
+                                })
+                                if len(results) >= max_matches:
+                                    truncated = True
+                                    break
+                except (UnicodeDecodeError, IsADirectoryError, PermissionError, OSError):
+                    continue
+
+            if truncated:
+                break
+
+        return {"results": results, "truncated": truncated}
+
+    @webui.route("files")
+    async def _route_files(self, body=None, query=None):
+        """flat recursive file list of a sandbox (for fuzzy quick-open).
+        skips hidden/blacklisted folders, caps at 3000 entries."""
+        sandbox = (query or {}).get("sandbox", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._get_full_sandbox_path(sandbox)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        blacklist = self.config.get("folder_blacklist") or []
+        files = []
+
+        for (dirpath, dirnames, filenames) in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in blacklist]
+
+            for fname in filenames:
+                if fname.startswith("."):
+                    continue
+                files.append(os.path.relpath(os.path.join(dirpath, fname), root).replace(os.sep, "/"))
+                if len(files) >= 3000:
+                    return {"files": files, "truncated": True}
+
+        return {"files": files, "truncated": False}
+
+    # ---------------------
+    # webui routes: git
+    # ---------------------
+    async def _run_git_bytes(self, sandbox_root: str, *args, timeout=15):
+        """runs git, returns (returncode, raw stdout bytes). no text mode,
+        no stripping - for output that must be parsed byte-exactly."""
+        try:
+            proc = subprocess.run(
+                ["git", *args],
+                cwd=sandbox_root,
+                capture_output=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            return 127, b"git executable not found"
+        except subprocess.TimeoutExpired:
+            return 124, b"git command timed out"
+        except Exception as e:
+            return 1, str(e).encode("utf-8", "replace")
+
+        return proc.returncode, proc.stdout or b""
+
+    def _parse_porcelain_z(self, raw: bytes):
+        """parses `git status --porcelain=v1 -z` output from raw bytes.
+
+        VERIFIED against real git output with od -c (2026-10-13): the
+        separator is a BARE NUL, and every record is exactly
+        'XY<sp>path' - including codes whose first char is a space (' M').
+        (the space seen after each NUL in hexdumps IS that next record's
+        status code; do not 'eat' it, and do not split on NUL+space.)
+
+        renames/copies emit 'XY<sp>oldpath' followed by a separate field
+        holding the new path.
+
+        with -z, paths are never quoted and never mangled. returns a list
+        of dicts: path / xy / staged / untracked."""
+
+        def decode(data: bytes) -> str:
+            return data.decode("utf-8", "replace").replace(os.sep, "/")
+
+        fields = raw.split(b"\x00")
+
+        entries = []
+        idx = 0
+        while idx < len(fields):
+            field = fields[idx]
+            idx += 1
+
+            if not field:
+                # empty piece after the trailing NUL
+                continue
+
+            if len(field) < 3 or field[2:3] != b" ":
+                # not 'XY path' - malformed for us, skip rather than guess
+                continue
+
+            x = chr(field[0])
+            y = chr(field[1])
+            path = decode(field[3:])
+
+            if x in ("R", "C") or y in ("R", "C"):
+                # next field is the NEW path (kept); consume it either way
+                if idx < len(fields):
+                    newp = fields[idx]
+                    idx += 1
+                    if newp:
+                        path = decode(newp)
+
+            entries.append({
+                "path": path,
+                "xy": x + y,
+                "staged": x not in (" ", "?"),
+                "untracked": x == "?" and y == "?",
+            })
+
+        return entries
+
+    async def _run_git(self, sandbox_root: str, *args, accept=(0,), timeout=15):
+        """runs git in the sandbox root. returns (ok, output).
+        accept lists return codes that count as success."""
+        try:
+            proc = subprocess.run(
+                ["git", *args],
+                cwd=sandbox_root,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            return False, "git executable not found"
+        except subprocess.TimeoutExpired:
+            return False, "git command timed out"
+        except Exception as e:
+            return False, str(e)
+
+        out = (proc.stdout or "").strip()
+        err = (proc.stderr or "").strip()
+
+        if proc.returncode not in accept:
+            return False, (err or out or f"git {args[0] if args else ''} failed (code {proc.returncode})")
+
+        return True, (out or err)
+
+    async def _git_root(self, sandbox: str, subpath: str = ""):
+        """resolves sandbox + optional subpath (sandbox-relative) into the
+        folder git should run in. lets git work on repos nested inside a
+        sandbox, e.g. 'openlumara_dev' within the 'dev' sandbox."""
+        full = await self._get_full_sandbox_path(sandbox)
+        if not subpath:
+            return full
+        return core.sandbox_path(full, subpath)
+
+    def _check_git_paths(self, root: str, paths: list):
+        """ensures repo-relative paths passed to git resolve inside the
+        sandbox. without a subpath the repo root IS the sandbox root, so
+        this only bites for repos nested inside a sandbox."""
+        sandbox_root = os.path.dirname(root)
+        for p in paths:
+            full = os.path.normpath(os.path.join(root, p))
+            if full != sandbox_root and not full.startswith(sandbox_root + os.sep):
+                raise Exception(f"path escapes the sandbox: {p}")
+
+    @webui.route("git_repos")
+    async def _route_git_repos(self, body=None, query=None):
+        """lists git repositories inside a sandbox: the sandbox root itself
+        if it is one, plus nested repos up to 4 folder levels deep. once a
+        repo is found its subtree is skipped, so the list stays shallow."""
+        sandbox = (query or {}).get("sandbox", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._get_full_sandbox_path(sandbox)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        blacklist = self.config.get("folder_blacklist") or []
+        max_depth = 6
+        max_repos = 50
+
+        repos = []
+
+        def is_repo(path):
+            return os.path.isdir(os.path.join(path, ".git")) or os.path.isfile(os.path.join(path, ".git"))
+
+        if is_repo(root):
+            repos.append("")
+
+        for (dirpath, dirnames, filenames) in os.walk(root):
+            rel = os.path.relpath(dirpath, root).replace(os.sep, "/")
+            depth = 0 if rel == "." else len(rel.split("/"))
+
+            # prune hidden + blacklisted folders, and anything too deep
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in blacklist and depth + 1 <= max_depth]
+
+            if depth == 0 or depth > max_depth:
+                continue
+
+            if is_repo(dirpath):
+                repos.append(rel)
+                dirnames[:] = []  # skip the repo's own subtree
+                if len(repos) >= max_repos:
+                    break
+
+        return {"repos": repos}
+
+    @webui.route("git_status")
+    async def _route_git_status(self, body=None, query=None):
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, _ = await self._run_git(root, "rev-parse", "--is-inside-work-tree")
+        if not ok:
+            return {"is_repo": False, "read_only": bool(self.config.get("read-only"))}
+
+        _, branch = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+
+        ok_b, b_out = await self._run_git(root, "branch", "--format=%(refname:short)")
+        branches = [b.strip() for b in b_out.split("\n") if b.strip()] if ok_b else []
+
+        # nul-delimited porcelain, parsed from raw bytes (no text mode,
+        # no stripping) by a dedicated parser with explicit separator
+        # handling. see _parse_porcelain_z for the exact byte format.
+        rc_s, raw_s = await self._run_git_bytes(root, "status", "--porcelain=v1", "-z")
+        changes = self._parse_porcelain_z(raw_s) if rc_s == 0 else []
+
+        return {
+            "is_repo": True,
+            "branch": branch,
+            "branches": branches,
+            "changes": changes,
+            "read_only": bool(self.config.get("read-only")),
+        }
+
+    @webui.route("git_stage", method="POST")
+    async def _route_git_stage(self, body=None, query=None):
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        paths = (body or {}).get("paths", [])
+
+        if not sandbox or not paths:
+            return self.result("sandbox and paths are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, paths)
+            abs_paths = [os.path.normpath(os.path.join(root, p)) for p in paths]
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, out = await self._run_git(root, "add", "--", *abs_paths)
+        if not ok:
+            return self.result(out, success=False)
+
+        return self.result("staged")
+
+    @webui.route("git_unstage", method="POST")
+    async def _route_git_unstage(self, body=None, query=None):
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        paths = (body or {}).get("paths", [])
+
+        if not sandbox or not paths:
+            return self.result("sandbox and paths are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, paths)
+            abs_paths = [os.path.normpath(os.path.join(root, p)) for p in paths]
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, out = await self._run_git(root, "restore", "--staged", "--", *abs_paths)
+        if not ok:
+            return self.result(out, success=False)
+
+        return self.result("unstaged")
+
+    @webui.route("git_commit", method="POST")
+    async def _route_git_commit(self, body=None, query=None):
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        message = (body or {}).get("message", "").strip()
+
+        if not sandbox or not message:
+            return self.result("sandbox and message are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, out = await self._run_git(root, "commit", "-m", message)
+        if not ok:
+            return self.result(out, success=False)
+
+        return self.result(out)
+
+    @webui.route("git_branch", method="POST")
+    async def _route_git_branch(self, body=None, query=None):
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+        name = (body or {}).get("name", "").strip()
+
+        if not sandbox or not name:
+            return self.result("sandbox and name are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, out = await self._run_git(root, "switch", name)
+        if not ok:
+            return self.result(out, success=False)
+
+        return self.result(out or f"switched to {name}")
+
+    @webui.route("git_log")
+    async def _route_git_log(self, body=None, query=None):
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+        limit = min(int((query or {}).get("n", 20)), 100)
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        # %x09 = literal tab: hash and subject are split on the one
+        # character a short hash can never contain. parsed from raw bytes.
+        rc, raw = await self._run_git_bytes(
+            root, "log", f"--pretty=%h%x09%s", f"-n{limit}"
+        )
+        if rc != 0:
+            return self.result(raw.decode("utf-8", "replace").strip() or "git log failed", success=False)
+
+        entries = []
+        for line in raw.decode("utf-8", "replace").splitlines():
+            if not line.strip():
+                continue
+            if "\t" in line:
+                h, msg = line.split("\t", 1)
+            else:
+                h, msg = line, ""
+            entries.append({"hash": h.strip(), "msg": msg})
+
+        return {"log": entries}
+
+    @webui.route("git_diff")
+    async def _route_git_diff(self, body=None, query=None):
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+        rel_path = (query or {}).get("path", "")
+        staged = (query or {}).get("staged", "") in ("1", "true")
+        untracked = (query or {}).get("untracked", "") in ("1", "true")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, [rel_path])
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        # absolute pathspec: git resolves relative ones against the cwd,
+        # which only matches the repo-root-relative porcelain paths when
+        # the repo happens to BE the sandbox root. absolute works from any
+        # cwd, so nested repos stage/unstage/diff the right file.
+        abs_path = os.path.normpath(os.path.join(root, rel_path))
+
+        if untracked:
+            # no-index exits 1 when there IS a diff: accept both codes
+            rc, raw = await self._run_git_bytes(
+                root, "diff", "--no-index", "--", os.devnull, abs_path
+            )
+            ok = rc in (0, 1)
+        elif staged:
+            rc, raw = await self._run_git_bytes(root, "diff", "--staged", "--", abs_path)
+            ok = rc == 0
+        else:
+            rc, raw = await self._run_git_bytes(root, "diff", "--", abs_path)
+            ok = rc == 0
+
+        if not ok:
+            return self.result(raw.decode("utf-8", "replace").strip() or f"git diff failed (code {rc})", success=False)
+
+        text = raw.decode("utf-8", "replace")
+        return {"diff": text if text.strip() else "(no changes)"}

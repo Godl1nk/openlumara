@@ -1,0 +1,123 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   git sidebar tab: branch switcher, staged/unstaged changes with per-file
+   stage toggles + diff viewer, commit box, and an oneline log.
+   follows the sandbox selected in the coder tree tab. #}
+<div class="git-panel" x-data="gitPanelComponent()" x-intersect.enter="refresh()">
+
+    <div class="coder-header">
+        <span class="coder-title">Git</span>
+        <button type="button" class="coder-icon-btn" title="Refresh" @click="refresh(true)">
+            {% include 'svg/reload.svg' %}
+        </button>
+    </div>
+
+    <div class="git-sandbox" x-show="sandbox">
+        <span class="git-sandbox-name" x-text="sandbox"></span>
+        <span class="coder-readonly-badge" x-show="read_only" title="the coder module is in read-only mode">read-only</span>
+    </div>
+
+    <div class="git-body">
+        {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+           repo picker lives OUTSIDE the is_repo block on purpose: the
+           sandbox root may not be a repo while a nested one is, and you
+           must always be able to reach this dropdown to switch out of a
+           non-repo selection. options = root + nested repos from git_repos #}
+        <div class="git-reporow">
+            <svg class="git-branch-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <select class="coder-select" aria-label="Repository" x-model="subpath" @change="switchRepo()">
+                <template x-if="!repos.length">
+                    <option value="">no repos found</option>
+                </template>
+                <template x-for="repo in repos" :key="repo">
+                    <option :value="repo" x-text="repoLabel(repo)"></option>
+                </template>
+            </select>
+        </div>
+
+        <template x-if="loading && !ready">
+            <div class="coder-empty">loading..</div>
+        </template>
+
+        <template x-if="ready && !is_repo">
+            <div class="coder-empty" x-text="error || 'this folder is not a git repository'"></div>
+        </template>
+
+        <template x-if="ready && is_repo">
+            <div class="git-repo">
+
+                <div class="git-branchrow">
+                    <svg class="git-branch-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                    <select class="coder-select" aria-label="Branch" x-model="branch" @change="switchBranch(branch)" :disabled="read_only || !branches.length">
+                        <template x-for="b in branches" :key="b">
+                            <option :value="b" x-text="b"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="git-section-head">
+                    <span>changes <span class="git-count" x-text="changes.length"></span></span>
+                    <span class="git-bulk" x-show="!read_only">
+                        <button type="button" class="coder-menu-item inline" @click="stageAll()" title="stage everything">stage all</button>
+                        <button type="button" class="coder-menu-item inline" @click="unstageAll()" title="unstage everything">unstage</button>
+                    </span>
+                </div>
+
+                <div class="git-changes">
+                    <template x-if="!changes.length">
+                        <div class="coder-empty">working tree clean</div>
+                    </template>
+
+                    {# keyed by path+status, NOT index: the list reorders as
+                       entries change state, and index keys make Alpine reuse
+                       stale nodes (ghost rows showing another file's badge) #}
+                    <template x-for="c in changes" :key="c.path + '|' + c.xy">
+                        <div class="git-change">
+                            <span class="git-badge" :class="{ staged: c.staged, untracked: c.untracked }" x-text="badge(c)"></span>
+                            <span class="git-path" x-text="c.path" :title="'view diff: ' + c.path" @click="openDiff(c)"></span>
+                            <button type="button" class="coder-icon-btn git-stage-btn" x-show="!read_only && !c.staged" title="stage" @click="stage(c.path)">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                            <button type="button" class="coder-icon-btn git-stage-btn" x-show="!read_only && c.staged" title="unstage" @click="unstage(c.path)">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="git-commit" x-show="!read_only">
+                    <textarea
+                        class="git-message"
+                        placeholder="commit message.. (ctrl+enter to commit)"
+                        rows="3"
+                        spellcheck="false"
+                        x-model="message"
+                        @keydown.ctrl.enter.prevent="commit()"
+                        @keydown.meta.enter.prevent="commit()"
+                    ></textarea>
+                    <button
+                        type="button"
+                        class="coder-action primary git-commit-btn"
+                        :disabled="committing || !message.trim() || stagedCount() === 0"
+                        @click="commit()"
+                        x-text="committing ? 'committing..' : 'commit ' + stagedCount() + ' staged'"
+                    ></button>
+                </div>
+
+                <div class="git-logtoggle">
+                    <button type="button" class="coder-menu-item inline" @click="toggleLog()" x-text="showLog ? 'hide log' : 'show log'"></button>
+                </div>
+
+                <div class="git-log" x-show="showLog">
+                    <template x-for="entry in log" :key="entry.hash">
+                        <div class="git-log-entry">
+                            <span class="h" x-text="entry.hash"></span>
+                            <span x-text="entry.msg"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <div class="coder-footer" x-show="error" x-text="error"></div>
+</div>
