@@ -19,7 +19,6 @@ const GIT_PANEL = {
     message: "",
     committing: false,
     log: [],
-    showLog: false,
     diff: { path: "", staged: false, lines: [], loading: false },
 
     async refresh(force = false) {
@@ -142,10 +141,11 @@ const GIT_PANEL = {
         this.error = "";
 
         try {
-            await simpleApiPost("/api/ext/coder/git_commit", { sandbox: this.sandbox, message: msg });
+            await simpleApiPost("/api/ext/coder/git_commit", { sandbox: this.sandbox, subpath: this.subpath, message: msg });
             this.message = "";
             await this.refresh();
-            if (this.showLog) await this.loadLog();
+            // keep the log modal fresh if it happens to be open
+            await this.loadLog();
         } catch (e) {
             this.error = this.errorText(e);
         } finally {
@@ -158,7 +158,7 @@ const GIT_PANEL = {
         this.error = "";
 
         try {
-            await simpleApiPost("/api/ext/coder/git_branch", { sandbox: this.sandbox, name });
+            await simpleApiPost("/api/ext/coder/git_branch", { sandbox: this.sandbox, subpath: this.subpath, name });
         } catch (e) {
             this.error = this.errorText(e);
         }
@@ -166,9 +166,13 @@ const GIT_PANEL = {
         await this.refresh(true);
     },
 
-    async toggleLog() {
-        this.showLog = !this.showLog;
-        if (this.showLog) await this.loadLog();
+    async openLog() {
+        await this.loadLog();
+        Alpine.store("ui").openModal("git_log");
+    },
+
+    closeLog() {
+        Alpine.store("ui").closeModal();
     },
 
     async loadLog() {

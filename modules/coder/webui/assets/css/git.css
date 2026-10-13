@@ -275,32 +275,58 @@
     align-self: flex-end;
 }
 
-.git-panel .git-logtoggle {
-    padding-top: 2px;
+/* ---- commit log modal ---- */
+
+.git-log-modal {
+    width: min(640px, 94vw);
 }
 
-.git-panel .git-log {
+.git-log-modal .coder-editor-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* branch badge next to the title; accent variant of the diff modal's tag */
+.git-log-modal .git-ro-tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: var(--accent, #00d4ff);
+    letter-spacing: 0.04em;
+    flex: 0 0 auto;
+}
+
+.git-log-body {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    padding-bottom: 6px;
+    padding: 8px 10px 14px;
+    max-height: min(70vh, 640px);
+    overflow-y: auto;
 }
 
-.git-panel .git-log-entry {
-    font-size: 11px;
-    padding: 3px 6px;
+.git-log-modal .git-log-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    padding: 4px 8px;
     border-radius: 5px;
     color: var(--text-secondary, #bbb);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
-.git-panel .git-log-entry .h {
+.git-log-modal .git-log-entry:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.git-log-modal .git-log-entry .h {
+    flex: 0 0 auto;
     font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
     color: var(--accent, #00d4ff);
-    margin-right: 6px;
-    opacity: 0.8;
+    opacity: 0.85;
 }
 
 /* ---- diff viewer modal ---- */
