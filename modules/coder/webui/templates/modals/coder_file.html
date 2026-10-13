@@ -6,7 +6,7 @@
    Auto-discovered, opened via $store.ui.openModal('coder_file'). #}
 <template x-if="$store.ui.currentModal === 'coder_file' && $store.coderPanel && $store.coderPanel.editor.path" x-cloak>
     <div class="modal coder-editor-modal"
-        @keydown.escape.window="$store.coderPanel.closeEditor()"
+        @keydown.escape.window="!$store.coderPanel.vim_mode && $store.coderPanel.closeEditor()"
         @keydown.ctrl.s.prevent="$store.coderPanel.save()"
         @keydown.meta.s.prevent="$store.coderPanel.save()"
     >
