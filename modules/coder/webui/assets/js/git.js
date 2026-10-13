@@ -20,6 +20,10 @@ const GIT_PANEL = {
     committing: false,
     log: [],
     diff: { path: "", staged: false, lines: [], loading: false },
+    push: {
+        branch: "", remote: "", upstream: "", has_upstream: false, target: "",
+        ahead: [], behind: 0, dirty: false, loading: false, pushing: false, error: "",
+    },
 
     async refresh(force = false) {
         const coder = Alpine.store("coderPanel");
@@ -173,6 +177,51 @@ const GIT_PANEL = {
 
     closeLog() {
         Alpine.store("ui").closeModal();
+    },
+
+    async openPush() {
+        // fetch exactly what would be pushed BEFORE showing the confirm
+        // modal; errors (no remote, detached HEAD) go to the footer.
+        if (this.push.loading || this.push.pushing) return;
+        this.push.loading = true;
+        this.push.error = "";
+
+        try {
+            const data = await simpleApiFetch(`/api/ext/coder/git_ahead?sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}`);
+            const ahead = data.ahead || [];
+            if (!ahead.length) {
+                this.error = "nothing to push: every commit is already on the remote";
+                return;
+            }
+            this.push = { ...this.push, ...data, ahead, loading: false, pushing: false, error: "" };
+            Alpine.store("ui").openModal("git_push");
+        } catch (e) {
+            this.error = this.errorText(e);
+        } finally {
+            this.push.loading = false;
+        }
+    },
+
+    closePush() {
+        if (this.push.pushing) return; // never close mid-push
+        Alpine.store("ui").closeModal();
+    },
+
+    async doPush() {
+        if (this.push.pushing) return;
+        this.push.pushing = true;
+        this.push.error = "";
+
+        try {
+            await simpleApiPost("/api/ext/coder/git_push", { sandbox: this.sandbox, subpath: this.subpath });
+            Alpine.store("ui").closeModal();
+            await this.refresh();
+        } catch (e) {
+            // keep the modal open so the rejection reason is readable
+            this.push.error = this.errorText(e);
+        } finally {
+            this.push.pushing = false;
+        }
     },
 
     async loadLog() {

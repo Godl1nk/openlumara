@@ -7,6 +7,12 @@
     <div class="coder-header">
         <span class="coder-title">Git</span>
         {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+           push opens a confirmation modal (modals/git_push.html) listing
+           exactly what would leave the machine #}
+        <button type="button" class="coder-icon-btn" title="Push commits" x-show="ready && is_repo && !read_only" @click="openPush()">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
            commit log lives in its own modal now (modals/git_log.html) #}
         <button type="button" class="coder-icon-btn" title="Commit log" @click="openLog()">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
