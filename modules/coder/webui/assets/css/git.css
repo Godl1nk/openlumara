@@ -584,32 +584,7 @@
 }
 
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-   split diff modal (desktop only) */
-.git-split-diff-modal {
-    width: min(1200px, 96vw);
-}
-
-.git-split-diff-modal .coder-editor-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
-    font-weight: 500;
-    overflow: hidden;
-    white-space: nowrap;
-}
-
-.git-split-diff-modal .git-ro-tag {
-    font-size: 10px;
-    padding: 2px 7px;
-    border-radius: 20px;
-    border: 1px solid rgba(63, 220, 151, 0.4);
-    color: #3fdc97;
-    text-transform: uppercase;
-    flex: 0 0 auto;
-}
-
+   split diff table (inside the unified git-diff-modal) */
 .git-split-body {
     max-height: min(72vh, 700px);
     overflow: auto;
@@ -666,54 +641,26 @@
     background: rgba(40, 200, 64, 0.08);
 }
 
-/* hide split diff on mobile: not useful on narrow screens */
-@media (max-width: 768px) {
-    .git-split-diff-modal { display: none !important; }
-}
-
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-   blame modal table */
-.git-blame-body {
-    max-height: min(70vh, 640px);
-    overflow: auto;
-    padding: 8px 14px 14px;
+   responsive diff: split on desktop, unified on mobile # */
+.git-diff-split {
+    display: none;
 }
 
-.git-blame-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11.5px;
+.git-diff-unified {
+    display: block;
 }
 
-.git-blame-table th {
-    text-align: left;
-    padding: 4px 8px;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary, #999);
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-}
-
-.git-blame-table td {
-    padding: 3px 8px;
-    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.04));
-    color: var(--text-primary, #ddd);
-}
-
-.git-blame-table td.hash {
-    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
-    color: var(--accent, #00d4ff);
-    font-size: 10.5px;
-}
-
-.git-blame-table td.summary {
-    opacity: 0.8;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 300px;
+@media (min-width: 769px) {
+    .git-diff-modal {
+        width: min(1200px, 96vw);
+    }
+    .git-diff-unified {
+        display: none;
+    }
+    .git-diff-split {
+        display: block;
+    }
 }
 
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13

@@ -1407,75 +1407,11 @@ div.CodeMirror-lint-tooltip {
     border-color: var(--accent, #00d4ff);
 }
 
-/* indent guides toggle active */
-.coder-editor-modal .coder-editor-icon-btn.on {
-    color: var(--accent, #00d4ff);
-    border-color: rgba(0, 212, 255, 0.4);
-}
-
 /* revert-to-HEAD button: reddish hover to signal destructive action */
 .coder-editor-modal .coder-revert-btn:hover:not(:disabled) {
     color: #ff5f7a;
     border-color: rgba(255, 95, 122, 0.5);
     background: rgba(255, 95, 122, 0.08);
-}
-
-/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-   indent guides: vertical lines at each indent level.
-   uses a repeating background on the line content. the CSS variable
-   --cm-indent is set to the char width (monospace font). */
-.cm-s-lumara .cm-indent-level-1 .CodeMirror-linebackground,
-.cm-s-lumara .CodeMirror-line.cm-indent-level-1,
-.cm-s-lumara-light .CodeMirror-line.cm-indent-level-1 {
-    background-image: linear-gradient(90deg, transparent 0, transparent 30px, rgba(127, 127, 127, 0.12) 30px, rgba(127, 127, 127, 0.12) 31px, transparent 31px);
-}
-
-.cm-s-lumara .CodeMirror-line.cm-indent-level-2,
-.cm-s-lumara-light .CodeMirror-line.cm-indent-level-2 {
-    background-image:
-        linear-gradient(90deg, transparent 0, transparent 30px, rgba(127, 127, 127, 0.12) 30px, rgba(127, 127, 127, 0.12) 31px, transparent 31px),
-        linear-gradient(90deg, transparent 0, transparent 60px, rgba(127, 127, 127, 0.12) 60px, rgba(127, 127, 127, 0.12) 61px, transparent 61px);
-}
-
-.cm-s-lumara .CodeMirror-line.cm-indent-level-3,
-.cm-s-lumara-light .CodeMirror-line.cm-indent-level-3 {
-    background-image:
-        linear-gradient(90deg, transparent 0, transparent 30px, rgba(127, 127, 127, 0.12) 30px, rgba(127, 127, 127, 0.12) 31px, transparent 31px),
-        linear-gradient(90deg, transparent 0, transparent 60px, rgba(127, 127, 127, 0.12) 60px, rgba(127, 127, 127, 0.12) 61px, transparent 61px),
-        linear-gradient(90deg, transparent 0, transparent 90px, rgba(127, 127, 127, 0.12) 90px, rgba(127, 127, 127, 0.12) 91px, transparent 91px);
-}
-
-.cm-s-lumara .CodeMirror-line.cm-indent-level-4,
-.cm-s-lumara-light .CodeMirror-line.cm-indent-level-4 {
-    background-image:
-        linear-gradient(90deg, transparent 0, transparent 30px, rgba(127, 127, 127, 0.12) 30px, rgba(127, 127, 127, 0.12) 31px, transparent 31px),
-        linear-gradient(90deg, transparent 0, transparent 60px, rgba(127, 127, 127, 0.12) 60px, rgba(127, 127, 127, 0.12) 61px, transparent 61px),
-        linear-gradient(90deg, transparent 0, transparent 90px, rgba(127, 127, 127, 0.12) 90px, rgba(127, 127, 127, 0.12) 91px, transparent 91px),
-        linear-gradient(90deg, transparent 0, transparent 120px, rgba(127, 127, 127, 0.12) 120px, rgba(127, 127, 127, 0.12) 121px, transparent 121px);
-}
-
-/* levels 5-10: use a repeating pattern for brevity */
-.cm-s-lumara .CodeMirror-line[class*="cm-indent-level-5"],
-.cm-s-lumara .CodeMirror-line[class*="cm-indent-level-6"],
-.cm-s-lumara .CodeMirror-line[class*="cm-indent-level-7"],
-.cm-s-lumara .CodeMirror-line[class*="cm-indent-level-8"],
-.cm-s-lumara .CodeMirror-line[class*="cm-indent-level-9"],
-.cm-s-lumara .CodeMirror-line[class*="cm-indent-level-10"],
-.cm-s-lumara-light .CodeMirror-line[class*="cm-indent-level-5"],
-.cm-s-lumara-light .CodeMirror-line[class*="cm-indent-level-6"],
-.cm-s-lumara-light .CodeMirror-line[class*="cm-indent-level-7"],
-.cm-s-lumara-light .CodeMirror-line[class*="cm-indent-level-8"],
-.cm-s-lumara-light .CodeMirror-line[class*="cm-indent-level-9"],
-.cm-s-lumara-light .CodeMirror-line[class*="cm-indent-level-10"] {
-    background-image: repeating-linear-gradient(
-        90deg,
-        transparent 0,
-        transparent 30px,
-        rgba(127, 127, 127, 0.12) 30px,
-        rgba(127, 127, 127, 0.12) 31px,
-        transparent 31px,
-        transparent 60px
-    );
 }
 
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13

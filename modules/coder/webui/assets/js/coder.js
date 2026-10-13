@@ -501,7 +501,6 @@ const CODER_PANEL = {
     autosave_interval: 0, // seconds; 0 = disabled
     _autosaveTimer: null,
     markdown_preview: false,
-    indent_guides: true,
     rows: [],
     expanded: {},
     children: {},
@@ -773,16 +772,6 @@ const CODER_PANEL = {
 
     _cancelAutosave() {
         clearTimeout(this._autosaveTimer);
-    },
-
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-       indent guides: toggles visual indent guides in CodeMirror.
-       implemented via a renderLine hook that wraps leading spaces. # */
-    toggleIndentGuides() {
-        this.indent_guides = !this.indent_guides;
-        if (CODER_CM) {
-            CODER_CM.refresh();
-        }
     },
 
     /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
@@ -1241,29 +1230,6 @@ const CODER_PANEL = {
                 const host = document.querySelector(".coder-md-preview");
                 if (host) this.renderMarkdownPreview(host);
             }
-        });
-
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-        // indent guides: inject visual guide spans into leading whitespace
-        cm.on("renderLine", (cmInstance, line, el) => {
-            if (!this.indent_guides) return;
-            const text = cmInstance.getLine(line.line);
-            if (!text) return;
-            const indent = text.match(/^[\t ]+/);
-            if (!indent) return;
-            // count indent levels (tab = 1 level, 4 spaces = 1 level)
-            const indentStr = indent[0];
-            let levels = 0;
-            for (const ch of indentStr) {
-                if (ch === "\t") levels++;
-                else if (ch === " ") {
-                    // count groups of 4
-                }
-            }
-            if (!levels) levels = Math.floor((indentStr.match(/ /g) || []).length / 4);
-            if (levels <= 0) return;
-            // add a CSS class with the indent level for the guide
-            el.classList.add("cm-indent-level-" + Math.min(levels, 10));
         });
 
         cm.on("cursorActivity", (c) => {

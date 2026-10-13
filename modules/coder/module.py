@@ -1869,67 +1869,6 @@ class Coder(core.module.Module):
         return self.result(out or f"deleted branch {name}")
 
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-    # webui route: git blame
-    # -----------------------
-    @webui.route("git_blame")
-    async def _route_git_blame(self, body=None, query=None):
-        """returns blame annotations for a file: per-line commit hash,
-        author, date, and summary. uses --line-porcelain for structured data."""
-        sandbox = (query or {}).get("sandbox", "")
-        subpath = (query or {}).get("subpath", "")
-        rel_path = (query or {}).get("path", "")
-
-        if not sandbox or not rel_path:
-            return self.result("sandbox and path are both required", success=False)
-
-        try:
-            root = await self._git_root(sandbox, subpath)
-            self._check_git_paths(root, [rel_path])
-        except Exception as e:
-            return self.result(str(e), success=False)
-
-        abs_path = os.path.normpath(os.path.join(root, rel_path))
-
-        rc, raw = await self._run_git_bytes(
-            root, "blame", "--line-porcelain", "--", abs_path, timeout=30
-        )
-        if rc != 0:
-            return self.result(raw.decode("utf-8", "replace").strip() or "git blame failed", success=False)
-
-        # parse porcelain format: each line starts with
-        # <hash> <orig-line> <final-line> [<num-lines-in-hunk>]
-        # followed by header lines (author, author-time, summary, etc.)
-        # then a \t-prefixed content line.
-        lines_out = []
-        current = {}
-        text = raw.decode("utf-8", "replace")
-
-        for line in text.split("\n"):
-            if line.startswith("\t"):
-                # content line ends the record for this line
-                current["content"] = line[1:]
-                if current.get("hash"):
-                    lines_out.append({
-                        "hash": current.get("hash", "")[:7],
-                        "author": current.get("author", ""),
-                        "date": current.get("author-time", ""),
-                        "summary": current.get("summary", ""),
-                    })
-                current = {}
-            elif " " in line:
-                parts = line.split(" ", 1)
-                key = parts[0]
-                val = parts[1] if len(parts) > 1 else ""
-                if regex.match(r"^[0-9a-f]{40}$", key):
-                    current["hash"] = val.split(" ")[0] if " " in val else val
-                    # actually the first field IS the hash
-                    current["hash"] = key
-                elif key in ("author", "author-time", "summary", "committer", "committer-time"):
-                    current[key] = val
-
-        return {"lines": lines_out}
-
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
     # webui routes: conflict detection + resolution
     # -----------------------------------------------
     @webui.route("git_conflicts")
