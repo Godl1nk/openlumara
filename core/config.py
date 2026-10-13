@@ -19,7 +19,7 @@ SCHEMA_CACHE_FILE = ".module_cache.json"
 # bump whenever the shape of cached module metadata changes (e.g. a new metadata
 # field was added). a cache file written by another version is rebuilt in full on
 # startup, so stale entries never serve incomplete metadata.
-SCHEMA_CACHE_VERSION = 3
+SCHEMA_CACHE_VERSION = 5
 
 # the section keys the cache stores module/channel entries under
 CACHE_SECTIONS = ("channels", "user_channels", "modules", "user_modules")
@@ -492,13 +492,11 @@ def _refresh_module_schema_cache(cache, cache_path, force_full_refresh=False):
                 sections_to_refresh.add(section_key)
                 continue
 
-            # Find the entry file path to check checksum (folder layout: name/module.py or name/channel.py)
-            found_file = core.modules._get_module_file_path(package, name)
-
-            if found_file:
-                if cache[section_key][name].get("checksum") != _get_file_checksum(found_file):
-                    sections_to_refresh.add(section_key)
-            else:
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            # detect any recursive change in the module/channel folder: files or
+            # folders added, removed, renamed, or modified.
+            folder_fingerprint = _get_module_folder_fingerprint(package, name)
+            if not folder_fingerprint or cache[section_key][name].get("fingerprint") != folder_fingerprint:
                 sections_to_refresh.add(section_key)
 
         # 2. Check for new modules
@@ -537,6 +535,7 @@ def _refresh_module_schema_cache(cache, cache_path, force_full_refresh=False):
                     cache[section_key][name] = {
                         "schema": settings,
                         "checksum": checksum,
+                        "fingerprint": _get_module_folder_fingerprint(package, name),
                         "metadata": {
                             "docstring": docstring,
                             "unsafe": unsafe,  # Added to cache
@@ -559,6 +558,11 @@ def _refresh_module_schema_cache(cache, cache_path, force_full_refresh=False):
                     file_path = core.modules._get_module_file_path(package, name)
                     if not file_path:
                         continue
+
+                    # keep the fingerprint current even for modules that could not
+                    # be imported, otherwise a broken module would refresh forever.
+                    entry["checksum"] = _get_file_checksum(file_path)
+                    entry["fingerprint"] = _get_module_folder_fingerprint(package, name)
 
                     extracted = _extract_class_metadata_from_file(file_path)
                     if not extracted:
@@ -744,6 +748,67 @@ def _extract_class_metadata_from_file(filepath):
     category = _resolve_ast_category(tree, filepath, chosen["node"], set()) or ""
 
     return {"docstring": chosen["docstring"], "unsafe": chosen["unsafe"], "category": category}
+
+
+def _get_module_folder_path(package, module_name):
+    """returns the folder containing a module/channel entry file"""
+    module_file = core.modules._get_module_file_path(package, module_name)
+    if module_file:
+        return os.path.dirname(module_file)
+
+    for sub_path in getattr(package, "__path__", []):
+        candidate = os.path.join(sub_path, module_name)
+        if os.path.isdir(candidate):
+            return candidate
+    return ""
+
+
+def _get_module_folder_fingerprint(package, module_name):
+    """builds a recursive fingerprint for a module/channel folder.
+
+    This intentionally uses paths, sizes and mtimes rather than file contents so
+    that adding/removing/changing files is cheap to detect without hashing large
+    asset folders on every startup.
+    -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+    """
+    folder = _get_module_folder_path(package, module_name)
+    if not folder or not os.path.isdir(folder):
+        return ""
+
+    hasher = hashlib.md5()
+    skip_dirs = {
+        "__pycache__",
+        ".git",
+        ".hg",
+        ".svn",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "node_modules",
+    }
+    skip_exts = {".pyc", ".pyo", ".swp", ".swo", ".tmp", ".lock"}
+    skip_files = {".DS_Store", "Thumbs.db"}
+
+    for root, dirs, files in os.walk(folder):
+        dirs[:] = sorted(d for d in dirs if d not in skip_dirs)
+
+        rel_root = os.path.relpath(root, folder).replace(os.sep, "/")
+        hasher.update(f"DIR:{rel_root}\n".encode("utf-8"))
+
+        for filename in sorted(files):
+            if filename in skip_files or os.path.splitext(filename)[1] in skip_exts:
+                continue
+
+            full_path = os.path.join(root, filename)
+            try:
+                stat_result = os.stat(full_path)
+            except OSError:
+                continue
+
+            rel_path = os.path.relpath(full_path, folder).replace(os.sep, "/")
+            hasher.update(f"FILE:{rel_path}|{stat_result.st_size}|{stat_result.st_mtime_ns}\n".encode("utf-8"))
+
+    return hasher.hexdigest()
 
 
 def _get_file_checksum(filepath):

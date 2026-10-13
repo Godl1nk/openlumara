@@ -163,6 +163,26 @@ class Webui(core.channel.Channel):
     # module's templates under "<module_name>/..". core templates call
     # `extension_slot("name")` for named regions, and the modal area auto-includes
     # everything under each module's templates/modals/ via `extension_modals()`.
+    def _ui_extension_enabled(self, module):
+        """special gate for optional module webui extensions.
+
+        If a module declares enable_webui_extension, its configured value controls
+        all webui extension loading/injection for that module: True proceeds,
+        False disables templates, assets and /api/ext routes. If the config value
+        is not persisted yet, fall back to the declared default. Modules without
+        the setting keep legacy behavior.
+        -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        """
+        enabled = module.config.get("enable_webui_extension")
+        if enabled is None:
+            setting = (getattr(module, "settings", None) or {}).get("enable_webui_extension", {})
+            enabled = setting.get("default") if isinstance(setting, dict) else None
+        if enabled is None:
+            return True
+        if isinstance(enabled, str):
+            return enabled.strip().lower() not in ("false", "0", "no", "off", "")
+        return bool(enabled)
+
     def _ui_extension_dirs(self):
         """collect webui template folders from all enabled modules, as {module_name: path}"""
         dirs = {}
@@ -173,6 +193,10 @@ class Webui(core.channel.Channel):
                 continue
 
             for module_name in core.config.get(package_name, "enabled", []):
+                module = self.manager.modules.get(module_name)
+                if module is None or not self._ui_extension_enabled(module):
+                    continue
+
                 for sub_path in getattr(package, "__path__", []):
                     candidate = os.path.join(sub_path, module_name, "webui", "templates")
                     if os.path.isdir(candidate):
@@ -192,6 +216,10 @@ class Webui(core.channel.Channel):
                 continue
 
             for module_name in core.config.get(package_name, "enabled", []):
+                module = self.manager.modules.get(module_name)
+                if module is None or not self._ui_extension_enabled(module):
+                    continue
+
                 for sub_path in getattr(package, "__path__", []):
                     candidate = os.path.join(sub_path, module_name, "webui", "assets")
                     if os.path.isdir(candidate):
@@ -1272,6 +1300,8 @@ async def create_fastapi(channel):
         module = channel.manager.modules.get(module_name)
         if module is None:
             return None, "unknown module"
+        if not channel._ui_extension_enabled(module):
+            return None, "webui extension disabled"
         wanted_path = str(route_path).strip("/").lower()
         route_exists = False
         for klass in type(module).__mro__:

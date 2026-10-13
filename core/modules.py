@@ -335,6 +335,68 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
 # --------------------------
 # module loading
 # --------------------------
+def _module_has_folder(package, module_name, folder_name):
+    """checks whether a module folder contains a subfolder with the given name"""
+    if not folder_name:
+        return False
+
+    module_file = _get_module_file_path(package, module_name)
+    if module_file:
+        return os.path.isdir(os.path.join(os.path.dirname(module_file), folder_name))
+
+    for sub_path in getattr(package, "__path__", []):
+        if os.path.isdir(os.path.join(sub_path, module_name, folder_name)):
+            return True
+    return False
+
+
+def _insert_setting(target_class, setting_name, setting_value, position="append"):
+    """inserts a setting into a module class's settings dict if it is missing.
+
+    position can be "append" or "top". Returns True when the setting was newly
+    inserted, otherwise False.
+    """
+    if not setting_name:
+        return False
+
+    settings = getattr(target_class, "settings", None)
+    if not isinstance(settings, dict):
+        settings = {}
+    else:
+        settings = dict(settings)
+
+    if setting_name in settings:
+        return False
+
+    if position == "top":
+        new_settings = {setting_name: setting_value}
+        new_settings.update(settings)
+    else:
+        settings[setting_name] = setting_value
+        new_settings = settings
+
+    target_class.settings = new_settings
+    return True
+
+
+def _ensure_webui_extension_setting(package, module_name, target_class):
+    """auto-adds the enable_webui_extension setting if a module ships webui assets"""
+    if package.__name__.split(".")[-1] not in ("modules", "user_modules"):
+        return
+    if not _module_has_folder(package, module_name, "webui"):
+        return
+
+    _insert_setting(
+        target_class,
+        "enable_webui_extension",
+        {
+            "default": True,
+            "description": "Whether to load this module's WebUI Extensions, which extend the WebUI with module-specific features, sidebars, panels, etc"
+        },
+        position="top"
+    )
+
+
 def load(package, base_class = None, filter: list = None, reload: bool = False, loading_config=False):
     """
     loops through the specified package imported with `import whatever`, then checks inside those packages for any classes that derive from base_class, and return a tuple of those classes so we can use them as modules, channels etc
@@ -388,6 +450,8 @@ def load(package, base_class = None, filter: list = None, reload: bool = False, 
                 origin = getattr(target_class, "__module__", "")
                 if origin != module.__name__ and not origin.startswith(f"{module.__name__}."):
                     continue
+
+                _ensure_webui_extension_setting(package, modname, target_class)
 
                 discovered.append(target_class)
         except core.exceptions.DependencyMissing as e:
