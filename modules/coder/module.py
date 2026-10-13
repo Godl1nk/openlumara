@@ -1380,6 +1380,131 @@ class Coder(core.module.Module):
 
         return self.result(out or f"switched to {name}")
 
+    @webui.route("git_ahead")
+    async def _route_git_ahead(self, body=None, query=None):
+        """what a push would send: the unpushed commits, the target ref and
+        the warnings (behind/diverged, dirty tree). the push confirmation
+        modal is built entirely from this payload."""
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        ok, branch = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if not ok:
+            return self.result(branch, success=False)
+        if branch == "HEAD":
+            return self.result("detached HEAD: switch to a branch before pushing", success=False)
+
+        ok, out = await self._run_git(root, "remote")
+        remotes = out.split() if ok else []
+        if not remotes:
+            return self.result("this repo has no remotes, nowhere to push to", success=False)
+        remote = "origin" if "origin" in remotes else remotes[0]
+
+        ok, upstream = await self._run_git(root, "rev-parse", "--abbrev-ref", "@{u}")
+        upstream = upstream.strip() if ok else ""
+        has_upstream = "/" in upstream
+
+        if has_upstream:
+            target = upstream
+            ok, raw = await self._run_git_bytes(
+                root, "log", "--pretty=%h%x09%s", f"{upstream}..HEAD", "-n100"
+            )
+        else:
+            # brand new branch: commits that exist on no remote at all
+            target = f"{remote}/{branch}"
+            ok, raw = await self._run_git_bytes(
+                root, "log", "--pretty=%h%x09%s", "HEAD", "--not", "--remotes", "-n100"
+            )
+
+        if not ok:
+            return self.result(raw.decode("utf-8", "replace").strip() or "git log failed", success=False)
+
+        ahead = []
+        for line in raw.decode("utf-8", "replace").splitlines():
+            if not line.strip():
+                continue
+            if "\t" in line:
+                h, msg = line.split("\t", 1)
+            else:
+                h, msg = line, ""
+            ahead.append({"hash": h.strip(), "msg": msg})
+
+        behind = 0
+        if has_upstream:
+            ok, out = await self._run_git(root, "rev-list", "--count", f"HEAD..{upstream}")
+            if ok and out.strip().isdigit():
+                behind = int(out.strip())
+
+        _, raw = await self._run_git_bytes(root, "status", "--porcelain=v1")
+        dirty = bool(raw.strip())
+
+        return {
+            "branch": branch,
+            "remote": remote,
+            "upstream": upstream,
+            "has_upstream": has_upstream,
+            "target": target,
+            "ahead": ahead,
+            "behind": behind,
+            "dirty": dirty,
+        }
+
+    @webui.route("git_push", method="POST")
+    async def _route_git_push(self, body=None, query=None):
+        if self.config.get("read-only"):
+            return self.result("coder is in read-only mode", success=False)
+
+        sandbox = (body or {}).get("sandbox", "")
+        subpath = (body or {}).get("subpath", "")
+
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        # everything is re-checked server side: the modal's confirmation
+        # button is human intent, not a security boundary.
+        ok, branch = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if not ok or branch == "HEAD":
+            return self.result("detached HEAD: switch to a branch before pushing", success=False)
+
+        ok, out = await self._run_git(root, "remote")
+        remotes = out.split() if ok else []
+        if not remotes:
+            return self.result("this repo has no remotes, nowhere to push to", success=False)
+        remote = "origin" if "origin" in remotes else remotes[0]
+
+        ok, upstream = await self._run_git(root, "rev-parse", "--abbrev-ref", "@{u}")
+        upstream = upstream.strip() if ok else ""
+
+        # explicit refspec so a weird push.default config can never widen
+        # the push to other branches. never --force: without it git itself
+        # rejects anything that isn't a fast-forward.
+        if "/" in upstream:
+            up_remote, _, up_branch = upstream.partition("/")
+            args = ["push", up_remote, f"{branch}:{up_branch}"]
+        else:
+            args = ["push", "-u", remote, branch]
+
+        # pushes can be slow on big repos or bad connections
+        rc, raw = await self._run_git_bytes(root, *args, timeout=180)
+        out = raw.decode("utf-8", "replace").strip()
+        if rc != 0:
+            return self.result(out or "git push failed", success=False)
+
+        return self.result(out or "pushed")
+
     @webui.route("git_log")
     async def _route_git_log(self, body=None, query=None):
         sandbox = (query or {}).get("sandbox", "")
