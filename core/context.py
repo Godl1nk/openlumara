@@ -502,50 +502,85 @@ Hard rules:
         return num_tokens
 
     def _fingerprint_context(self, context):
-        """per-message sha256 fingerprints of the exact dicts that get sent to the API"""
-        import hashlib
-        
-        hashes = []
+        # per-message snapshots + sha256 fingerprints of the exact dicts sent to the API.
+        # snapshots are immutable JSON strings on purpose: the message dicts share nested
+        # structures (tool_calls lists etc.) with the chat storage via shallow copies, so
+        # holding dict references lets post-build mutations rewrite the "previous" state
+        # in-place and hide the real diff.
+        snaps = []
         for msg in context:
-            blob = json.dumps(msg, sort_keys=True, ensure_ascii=False, default=str)
-            hashes.append(hashlib.sha256(blob.encode("utf-8")).hexdigest())
-        return hashes
+            snaps.append(json.dumps(msg, sort_keys=True, ensure_ascii=False, default=str))
+        hashes = [hashlib.sha256(s.encode("utf-8")).hexdigest() for s in snaps]
+        return hashes, snaps
 
-    def _preview_message(self, msg):
-        """short human-readable preview of a message for invalidation logs"""
-        if msg is None:
-            return "<none>"
-        content = msg.get("content")
-        if not isinstance(content, str):
-            content = json.dumps(content, ensure_ascii=False, default=str)
-        extra = ""
-        if msg.get("tool_calls"):
-            extra += f" +tool_calls({len(msg['tool_calls'])})"
-        if "reasoning_content" in msg:
-            extra += " +reasoning"
-        return f"role={msg.get('role')} chars={len(content)}{extra} :: {content[:120]!r}"
+    def _diff_text(self, a, b):
+        """describe how two strings differ: lengths + first divergence + snippets"""
+        n = min(len(a), len(b))
+        i = 0
+        while i < n and a[i] == b[i]:
+            i += 1
+        if i == n and len(a) != len(b):
+            longer = b if len(b) > len(a) else a
+            action = "grew" if len(b) > len(a) else "shrank"
+            return f"{len(a)} -> {len(b)} chars ({action} by {abs(len(b) - len(a))}, common prefix intact) :: tail {longer[i:i+160]!r}"
+        return f"{len(a)} -> {len(b)} chars, first diff at {i} :: was {a[i:i+160]!r} | now {b[i:i+160]!r}"
+
+    def _diff_message_snaps(self, prev_snap, cur_snap):
+        """field-by-field diff between two immutable message snapshots.
+        logs each changed field and returns (changed_fields, reason)."""
+        try:
+            p = json.loads(prev_snap)
+            c = json.loads(cur_snap)
+        except Exception:
+            return [], "snapshot diff failed"
+
+        changed_fields = []
+        for key in sorted(set(p.keys()) | set(c.keys())):
+            pv, cv = p.get(key), c.get(key)
+            if pv == cv:
+                continue
+            changed_fields.append(key)
+            if isinstance(pv, str) and isinstance(cv, str):
+                self.channel.log("prompt-cache", f"    field {key!r}: {self._diff_text(pv, cv)}")
+            else:
+                ps = json.dumps(pv, ensure_ascii=False, default=str)
+                cs = json.dumps(cv, ensure_ascii=False, default=str)
+                if len(ps) > 200 or len(cs) > 200:
+                    self.channel.log("prompt-cache", f"    field {key!r}: {self._diff_text(ps, cs)}")
+                else:
+                    self.channel.log("prompt-cache", f"    field {key!r}: was {ps} | now {cs}")
+
+        reason = "message content mutated"
+        if changed_fields == ["reasoning_content"]:
+            reason = "reasoning_content text changed on a past message"
+        elif changed_fields and set(changed_fields) <= {"tool_calls"}:
+            reason = "tool_calls mutated in-place on a past message (shared nested reference!)"
+        elif changed_fields == ["content"]:
+            reason = "content text changed on a past message"
+
+        return changed_fields, reason
 
     async def _debug_prompt_cache_check(self, context, flags):
         """check if the context has changed in any way"""
         if not core.debug:
             return
         
-        hashes = self._fingerprint_context(context)
+        hashes, snaps = self._fingerprint_context(context)
 
         # the end prompt sits at the very end and legitimately changes every turn,
         # so it is excluded from the prefix comparison
         if flags[2]:  # end_prompt
             core_hashes = hashes[:-1]
-            core_context = context[:-1]
+            core_snaps = snaps[:-1]
         else:
             core_hashes = hashes
-            core_context = context
+            core_snaps = snaps
 
         prev = self._prompt_cache_state.get(flags)
 
         if flags not in self._prompt_cache_state and len(self._prompt_cache_state) >= 8:
             self._prompt_cache_state.pop(next(iter(self._prompt_cache_state)))
-        self._prompt_cache_state[flags] = {"hashes": hashes, "core": core_hashes, "context": core_context}
+        self._prompt_cache_state[flags] = {"hashes": hashes, "core": core_hashes, "snaps": core_snaps}
 
         if prev is None:
             return
@@ -560,37 +595,40 @@ Hard rules:
             # pure append: prompt cache intact
             return
 
-        # something that was already sent changed or vanished. classify it.
-        p = prev["context"][first_diff] if first_diff is not None and first_diff < len(prev["context"]) else None
-        c = core_context[first_diff] if first_diff is not None and first_diff < len(core_context) else None
-
         reason = None
         expected = False
 
-        if first_diff == 0 and p is not None and p.get("role") in ("system", "developer"):
-            reason = "system prompt changed"
-            expected = True
-        elif len(core_hashes) < len(prev["core"]) and core_hashes == prev["core"][len(prev["core"]) - len(core_hashes):]:
+        if len(core_hashes) < len(prev["core"]) and core_hashes == prev["core"][len(prev["core"]) - len(core_hashes):]:
             reason = f"history trimmed from the front ({len(prev['core']) - len(core_hashes)} messages dropped)"
         elif len(core_hashes) < len(prev["core"]):
             # context shrank without a clean front-trim: almost certainly compression
             reason = "context compressed (history rewritten into a summary)"
             expected = True
-        elif p is not None and c is not None:
-            p_stripped = {k: v for k, v in p.items() if k != "reasoning_content"}
-            c_stripped = {k: v for k, v in c.items() if k != "reasoning_content"}
-            if p_stripped == c_stripped:
-                reason = "reasoning_content added/removed on a past message (keep_reasoning_in_context / only_preserve_reasoning_for_current_agentic_loop)"
-            else:
-                reason = "message content mutated"
-        else:
-            reason = "unknown"
+
+        if reason is None and first_diff is not None:
+            try:
+                p_role = json.loads(prev["snaps"][first_diff]).get("role")
+            except Exception:
+                p_role = None
+            if first_diff == 0 and p_role in ("system", "developer"):
+                reason = "system prompt changed"
+                expected = True
 
         tag = "expected" if expected else "UNEXPECTED"
-        self.channel.log("prompt-cache", f"[{tag}] prompt cache invalidated :: {reason}")
+
+        if reason is not None:
+            self.channel.log("prompt-cache", f"[{tag}] prompt cache invalidated :: {reason}")
+            self.channel.log("prompt-cache", f"  first divergence at message index {first_diff} (core messages: {len(prev['core'])} -> {len(core_hashes)})")
+            return
+
+        # a previously-sent message changed. diff it field by field from the
+        # immutable snapshots (immune to in-place mutation of the live dicts).
+        changed_fields, reason = [], "unknown"
+        if first_diff is not None and first_diff < len(prev["snaps"]) and first_diff < len(core_snaps):
+            changed_fields, reason = self._diff_message_snaps(prev["snaps"][first_diff], core_snaps[first_diff])
+
+        self.channel.log("prompt-cache", f"[UNEXPECTED] prompt cache invalidated :: {reason}")
         self.channel.log("prompt-cache", f"  first divergence at message index {first_diff} (core messages: {len(prev['core'])} -> {len(core_hashes)})")
-        if p is not None:
-            self.channel.log("prompt-cache", f"  was: {self._preview_message(p)}")
-        if c is not None:
-            self.channel.log("prompt-cache", f"  now: {self._preview_message(c)}")
+        if changed_fields:
+            self.channel.log("prompt-cache", f"  changed fields: {', '.join(changed_fields)}")
 
