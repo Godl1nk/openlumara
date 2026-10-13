@@ -17,19 +17,35 @@
      list; the tab bar auto-hides via CSS (:has) when no extension
      panels exist, so with no extensions this is byte-identical behavior
      to before. -->
-<div class="sidebar-shell" x-data="{ sidebarTab: '' }">
+<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+     the selected tab is now persisted to localStorage so a page refresh
+     lands back on the same tab. a saved extension tab whose panel no
+     longer exists (module disabled/removed) is dropped on init so the
+     sidebar never loads with nothing shown. -->
+<div class="sidebar-shell" x-data="{
+        sidebarTab: '',
+        init() {
+            const saved = localStorage.getItem('sidebarTab') || '';
+            const tabs = Array.from(document.querySelectorAll('.sidebar-tab')).map(b => b.dataset.tab);
+            this.sidebarTab = tabs.includes(saved) ? saved : '';
+        },
+        setTab(tab) {
+            this.sidebarTab = tab;
+            localStorage.setItem('sidebarTab', tab);
+        },
+    }">
     <nav class="sidebar-tabbar" aria-label="Sidebar tabs">
-        <button type="button" class="sidebar-tab"
+        <button type="button" class="sidebar-tab" data-tab=""
             :class="{ 'active': sidebarTab === '' }"
             title="Chats"
-            @click="sidebarTab = ''">
+            @click="setTab('')">
             {% include 'svg/chat.svg' %}
         </button>
         {% for panel in extension_sidebars() %}
-        <button type="button" class="sidebar-tab ext"
+        <button type="button" class="sidebar-tab ext" data-tab="{{ panel.module }}/{{ panel.name }}"
             :class="{ 'active': sidebarTab === '{{ panel.module }}/{{ panel.name }}' }"
             title="{{ panel.label }}"
-            @click="sidebarTab = '{{ panel.module }}/{{ panel.name }}'">
+            @click="setTab('{{ panel.module }}/{{ panel.name }}')">
             {{ panel.icon }}
         </button>
         {% endfor %}
