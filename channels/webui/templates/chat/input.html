@@ -63,8 +63,7 @@
 
 <button id="stop" aria-label="Stop generation" x-show="$store.stream.state != 'idle'" x-cloak @click="
 await simpleSocketSend({
-    'type': 'user_message',
-    'content': '/stop'
+    'type': 'stop'
 })
 ">
     <span class="stop-text">Stop</span>
