@@ -115,7 +115,8 @@ class ToolcallManager:
 
         # push if needed
         if push:
-            await self.channel.push(assistant_message)
+            # dont defer, so that it shows up mid-toolcall-chain
+            await self.channel.push(assistant_message, defer=False)
 
         timeout_val = float(core.config.get("core", "tool_timeout", default=10.0))
         tool_loader = self.channel.tool_loader
@@ -264,7 +265,7 @@ class ToolcallManager:
             await self.channel.context.chat.messages.add(tool_response)
 
         if self.channel.manager.API.cancel_request:
-            await self.channel.push("toolcalling chain cancelled")
+            await self.channel.push("toolcalling chain cancelled", defer=False)
             return
 
         final_content = []
@@ -332,5 +333,6 @@ class ToolcallManager:
         except Exception as e:
             self.channel.log_error(f"Error while handling tool calls", e)
             await self.channel.push(
-                f"Error while handling tool calls: {e}"
+                f"Error while handling tool calls: {e}",
+                defer=False
             )
