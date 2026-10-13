@@ -492,9 +492,14 @@ div.CodeMirror-lint-tooltip {
     caret-color: var(--accent, #00d4ff);
 }
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-   selection follows the theme accent, same recipe as ::selection in base.css */
-.cm-s-lumara .CodeMirror-selected { background: color-mix(in srgb, var(--accent, #00d4ff) 30%, transparent); }
-.cm-s-lumara .CodeMirror-focused .CodeMirror-selected { background: color-mix(in srgb, var(--accent, #00d4ff) 38%, transparent); }
+   selection follows the theme accent, same recipe as ::selection in base.css.
+   NOTE: CodeMirror-focused sits on the SAME element as cm-s-*, so the old
+   descendant selector never matched and the vendor's lavender
+   .CodeMirror-focused .CodeMirror-selected (lazy-appended after this file)
+   won. compound selector + 0-3-0 specificity fixes it. */
+.cm-s-lumara .CodeMirror-selected,
+.cm-s-lumara.CodeMirror-focused .CodeMirror-selected { background: color-mix(in srgb, var(--accent, #00d4ff) 30%, transparent); }
+.cm-s-lumara.CodeMirror-focused .CodeMirror-selected { background: color-mix(in srgb, var(--accent, #00d4ff) 38%, transparent); }
 .cm-s-lumara .CodeMirror-activeline-background { background: rgba(127, 127, 127, 0.09); }
 .cm-s-lumara .CodeMirror-linenumber { color: #6e7681; }
 .cm-s-lumara .CodeMirror-gutter-filler,
@@ -556,8 +561,10 @@ div.CodeMirror-lint-tooltip {
 
 .cm-s-lumara-light.CodeMirror { color: #24292e; }
 .cm-s-lumara-light .CodeMirror-cursor { border-left: 2px solid #24292e; }
-/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13 */
-.cm-s-lumara-light .CodeMirror-selected { background: color-mix(in srgb, var(--accent, #0091c7) 30%, transparent); }
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   same focused-selector fix as the dark theme above */
+.cm-s-lumara-light .CodeMirror-selected,
+.cm-s-lumara-light.CodeMirror-focused .CodeMirror-selected { background: color-mix(in srgb, var(--accent, #0091c7) 30%, transparent); }
 .cm-s-lumara-light .CodeMirror-activeline-background { background: rgba(0, 0, 0, 0.045); }
 .cm-s-lumara-light .CodeMirror-linenumber { color: #9aa0a6; }
 .cm-s-lumara-light .CodeMirror-gutter-filler,
