@@ -17,6 +17,8 @@ const CM_CSS = [
     "addon/dialog/dialog.css",
     "addon/fold/foldgutter.css",
     "addon/search/matchesonscrollbar.css",
+    "addon/hint/show-hint.css",
+    "addon/lint/lint.css",
 ];
 
 const CM_JS = [
@@ -25,6 +27,7 @@ const CM_JS = [
     "addon/dialog/dialog.js",
     "addon/search/searchcursor.js",
     "addon/search/search.js",
+    "addon/search/match-highlighter.js",
     "addon/scroll/annotatescrollbar.js",
     "addon/search/matchesonscrollbar.js",
     "addon/edit/matchbrackets.js",
@@ -39,6 +42,16 @@ const CM_JS = [
     "addon/fold/comment-fold.js",
     "addon/fold/indent-fold.js",
     "addon/fold/xml-fold.js",
+    "addon/fold/markdown-fold.js",
+    "addon/lint/lint.js",
+    "addon/hint/show-hint.js",
+    "addon/hint/anyword-hint.js",
+    "addon/hint/xml-hint.js",
+    "addon/hint/html-hint.js",
+    "addon/hint/css-hint.js",
+    "addon/hint/javascript-hint.js",
+    // no python-hint.js exists in CM5 (checked the package manifest):
+    // python falls through to anyword completion, which is the intent
     "mode/xml/xml.js",
     "mode/css/css.js",
     "mode/javascript/javascript.js",
@@ -50,7 +63,17 @@ const CM_JS = [
     "mode/yaml/yaml.js",
     "mode/toml/toml.js",
     "mode/properties/properties.js",
+    // tag pairing reads metadata the xml mode registers, so it goes last
+    "addon/edit/matchtags.js",
 ];
+
+// keymap/vim.js is ~100KB extra and only meaningful when the module
+// setting says so, so it stays out of the main list and is fetched on
+// demand (its presence is then cached by the browser like everything else)
+function coderLoadVim() {
+    if (window.CodeMirror && CodeMirror.Vim) return Promise.resolve();
+    return coderLoadScript(CM_BASE + "keymap/vim.js");
+}
 
 // the live editor instance lives OUTSIDE the Alpine store on purpose:
 // a reactive proxy wrapped around a whole CodeMirror would be a world
@@ -103,10 +126,105 @@ function coderThemeName() {
     return theme && theme.mode === "light" ? "lumara-light" : "lumara";
 }
 
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   live lint: hands the buffer to the coder module's treesitter check
+   (the same one that gates saves) and maps its diagnostics onto CM
+   annotations. the lint addon debounces this; positions are clamped to
+   the current document because typing between request and response can
+   move the edges. */
+// async getAnnotations signature per addon/lint/lint.js:
+// (text, updateCallback, linterOptions, cm). in async mode the addon also
+// drops responses when the doc changed while the request was in flight.
+function coderLint(text, update, linterOptions, cm) {
+    const panel = Alpine.store("coderPanel");
+    if (!panel || !panel.editor.path) return update([]);
+
+    simpleApiPost("/api/ext/coder/lint", {
+        sandbox: panel.sandbox,
+        path: panel.editor.path,
+        content: text,
+    }).then((data) => {
+        const anns = (data && data.annotations) || [];
+        update(anns.map((a) => coderLintAnnotation(cm, a)));
+    }).catch(() => update([]));
+}
+
+function coderLintAnnotation(cm, a) {
+    const lastLine = cm.lastLine();
+    const line = Math.min(Math.max((a.line || 1) - 1, 0), lastLine);
+    const ch = Math.min(Math.max((a.col || 1) - 1, 0), Math.max(0, cm.getLine(line).length - 1));
+
+    let endLine = Math.min(Math.max((a.end_line || a.line || 1) - 1, 0), lastLine);
+    let endCh = Math.max((a.end_col || (a.col || 1)) - 1, ch + 1);
+    if (endCh > cm.getLine(endLine).length) {
+        endLine = line;
+        endCh = Math.max(cm.getLine(line).length, ch + 1);
+    }
+
+    return {
+        from: CodeMirror.Pos(line, ch),
+        to: CodeMirror.Pos(endLine, endCh),
+        message: a.message || "syntax error",
+        severity: "error",
+    };
+}
+
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+   continue a line comment across newlines: "# foo" + Enter -> "# foo\n# ".
+   the cursor must sit after a line-comment marker that the mode actually
+   tokenises as a comment (so a "#" inside a string doesn't count). returns
+   false when nothing applies and the caller should do a plain newline.
+   block comments are left alone on purpose. */
+function coderContinueLineComment(cm) {
+    if (cm.getOption("readOnly")) return false;
+    const mode = cm.getMode();
+    const lc = mode && mode.lineComment;
+    if (!lc) return false;
+
+    const ranges = cm.listSelections();
+    const replacements = [];
+    for (const r of ranges) {
+        if (!r.empty()) return false;
+        const line = cm.getLine(r.head.line) || "";
+        const idx = line.lastIndexOf(lc, r.head.ch - lc.length);
+        if (idx === -1) return false;
+        const type = String(cm.getTokenTypeAt({ line: r.head.line, ch: idx + 1 }));
+        if (!/(^|\s)comment/.test(type)) return false;
+        replacements.push("\n" + line.slice(0, idx) + lc + " ");
+    }
+    cm.replaceSelections(replacements, "end", "+");
+    return true;
+}
+
+// ctrl+space: mode-aware completion (js/py/css/html/xml hints), word
+// completion from the file itself as the fallback for everything else
+function coderComplete(cm) {    const mode = String(cm.getOption("mode") || "");
+    const helpers = (window.CodeMirror && CodeMirror.hint) || {};
+    const helper = helpers[mode] || helpers.anyword;
+    if (helper) cm.showHint({ hint: helper, completeSingle: false });
+}
+
+// ctrl+alt+g: prompt for a line number via the dialog addon
+function coderJumpToLine(cm) {
+    cm.openDialog('jump to line: <input type="text" style="width: 6em">', (val) => {
+        const n = parseInt(val, 10);
+        if (!n) return;
+
+        const line = Math.min(Math.max(n - 1, 0), cm.lastLine());
+        cm.setCursor({ line: line, ch: 0 });
+        cm.scrollIntoView({ line: line, ch: 0 }, 120);
+        cm.focus();
+    }, {
+        value: String(cm.getCursor().line + 1),
+        selectValueOnOpen: true,
+    });
+}
+
 const CODER_PANEL = {
     sandboxes: [],
     sandbox: "",
     read_only: false,
+    vim_mode: false, // mirrors the module setting (gated by enable_webui_extension)
     rows: [],
     expanded: {},
     children: {},
@@ -150,6 +268,7 @@ const CODER_PANEL = {
             const data = await simpleApiFetch("/api/ext/coder/sandboxes") || {};
             this.sandboxes = data.sandboxes || [];
             this.read_only = !!data.read_only;
+            this.vim_mode = !!data.vim_mode;
         } catch (e) {
             this.sandboxes = [];
         }
@@ -346,7 +465,8 @@ const CODER_PANEL = {
     /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
        CodeMirror lifecycle. initEditor runs from the modal's x-init once
        the lazy library load resolves (guarded against the modal closing
-       mid-load); destroyEditor runs from Alpine's cleanup() on unmount.
+       mid-load); destroyEditor runs from the x-data destroy() hook Alpine
+       calls on unmount.
        everything CodeMirror does natively now: line numbers (wrap-aware),
        active line, bracket matching/closing, folding, incremental search
        (ctrl+f/ctrl+h via the dialog addon), comment toggling, undo. */
@@ -361,10 +481,25 @@ const CODER_PANEL = {
         // closed while the library was loading
         if (!host.isConnected) return;
 
+        // vim keymap: fetched on demand when the module setting is on.
+        // loaded BEFORE the editor exists so a mid-load modal close can
+        // never strand a dead instance, and passed in as keyMap below.
+        // (extraKeys still win over the vim keymap, so ctrl+s/f/h keep
+        // working in normal mode)
+        let vimOn = false;
+        if (this.vim_mode) {
+            try {
+                await coderLoadVim();
+                vimOn = !!CodeMirror.Vim;
+            } catch (e) {}
+            if (!host.isConnected) return;
+        }
+
         const cm = CodeMirror(host, {
             value: this.editor.content,
             mode: this.editor.mode || null,
             theme: coderThemeName(),
+            keyMap: vimOn ? "vim" : "default",
             lineNumbers: true,
             lineWrapping: true,
             styleActiveLine: true,
@@ -377,7 +512,13 @@ const CODER_PANEL = {
             smartIndent: true,
             readOnly: !!this.read_only,
             foldGutter: true,
-            gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+            gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter", "CodeMirror-lint-markers"],
+            // highlight every occurrence of the word under the caret (or
+            // of the current selection). scrollbar annotation stays off:
+            // the find addon already owns that lane
+            highlightSelectionMatches: { showToken: /\w/, annotateScrollbar: false },
+            matchTags: { bothTags: true },
+            lint: { getAnnotations: coderLint, async: true, delay: 800, tooltips: true },
             extraKeys: {
                 "Ctrl-S": () => this.save(),
                 "Cmd-S": () => this.save(),
@@ -391,17 +532,24 @@ const CODER_PANEL = {
                 "Shift-Cmd-G": "findPrev",
                 "Ctrl-H": "replace",
                 "Cmd-Alt-F": "replace",
+                "Ctrl-Alt-G": coderJumpToLine,
+                "Cmd-Alt-G": coderJumpToLine,
                 "Ctrl-/": "toggleComment",
                 "Cmd-/": "toggleComment",
-                // keep markdown lists going on Enter, everything else normal.
-                // (must execCommand directly: CM5 treats a function binding's
-                // return value as "handled", not as a command name)
+                "Ctrl-Space": coderComplete,
+                // markdown keeps its lists going (that command falls back
+                // to newlineAndIndent on its own outside lists); line
+                // comments continue their prefix; everything else a plain
+                // newline. CM5 has NO continue-comment command (that was
+                // CM4), hence the hand-rolled helper below. must
+                // execCommand directly: CM5 treats a function binding's
+                // return value as "handled", not as a command.
                 "Enter": (editor) => {
-                    editor.execCommand(
-                        editor.getOption("mode") === "markdown"
-                            ? "newlineAndIndentContinueMarkdownList"
-                            : "newlineAndIndent"
-                    );
+                    if (String(editor.getOption("mode")) === "markdown") {
+                        editor.execCommand("newlineAndIndentContinueMarkdownList");
+                    } else if (!coderContinueLineComment(editor)) {
+                        editor.execCommand("newlineAndIndent");
+                    }
                 },
             },
         });

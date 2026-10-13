@@ -63,6 +63,17 @@ class Coder(core.module.Module):
             "depends": "insert_sandbox_paths_into_system_prompt"
         },
 
+        # webui editor extensions (umbrella toggle; sub-settings hang off it)
+        "enable_webui_extension": {
+            "default": False,
+            "description": "Master switch for the optional webui file-editor extensions. Currently gates vim mode."
+        },
+        "vim_mode": {
+            "default": False,
+            "description": "Vim keybindings (normal/insert/visual, motions, text objects) in the webui file editor.",
+            "depends": "enable_webui_extension"
+        },
+
         # blacklists
         "folder_blacklist": {
             "default": ["venv", "__pycache__"],
@@ -734,10 +745,14 @@ class Coder(core.module.Module):
 
     @webui.route("sandboxes")
     async def _route_sandboxes(self, body=None, query=None):
-        """sandbox names for the dropdown + whether the module is read-only"""
+        """sandbox names for the dropdown + whether the module is read-only.
+        also carries the effective vim-mode flag so the webui doesn't need
+        its own settings endpoint (vim mode only counts when the umbrella
+        extension toggle is on too)."""
         return {
             "sandboxes": await self._get_sandbox_paths(),
             "read_only": bool(self.config.get("read-only")),
+            "vim_mode": bool(self.config.get("vim_mode")) and bool(self.config.get("enable_webui_extension")),
         }
 
     @webui.route("tree")
@@ -836,6 +851,54 @@ class Coder(core.module.Module):
             return self.result(str(e), success=False)
 
         return self.result(f"saved {rel_path}")
+
+    @webui.route("lint", method="POST")
+    async def _route_lint(self, body=None, query=None):
+        """live syntax annotations for the webui editor: runs the same
+        treesitter check that gates saves, but returns structured results
+        and never touches the disk. languages treesitter can't check
+        simply come back clean, same as the save gate treats them."""
+        sandbox = (body or {}).get("sandbox", "")
+        rel_path = (body or {}).get("path", "")
+        content = (body or {}).get("content", "")
+
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            target = await self._get_sandbox_subpath(sandbox, rel_path)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        lang = tslp.detect_language_from_path(target)
+        if not lang or lang in ("vimdoc", "html", "htm"):
+            return {"annotations": []}
+
+        try:
+            result = tslp.process(content, tslp.ProcessConfig(
+                language=lang,
+                diagnostics=True,
+                structure=False,
+            ))
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        if not result:
+            # empty file or failed to parse: stay quiet while typing,
+            # the save gate is still the strict one
+            return {"annotations": []}
+
+        annotations = []
+        for diag in (result.diagnostics or []):
+            annotations.append({
+                "line": int(diag.span.start_line) + 1,
+                "col": int(diag.span.start_column) + 1,
+                "end_line": int(diag.span.end_line) + 1,
+                "end_col": int(diag.span.end_column) + 1,
+                "message": str(diag.message),
+            })
+
+        return {"annotations": annotations}
 
     @webui.route("create", method="POST")
     async def _route_create(self, body=None, query=None):
