@@ -201,6 +201,12 @@
     height: 15px;
 }
 
+/* pinned state for the file modal's star button */
+.coder-editor-modal .coder-pin-btn.on {
+    color: #e5c07b;
+    border-color: rgba(229, 192, 123, 0.5);
+}
+
 .coder-editor-modal.maximized {
     width: 100vw;
     height: 100vh;
@@ -907,3 +913,347 @@ div.CodeMirror-lint-tooltip {
     color: #ff5f7a;
     white-space: pre-wrap;
 }
+
+/* ---- coder card on the core welcome screen (templates/chat/welcome.html)
+   rendered inside the centered .welcome-panel; text-align is restored
+   per-block since the panel centers everything ---- */
+
+.welcome-panel .coder-welcome {
+    margin-top: 18px;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+
+
+.coder-welcome .coder-welcome-card {
+    width: 100%;
+    max-width: 460px;
+    box-sizing: border-box;
+    text-align: left;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: var(--radius-sm, 10px);
+    background: color-mix(in srgb, var(--bg-secondary, #fff) 4%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.coder-welcome .coder-welcome-section {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+.coder-welcome .coder-welcome-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary, #888);
+}
+
+.coder-welcome .coder-welcome-clear {
+    border: none;
+    background: none;
+    color: var(--text-secondary, #888);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+}
+
+.coder-welcome .coder-welcome-clear:hover {
+    color: #ff5f7a;
+}
+
+.coder-welcome .coder-welcome-file {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+    padding: 5px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.coder-welcome .coder-welcome-file:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+}
+
+.coder-welcome .coder-welcome-file .fname {
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-primary, #eee);
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coder-welcome .coder-welcome-file .fpath {
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-secondary, #888);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl; /* long dirs clip at the front, filename stays readable */
+    text-align: left;
+    opacity: 0.8;
+}
+
+.coder-welcome .coder-welcome-file .fsandbox {
+    flex: 0 0 auto;
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    color: var(--text-secondary, #999);
+}
+
+.coder-welcome .coder-welcome-file .fage {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: var(--text-secondary, #777);
+    font-variant-numeric: tabular-nums;
+}
+
+/* pinned rows: gold star, hover-revealed unpin cross */
+.coder-welcome .coder-welcome-file .star {
+    flex: 0 0 auto;
+    font-size: 11px;
+    line-height: 1;
+    color: #e5c07b;
+}
+
+.coder-welcome .coder-welcome-file .funpin {
+    flex: 0 0 auto;
+    border: none;
+    background: none;
+    color: var(--text-secondary, #888);
+    font-size: 13px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.coder-welcome .coder-welcome-file:hover .funpin {
+    opacity: 1;
+}
+
+.coder-welcome .coder-welcome-file .funpin:hover {
+    color: #ff5f7a;
+}
+
+/* ---- resume row: the single last-opened file ---- */
+
+.coder-welcome .coder-welcome-resume {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: var(--radius-sm, 8px);
+    background: color-mix(in srgb, var(--accent, #00d4ff) 6%, transparent);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.coder-welcome .coder-welcome-resume:hover {
+    border-color: var(--accent, #00d4ff);
+}
+
+.coder-welcome .coder-welcome-resume .rr-icon {
+    width: 12px;
+    height: 12px;
+    align-self: center;
+    flex: 0 0 auto;
+    color: var(--accent, #00d4ff);
+}
+
+.coder-welcome .coder-welcome-resume .rr-label {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent, #00d4ff);
+}
+
+.coder-welcome .coder-welcome-resume .rr-name {
+    flex: 0 0 auto;
+    max-width: 55%;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: var(--text-primary, #eee);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coder-welcome .coder-welcome-resume .rr-dir {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-secondary, #888);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl;
+    text-align: left;
+    opacity: 0.8;
+}
+
+.coder-welcome .coder-welcome-resume .rr-age {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: var(--text-secondary, #777);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- git strip: repo · branch · dirty/clean + recent commits ---- */
+
+.coder-welcome .coder-welcome-git {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.07));
+    padding-top: 10px;
+}
+
+.coder-welcome .coder-welcome-git .gw-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-bottom: 3px;
+}
+
+/* commit rows: same look as the git log modal's entries, sized down */
+.coder-welcome .coder-welcome-git .gw-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11.5px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    color: var(--text-secondary, #bbb);
+    min-width: 0;
+}
+
+.coder-welcome .coder-welcome-git .gw-entry > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coder-welcome .coder-welcome-git .gw-entry .h {
+    flex: 0 0 auto;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    color: var(--accent, #00d4ff);
+    opacity: 0.85;
+}
+
+.coder-welcome .coder-welcome-git .gw-repo {
+    flex: 0 0 auto;
+    max-width: 30%;
+    font-weight: 600;
+    color: var(--text-primary, #ddd);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coder-welcome .coder-welcome-git .gw-sep {
+    flex: 0 0 auto;
+    color: var(--text-secondary, #777);
+}
+
+.coder-welcome .coder-welcome-git .gw-branch {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 40%;
+    font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+    color: var(--text-primary, #ddd);
+}
+
+.coder-welcome .coder-welcome-git .gw-branch svg {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    color: var(--accent, #00d4ff);
+}
+
+.coder-welcome .coder-welcome-git .gw-branch > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+
+/* the dirty badge and the clean label are mutually exclusive; both carry
+   the auto margin so whichever one shows pushes itself (and the git link
+   behind it) to the right edge of the header row */
+.coder-welcome .coder-welcome-git .gw-dirty {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding: 1px 8px;
+    border: 1px solid rgba(254, 188, 46, 0.45);
+    border-radius: 999px;
+    background: none;
+    color: #febc2e;
+    font-size: 10px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.coder-welcome .coder-welcome-git .gw-dirty:hover {
+    background: rgba(254, 188, 46, 0.12);
+}
+
+.coder-welcome .coder-welcome-git .gw-clean {
+    flex: 0 0 auto;
+    margin-left: auto;
+    color: #3fdc97;
+    font-size: 10px;
+}
+
+.coder-welcome .coder-welcome-git .gw-open {
+    flex: 0 0 auto;
+    border: none;
+    background: none;
+    color: var(--text-secondary, #999);
+    font-size: 10.5px;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 1px 2px;
+}
+
+.coder-welcome .coder-welcome-git .gw-open:hover {
+    color: var(--accent, #00d4ff);
+}
+
+
