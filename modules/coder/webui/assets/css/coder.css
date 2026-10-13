@@ -480,7 +480,8 @@ div.CodeMirror-lint-tooltip {
 /* ---- lumara dark theme (github dark palette) ---- */
 
 .cm-s-lumara.CodeMirror { color: #c9d1d9; }
-.cm-s-lumara .CodeMirror-cursor { border-left: 2px solid #c9d1d9; }
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13 */
+.cm-s-lumara .CodeMirror-cursor { border-left: 2px solid var(--accent, #00d4ff); }
 .cm-s-lumara .CodeMirror-selected { background: rgba(56, 139, 253, 0.25); }
 .cm-s-lumara .CodeMirror-focused .CodeMirror-selected { background: rgba(56, 139, 253, 0.32); }
 .cm-s-lumara .CodeMirror-activeline-background { background: rgba(127, 127, 127, 0.09); }
@@ -543,7 +544,8 @@ div.CodeMirror-lint-tooltip {
 /* ---- lumara light theme (github light palette) ---- */
 
 .cm-s-lumara-light.CodeMirror { color: #24292e; }
-.cm-s-lumara-light .CodeMirror-cursor { border-left: 2px solid #24292e; }
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13 */
+.cm-s-lumara-light .CodeMirror-cursor { border-left: 2px solid var(--accent, #0091c7); }
 .cm-s-lumara-light .CodeMirror-selected { background: rgba(79, 129, 189, 0.22); }
 .cm-s-lumara-light .CodeMirror-activeline-background { background: rgba(0, 0, 0, 0.045); }
 .cm-s-lumara-light .CodeMirror-linenumber { color: #9aa0a6; }
