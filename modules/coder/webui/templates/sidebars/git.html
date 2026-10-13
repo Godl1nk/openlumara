@@ -94,7 +94,7 @@
                        stale nodes (ghost rows showing another file's badge) #}
                     <template x-for="c in changes" :key="c.path + '|' + c.xy">
                         <div class="git-change">
-                            <span class="git-badge" :class="{ staged: c.staged, untracked: c.untracked }" x-text="badge(c)"></span>
+                            <span class="git-badge" :class="{ staged: c.staged, untracked: c.untracked }" :title="badge(c)"></span>
                             <span class="git-path" x-text="c.path" :title="'view diff: ' + c.path" @click="openDiff(c)"></span>
                             <button type="button" class="coder-icon-btn git-stage-btn" x-show="!read_only && !c.staged" title="stage" @click="stage(c.path)">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
