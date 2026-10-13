@@ -64,9 +64,17 @@ class Coder(core.module.Module):
         },
 
         # webui editor extensions (umbrella toggle is auto-detected from the module's webui folder)
-        "vim_mode": {
-            "default": False,
-            "description": "Vim keybindings (normal/insert/visual, motions, text objects) in the webui file editor.",
+        "editor_mode": {
+            "default": "standard",
+            "type": "select",
+            "description": "Keybinding scheme for the webui file editor.",
+            "options": {
+                "standard": "Standard CodeMirror bindings (no special emulation)",
+                "vim": "Vim keybindings (normal/insert/visual, motions, text objects, :w/:wq/:q)",
+                "emacs": "Emacs-style bindings (ctrl-f/b/p/n, ctrl-a/e, ctrl-k/w/y, ctrl-x prefix..)",
+                "sublime": "Sublime Text-style bindings (ctrl+d multi-cursor, line swapping, bookmarks..)",
+                "nano": "GNU nano bindings (ctrl-o save, ctrl-x exit, ctrl-k cut, ctrl-u uncut, ctrl-w find..)",
+            },
             "depends": "enable_webui_extension"
         },
 
@@ -742,13 +750,14 @@ class Coder(core.module.Module):
     @webui.route("sandboxes")
     async def _route_sandboxes(self, body=None, query=None):
         """sandbox names for the dropdown + whether the module is read-only.
-        also carries the effective vim-mode flag so the webui doesn't need
-        its own settings endpoint (vim mode only counts when the umbrella
-        extension toggle is on too)."""
+        also carries the effective editor keybinding mode so the webui
+        doesn't need its own settings endpoint (only counts when the
+        umbrella extension toggle is on too)."""
+        mode = self.config.get("editor_mode") or "standard"
         return {
             "sandboxes": await self._get_sandbox_paths(),
             "read_only": bool(self.config.get("read-only")),
-            "vim_mode": bool(self.config.get("vim_mode")) and bool(self.config.get("enable_webui_extension")),
+            "editor_mode": mode if self.config.get("enable_webui_extension") else "standard",
         }
 
     @webui.route("tree")

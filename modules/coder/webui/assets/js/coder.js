@@ -58,12 +58,165 @@ const CM_JS = [
     "addon/edit/matchtags.js",
 ];
 
-// keymap/vim.js is ~100KB extra and only meaningful when the module
-// setting says so, so it stays out of the main list and is fetched on
-// demand (its presence is then cached by the browser like everything else)
-function coderLoadVim() {
-    if (window.CodeMirror && CodeMirror.Vim) return Promise.resolve();
-    return coderLoadScript(CM_BASE + "keymap/vim.js");
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+// keymap files (vim ~100KB, emacs/sublime ~10KB each) are only meaningful
+// when the module setting asks for them, so they stay out of the main list
+// and are fetched on demand (presence then cached by the browser like
+// everything else). vim is verified via CodeMirror.Vim; the others register
+// themselves as CodeMirror.keyMap.<name>.
+function coderLoadKeymap(mode) {
+    // nano has no vendor file; it's hand-rolled below (coderDefineNanoKeymap)
+    if (mode === "nano") {
+        if (window.CodeMirror) coderDefineNanoKeymap();
+        return Promise.resolve();
+    }
+
+    const file = { vim: "keymap/vim.js", emacs: "keymap/emacs.js", sublime: "keymap/sublime.js" }[mode];
+    if (!file || !window.CodeMirror) return Promise.resolve();
+    const present = mode === "vim" ? !!CodeMirror.Vim : !!CodeMirror.keyMap[mode];
+    if (present) return Promise.resolve();
+    return coderLoadScript(CM_BASE + file);
+}
+
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+// GNU nano emulation. nano is modeless (always typing) and ctrl-driven:
+//   ctrl-f/b/n/p move, ctrl-a/e line start/end, ctrl-d delete forward,
+//   ctrl-k cut (repeating appends to the cut buffer, like nano does),
+//   ctrl-u uncut, ctrl-y/v page up/down, ctrl-w find, ctrl-\ replace,
+//   ctrl-t go to line, ctrl-o save, ctrl-x exit, alt-u/e undo/redo.
+// the cut buffer only grows while nothing was typed between cuts and the
+// next cut starts exactly where the previous one left off (isClean check,
+// same trick the emacs keymap's kill ring uses).
+let nanoCutBuffer = "";
+let nanoLastCut = null; // { pos, gen } right after a cut
+
+function coderDefineNanoKeymap() {
+    if (!window.CodeMirror || CodeMirror.keyMap.nano) return;
+    const cmds = CodeMirror.commands;
+    const Pos = CodeMirror.Pos;
+
+    cmds.nanoCut = function (cm) {
+        let text;
+        let from;
+
+        if (cm.somethingSelected()) {
+            from = cm.getCursor("from");
+            text = cm.getSelection() + "\n";
+            cm.replaceSelection("", null, "cut");
+        } else {
+            // whole current line, newline included (deliberate deviation
+            // from real nano, which cuts cursor->end of line: rosie wants
+            // the whole line gone). the very last line swallows its own
+            // preceding newline instead so no blank line is left behind.
+            const line = cm.getCursor().line;
+            const last = cm.lastLine();
+            let to;
+            if (line < last) {
+                from = Pos(line, 0);
+                to = Pos(line + 1, 0);
+            } else if (last > 0) {
+                from = Pos(line - 1, 0);
+                to = Pos(last, cm.getLine(last).length);
+            } else {
+                from = Pos(0, 0);
+                to = Pos(0, cm.getLine(0).length);
+            }
+            if (CodeMirror.cmpPos(from, to) === 0) { nanoLastCut = null; return; }
+            text = cm.getRange(from, to);
+            cm.replaceRange("", from, to, "+cut");
+        }
+
+        const repeat = !!nanoLastCut
+            && CodeMirror.cmpPos(nanoLastCut.pos, cm.getCursor()) === 0
+            && cm.isClean(nanoLastCut.gen);
+
+        nanoCutBuffer = repeat ? nanoCutBuffer + text : text;
+        nanoLastCut = { pos: cm.getCursor(), gen: cm.changeGeneration() };
+    };
+
+    cmds.nanoUncut = function (cm) {
+        if (!nanoCutBuffer) return;
+        cm.replaceSelection(nanoCutBuffer.replace(/\n$/, ""), "end", "paste");
+        nanoLastCut = null;
+    };
+
+    CodeMirror.keyMap.nano = CodeMirror.normalizeKeyMap({
+        "Ctrl-F": "goCharRight",
+        "Ctrl-B": "goCharLeft",
+        "Ctrl-N": "goLineDown",
+        "Ctrl-P": "goLineUp",
+        "Ctrl-A": "goLineStart",
+        "Ctrl-E": "goLineEnd",
+        "Ctrl-D": "deleteChar",
+        "Ctrl-K": "nanoCut",
+        "Ctrl-U": "nanoUncut",
+        "Ctrl-Y": "pageUp",
+        "Ctrl-V": "pageDown",
+        "Ctrl-W": "findPersistent",
+        "Ctrl-\\": "replace",
+        "Alt-R": "replace",
+        "Ctrl-T": coderJumpToLine,
+        "Ctrl-O": function () { CODER_PANEL.save(); },
+        "Ctrl-X": function () { CODER_PANEL.closeEditor(); },
+        "Alt-U": "undo",
+        "Alt-E": "redo",
+        "fallthrough": "default",
+    });
+}
+
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+// bindings that must win over every keymap (extraKeys always beat keymaps
+// in CM5). the find/replace cluster is skipped for nano: there ctrl-f and
+// ctrl-h belong to movement, and nano brings its own find (ctrl-w) and
+// replace (ctrl-\ / alt-r) from the keymap. as a pragmatic fallback we
+// hand nano ctrl-g for find: nano itself only uses that key for help, and
+// the browser swallows ctrl-w before the page ever sees it.
+function coderExtraKeys(keyMapName, panel) {
+    const keys = {
+        "Ctrl-S": () => panel.save(),
+        "Cmd-S": () => panel.save(),
+        "Ctrl-Alt-G": coderJumpToLine,
+        "Cmd-Alt-G": coderJumpToLine,
+        // jump between diff points when the file was opened from
+        // the git sidebar's diff view (no-ops otherwise)
+        "F8": () => panel.diffJump(1),
+        "Shift-F8": () => panel.diffJump(-1),
+        "Ctrl-/": "toggleComment",
+        "Cmd-/": "toggleComment",
+        // markdown keeps its lists going (that command falls back
+        // to newlineAndIndent on its own outside lists); line
+        // comments continue their prefix; everything else a plain
+        // newline. CM5 has NO continue-comment command (that was
+        // CM4), hence the hand-rolled helper below. must
+        // execCommand directly: CM5 treats a function binding's
+        // return value as "handled", not as a command.
+        "Enter": (editor) => {
+            if (String(editor.getOption("mode")) === "markdown") {
+                editor.execCommand("newlineAndIndentContinueMarkdownList");
+            } else if (!coderContinueLineComment(editor)) {
+                editor.execCommand("newlineAndIndent");
+            }
+        },
+    };
+
+    if (keyMapName === "nano") {
+        keys["Ctrl-G"] = "find";
+    } else {
+        Object.assign(keys, {
+            "Ctrl-F": "find",
+            "Cmd-F": "find",
+            "F3": "findNext",
+            "Shift-F3": "findPrev",
+            "Ctrl-G": "findNext",
+            "Cmd-G": "findNext",
+            "Shift-Ctrl-G": "findPrev",
+            "Shift-Cmd-G": "findPrev",
+            "Ctrl-H": "replace",
+            "Cmd-Alt-F": "replace",
+        });
+    }
+
+    return keys;
 }
 
 // the live editor instance lives OUTSIDE the Alpine store on purpose:
@@ -247,7 +400,7 @@ const CODER_PANEL = {
     sandboxes: [],
     sandbox: "",
     read_only: false,
-    vim_mode: false, // mirrors the module setting (gated by enable_webui_extension)
+    editor_mode: "standard", // mirrors the module setting: standard | vim | emacs | sublime (gated by enable_webui_extension)
     rows: [],
     expanded: {},
     children: {},
@@ -293,7 +446,7 @@ const CODER_PANEL = {
             const data = await simpleApiFetch("/api/ext/coder/sandboxes") || {};
             this.sandboxes = data.sandboxes || [];
             this.read_only = !!data.read_only;
-            this.vim_mode = !!data.vim_mode;
+            this.editor_mode = data.editor_mode || "standard";
         } catch (e) {
             this.sandboxes = [];
         }
@@ -625,28 +778,34 @@ const CODER_PANEL = {
         // closed while the library was loading
         if (!host.isConnected) return;
 
-        // vim keymap: fetched on demand when the module setting is on.
-        // loaded BEFORE the editor exists so a mid-load modal close can
-        // never strand a dead instance, and passed in as keyMap below.
-        // (extraKeys still win over the vim keymap, so ctrl+s/f/h keep
-        // working in normal mode)
-        let vimOn = false;
-        if (this.vim_mode) {
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+        // keybinding scheme from the module setting
+        // (standard|vim|emacs|sublime|nano). keymap fetched on demand BEFORE
+        // the editor exists, so a mid-load modal close can never strand a
+        // dead instance. extraKeys still win over any keymap, so the shared
+        // bindings (ctrl+s, F8, Enter..) keep working everywhere; coderExtra
+        // Keys drops the find cluster for nano so its movement keys survive.
+        let keyMapName = "standard";
+        const wantedKeymap = this.editor_mode;
+        if (wantedKeymap === "vim" || wantedKeymap === "emacs"
+            || wantedKeymap === "sublime" || wantedKeymap === "nano") {
             try {
-                await coderLoadVim();
-                vimOn = !!CodeMirror.Vim;
+                await coderLoadKeymap(wantedKeymap);
+                const ok = wantedKeymap === "vim" ? !!CodeMirror.Vim : !!CodeMirror.keyMap[wantedKeymap];
+                if (ok) keyMapName = wantedKeymap;
             } catch (e) {}
             if (!host.isConnected) return;
-            // if the vim addon failed to load, keep the UI honest: no vim
-            // keymap means no vim mode line, and escape should close the modal.
-            if (!vimOn) this.vim_mode = false;
+            // if the keymap failed to load, keep the UI honest: no keymap
+            // means no vim mode line, and escape should close the modal.
+            if (keyMapName === "standard") this.editor_mode = "standard";
         }
+        const vimOn = keyMapName === "vim";
 
         const cm = CodeMirror(host, {
             value: this.editor.content,
             mode: this.editor.mode || null,
             theme: coderThemeName(),
-            keyMap: vimOn ? "vim" : "default",
+            keyMap: keyMapName === "standard" ? "default" : keyMapName,
             lineNumbers: true,
             lineWrapping: true,
             styleActiveLine: true,
@@ -666,42 +825,7 @@ const CODER_PANEL = {
             highlightSelectionMatches: { showToken: /\w/, annotateScrollbar: false },
             matchTags: { bothTags: true },
             lint: { getAnnotations: coderLint, async: true, delay: 800, tooltips: true },
-            extraKeys: {
-                "Ctrl-S": () => this.save(),
-                "Cmd-S": () => this.save(),
-                "Ctrl-F": "find",
-                "Cmd-F": "find",
-                "F3": "findNext",
-                "Shift-F3": "findPrev",
-                "Ctrl-G": "findNext",
-                "Cmd-G": "findNext",
-                "Shift-Ctrl-G": "findPrev",
-                "Shift-Cmd-G": "findPrev",
-                "Ctrl-H": "replace",
-                "Cmd-Alt-F": "replace",
-                "Ctrl-Alt-G": coderJumpToLine,
-                "Cmd-Alt-G": coderJumpToLine,
-                // jump between diff points when the file was opened from
-                // the git sidebar's diff view (no-ops otherwise)
-                "F8": () => this.diffJump(1),
-                "Shift-F8": () => this.diffJump(-1),
-                "Ctrl-/": "toggleComment",
-                "Cmd-/": "toggleComment",
-                // markdown keeps its lists going (that command falls back
-                // to newlineAndIndent on its own outside lists); line
-                // comments continue their prefix; everything else a plain
-                // newline. CM5 has NO continue-comment command (that was
-                // CM4), hence the hand-rolled helper below. must
-                // execCommand directly: CM5 treats a function binding's
-                // return value as "handled", not as a command.
-                "Enter": (editor) => {
-                    if (String(editor.getOption("mode")) === "markdown") {
-                        editor.execCommand("newlineAndIndentContinueMarkdownList");
-                    } else if (!coderContinueLineComment(editor)) {
-                        editor.execCommand("newlineAndIndent");
-                    }
-                },
-            },
+            extraKeys: coderExtraKeys(keyMapName, this),
         });
 
         CODER_CM = cm;
@@ -965,6 +1089,21 @@ const CODER_PANEL = {
             return "VISUAL " + sub.toUpperCase();
         }
         return mode.toUpperCase();
+    },
+
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
+    // keyboard hints in the status bar, matched to the active keymap.
+    // nano advertises ctrl+g for find: its native ctrl-w is a reserved
+    // browser shortcut (closes the tab) the page never receives.
+    statusHints() {
+        let text;
+        if (this.editor_mode === "nano") {
+            text = "ctrl+o save · ctrl+k cut · ctrl+u uncut · ctrl+g find · ctrl+\\ replace";
+        } else {
+            text = "ctrl+f find · ctrl+h replace · ctrl+alt+g line · ctrl+/ comment";
+        }
+        if (this.diff.active) text += " · F8 changes";
+        return text;
     },
 
     toggleMaximize() {
@@ -1303,6 +1442,14 @@ document.addEventListener("alpine:init", () => {
 window.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && String(event.key).toLowerCase() === "p") {
+        // nano uses ctrl-p to move up: while the caret is inside a nano
+        // editor, leave the keystroke to CodeMirror (quick-open still
+        // works everywhere else in the panel)
+        if (CODER_CM && CODER_CM.getOption("keyMap") === "nano"
+            && event.target && event.target.closest
+            && event.target.closest(".CodeMirror")) {
+            return;
+        }
         CODER_PANEL.openQuickOpen(event);
     }
 }, true);

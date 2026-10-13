@@ -7,7 +7,9 @@
 <template x-if="$store.ui.currentModal === 'coder_file' && $store.coderPanel && $store.coderPanel.editor.path" x-cloak>
     <div class="modal coder-editor-modal"
         :class="{ maximized: $store.coderPanel.editor.maximized }"
-        @keydown.escape.window="!$store.coderPanel.vim_mode && $store.coderPanel.closeEditor()"
+        {# escape closes the modal except in vim (escape exits insert mode)
+           and sublime (escape collapses multiple cursors) #}
+        @keydown.escape.window="!['vim', 'sublime'].includes($store.coderPanel.editor_mode) && $store.coderPanel.closeEditor()"
         @keydown.ctrl.s.prevent="$store.coderPanel.save()"
         @keydown.meta.s.prevent="$store.coderPanel.save()"
     >
@@ -87,14 +89,14 @@
             <div class="coder-editor-status" x-show="$store.coderPanel.editor.cmReady">
                 <span
                     class="coder-vim-mode-badge"
-                    x-show="$store.coderPanel.vim_mode"
+                    x-show="$store.coderPanel.editor_mode === 'vim'"
                     :class="$store.coderPanel.editor.vimMode || 'normal'"
                     x-text="$store.coderPanel.vimModeLabel()"
                 ></span>
                 <span x-text="'ln ' + $store.coderPanel.caretLine + ', col ' + $store.coderPanel.caretCol"></span>
                 <span x-show="$store.coderPanel.selLen > 0" x-text="$store.coderPanel.selLen + ' selected'"></span>
                 <span class="mode" x-text="$store.coderPanel.editor.mode || 'plain text'"></span>
-                <span class="hints">ctrl+f find &middot; ctrl+h replace &middot; ctrl+alt+g line &middot; ctrl+/ comment<span x-show="$store.coderPanel.diff.active"> &middot; F8 changes</span></span>
+                <span class="hints" x-text="$store.coderPanel.statusHints()"></span>
                 {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
                    save lives in the status bar now; the row below it was
                    dropped (close button redundant next to the modal X) #}
