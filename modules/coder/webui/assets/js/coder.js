@@ -60,12 +60,21 @@ const CODER_PANEL = {
             this.sandboxes = [];
         }
 
+        // selection vanished (sandbox removed from config): fall back
+        if (this.sandbox && !this.sandboxes.includes(this.sandbox)) {
+            this.sandbox = "";
+        }
+
         if (!this.sandbox && this.sandboxes.length) {
-            this.sandbox = this.sandboxes[0];
+            // prefer the sandbox chosen before a page reload over the
+            // plain first entry
+            const saved = localStorage.getItem("coder_sandbox") || "";
+            this.sandbox = this.sandboxes.includes(saved) ? saved : this.sandboxes[0];
         }
     },
 
     async onSandboxChange() {
+        try { localStorage.setItem("coder_sandbox", this.sandbox); } catch (e) {}
         this.expanded = {};
         this.children = {};
         this.rootEntries = null;
