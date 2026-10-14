@@ -715,6 +715,179 @@ class Characters(core.module.Module):
             json_code = json.dumps(json_code)
         return await self.import_json(json_code)
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+    # CRUD + file-import routes backing the character management modal
+    # (webui/templates/modals/manage_characters.html).
+
+    @webui.route("remove", method="POST")
+    async def _route_remove(self, body=None, query=None):
+        return await self.delete(str((body or {}).get("name", "")))
+
+    @webui.route("all")
+    async def _route_all(self, body=None, query=None):
+        """full character list for the management modal, sorted by name"""
+        chars = []
+        for key, char in self.characters.items():
+            chars.append({
+                "key": key,
+                "name": char.get("name") or key,
+                "profile": char.get("profile", ""),
+                "scenario": char.get("scenario", ""),
+                "first_message": char.get("first_message", ""),
+                "post_history": char.get("post_history", ""),
+                "category": char.get("category") or "",
+                "tags": char.get("tags") or [],
+            })
+        chars.sort(key=lambda c: c["name"].lower())
+        return chars
+
+    def _clean_tags(self, raw):
+        """tags arrive from the form as a comma-separated string (or a list)"""
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            return [t.strip() for t in raw.split(",") if t.strip()]
+        if isinstance(raw, list):
+            return [str(t).strip() for t in raw if str(t).strip()]
+        return []
+
+    @webui.route("add", method="POST")
+    async def _route_add(self, body=None, query=None):
+        body = body or {}
+        name = str(body.get("name", "")).strip()
+        profile = str(body.get("profile", "")).strip()
+
+        if not name:
+            return self.result("character name cannot be empty", success=False)
+        if not profile:
+            return self.result("character profile must not be blank", success=False)
+        if self._find_character(name):
+            return self.result("a character with that name already exists", success=False)
+
+        self.characters[name] = {
+            "name": name,
+            "profile": profile,
+            "scenario": str(body.get("scenario", "")),
+            "first_message": str(body.get("first_message", "")),
+            "post_history": str(body.get("post_history", "")),
+            "category": str(body.get("category", "")).strip() or None,
+            "tags": self._clean_tags(body.get("tags"))
+        }
+        self.characters.save()
+        return self.result(f"character {name} added")
+
+    @webui.route("edit", method="POST")
+    async def _route_edit(self, body=None, query=None):
+        body = body or {}
+        # 'key' is the canonical storage key (sent by the modal); 'name' is
+        # the new name, which may differ -> rename
+        key = self._find_char_name(str(body.get("key", "")))
+        if not key:
+            return self.result("character not found", success=False)
+
+        new_name = str(body.get("name", "")).strip()
+        profile = str(body.get("profile", "")).strip()
+
+        if not new_name:
+            return self.result("character name cannot be empty", success=False)
+        if not profile:
+            return self.result("character profile must not be blank", success=False)
+
+        # renaming onto another existing character would clobber it
+        clash = self._find_char_name(new_name)
+        if clash and clash.lower() != key.lower():
+            return self.result("a character with that name already exists", success=False)
+
+        self.characters[key] = {
+            "name": new_name,
+            "profile": profile,
+            "scenario": str(body.get("scenario", "")),
+            "first_message": str(body.get("first_message", "")),
+            "post_history": str(body.get("post_history", "")),
+            "category": str(body.get("category", "")).strip() or None,
+            "tags": self._clean_tags(body.get("tags"))
+        }
+
+        # rename: re-key the storage entry. save() prunes the old key's
+        # json file itself, so no manual file cleanup is needed here.
+        if new_name != key:
+            self.characters[new_name] = self.characters.pop(key)
+
+            # chats reference characters by their stored key, so re-stamp
+            # any chat that used the old one (best effort: the current
+            # chat is a live object and persists on its next save)
+            for chat in self.channel.context.chat.get_all():
+                meta = chat.get("metadata") or {}
+                if meta.get("character") == key:
+                    meta["character"] = new_name
+
+        self.characters.save()
+        return self.result("character edited")
+
+    @webui.route("import_file", method="POST")
+    async def _route_import_file(self, body=None, query=None):
+        """imports a character card from a file the browser read locally.
+        json -> parse and normalize; png -> extract the embedded card from
+        the tEXt/iTXt metadata chunks (sillytavern-style cards)."""
+        filename = str((body or {}).get("filename", "")).strip()
+        data_b64 = str((body or {}).get("data", ""))
+        if not filename or not data_b64:
+            return self.result("error: no file data received", success=False)
+
+        # strip a data-URL prefix if the browser sent one
+        if "," in data_b64 and data_b64.strip().startswith("data:"):
+            data_b64 = data_b64.split(",", 1)[1]
+
+        lower = filename.lower()
+
+        if lower.endswith(".json"):
+            import base64
+            try:
+                json_code = base64.b64decode(data_b64).decode("utf-8")
+            except Exception as e:
+                return self.result(f"error: could not decode file: {core.detail_error(e)}", success=False)
+            return await self.import_json(json_code)
+
+        if lower.endswith(".png"):
+            import base64
+            import tempfile
+            try:
+                raw = base64.b64decode(data_b64)
+            except Exception as e:
+                return self.result(f"error: could not decode file: {core.detail_error(e)}", success=False)
+
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    tmp_path = tmp.name
+                    tmp.write(raw)
+
+                card = self._extract_card_from_png(tmp_path)
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+
+            if not card:
+                return self.result("error: no character card found inside this png", success=False)
+
+            name = filename[:-4].strip()
+            normalized = self._normalize_character(name, card)
+            if not normalized or not normalized.get("profile"):
+                return self.result("error: failed to extract a usable name and profile from this png", success=False)
+
+            if not normalized.get("name"):
+                normalized["name"] = name
+
+            # re-importing an existing character updates it in place
+            existing_name = self._find_char_name(normalized["name"])
+            key = existing_name or normalized["name"]
+
+            self.characters[key] = normalized
+            self.characters.save()
+            return self.result("character successfully imported")
+
+        return self.result("error: unsupported file type, use .json or .png", success=False)
+
     # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
     # chat helpers for the characters sidebar panel. the earlier attempt at
     # character-scoped twins of /api/chats/days|day|tags|search was dropped:
