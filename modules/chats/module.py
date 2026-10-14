@@ -44,7 +44,11 @@ class Chats(core.module.Module):
     category = "core"
 
     settings = {
-        "insert_system_prompt": {
+        "insert_chat_id": {
+            "description": "Make the AI aware of the current chat's ID. Highly recommended!",
+            "default": True
+        },
+        "insert_categories": {
             "description": "Make the AI aware of what categories exist for your chats to be sorted into. Highly recommended!",
             "default": True
         }
@@ -55,11 +59,20 @@ class Chats(core.module.Module):
             self.disabled_tools.append("get_categories")
 
     async def on_system_prompt(self):
-        if not self.config.get("insert_system_prompt"):
-            return None
+        output = []
+        
+        if self.config.get("insert_chat_id"):
+            output.append("current chat ID: "+self.channel.context.chat.get("id"))
 
-        cats = await self._get_categories()
-        return f"Available categories to categorise chat into: {', '.join(cats)}" if len(cats) > 1 else None
+        if self.config.get("insert_categories"):
+            cats = await self._get_categories()
+            if len(cats) > 1:
+                output.append(f"Available categories to categorise chat into: {', '.join(cats)}")
+                
+        if not output:
+            return None
+                
+        return "\n\n".join(output)
 
     async def _get_categories(self):
         cats = [c for c in self.channel.context.chat.get_categories() if len(c.split(":")) == 1 and c]
