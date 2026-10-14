@@ -94,7 +94,7 @@ class Chat:
             try:
                 module_sysprompt = await module.on_system_prompt()
             except Exception as e:
-                self.log("module error", f"{module_name}: in on_system_prompt(): {core.detail_error(e)}")
+                self.channel.log("module error", f"{module_name}: in on_system_prompt(): {core.detail_error(e)}")
                 self.channel.manager.broken_modules.append(module_name)
                 continue
 
@@ -154,7 +154,7 @@ class Chat:
             try:
                 module_sysprompt = await module.on_end_prompt()
             except Exception as e:
-                self.log("module error", f"{module_name}: in on_end_prompt(): {core.detail_error(e)}")
+                self.channel.log("module error", f"{module_name}: in on_end_prompt(): {core.detail_error(e)}")
                 self.channel.manager.broken_modules.append(module_name)
                 continue
 
