@@ -562,6 +562,35 @@ Hard rules:
 
         return changed_fields, reason
 
+    def _diff_system_prompt(self, prev_snap, cur_snap):
+        """line-level diff of two system prompt snapshots, so we can see exactly
+        what changed rather than a character offset into a huge string"""
+        import difflib
+
+        try:
+            p = json.loads(prev_snap).get("content") or ""
+            c = json.loads(cur_snap).get("content") or ""
+        except Exception:
+            return
+
+        if p == c:
+            return
+
+        # n=0: only the changed lines, no context padding
+        diff_lines = [l for l in difflib.unified_diff(p.splitlines(), c.splitlines(), lineterm="", n=0)][2:]
+
+        # collapse the @@ -x,y +a,b @@ hunk headers into the changed lines only
+        changed = [l for l in diff_lines if not l.startswith("@@")]
+        if not changed:
+            return
+
+        max_lines = 30
+        self.channel.log("prompt-cache", f"  system prompt diff ({len(changed)} changed lines):")
+        for line in changed[:max_lines]:
+            self.channel.log("prompt-cache", f"    | {line[:300]}")
+        if len(changed) > max_lines:
+            self.channel.log("prompt-cache", f"    | .. {len(changed) - max_lines} more changed lines not shown")
+
     async def _debug_prompt_cache_check(self, context, flags):
         """check if the context has changed in any way"""
         if not core.debug:
@@ -615,6 +644,7 @@ Hard rules:
             if first_diff == 0 and p_role in ("system", "developer"):
                 reason = "system prompt changed"
                 expected = True
+                self._diff_system_prompt(prev["snaps"][0], core_snaps[0])
 
         tag = "expected" if expected else "UNEXPECTED"
 
