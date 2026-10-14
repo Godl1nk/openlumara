@@ -17,6 +17,12 @@
       mirror can stay empty forever. Read $store.coderPanel directly in
       every expression instead. #}
 {% macro below_message() %}
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-14
+   module_config is injected by the webui's extension_slot machinery (see
+   channels/webui/channel.py): this module's settings with declared defaults
+   merged in. the whole wrapper is gated by show_welcome_card, so a disabled
+   card ships no markup and kicks off no sandbox/git fetches either. #}
+{% if module_config.get("show_welcome_card", true) %}
 {# the wrapper always renders and owns the sandbox fetch: putting the
    kick-start inside an x-if on sandboxes.length would never run, since
    an empty list means the template (and its x-init) doesn't exist.
@@ -114,4 +120,5 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endmacro %}

@@ -82,6 +82,11 @@ class Coder(core.module.Module):
             "description": "Auto-save files after this many seconds of inactivity (0 = disabled). Only applies to the webui editor.",
             "depends": "enable_webui_extension"
         },
+        "show_welcome_card": {
+            "default": True,
+            "description": "Show the coder card on the webui welcome screen: the resume-last-file row, pinned + recent files and the git strip.",
+            "depends": "enable_webui_extension"
+        },
 
         # blacklists
         "folder_blacklist": {

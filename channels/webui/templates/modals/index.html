@@ -22,6 +22,10 @@
 
 {# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
    auto-discovery: every .html under <module>/webui/templates/modals/ is included #}
-{% for tpl in extension_modals() %}
-{% include tpl %}
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+   the owning module's settings are exposed to the included template as
+   `module_config` (a loop-scoped set is visible to includes) #}
+{% for modal in extension_modals() %}
+{% set module_config = modal.config %}
+{% include modal.template %}
 {% endfor %}
