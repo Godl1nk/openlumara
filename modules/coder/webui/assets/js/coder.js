@@ -231,12 +231,14 @@ let CODER_VIM_EX = false;
 let CODER_CM_LOAD = null;
 
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
-   diff-point state (marks handed over by the git sidebar's diff view).
+   diff-point state (marks handed over by the git sidebar's diff view, and
+   since 2026-10-14 by the deslop review: spec.kind "deslop").
    CodeMirror line handles live OUTSIDE the Alpine store, same reasoning
    as CODER_CM: reactive proxies around editor internals are a bad time.
-   spec = { adds: [1-based lines], dels: [...], label }; adds/dels hold the
-   applied line handles; points holds the nav handles (sorted). */
-let CODER_DIFF = { spec: null, adds: [], dels: [], points: [] };
+   spec = { adds: [1-based lines], dels: [...], label, kind }; adds/dels hold
+   the applied line handles; points holds the nav handles (sorted); addClass
+   is the background class applied (so clearing removes the right one). */
+let CODER_DIFF = { spec: null, adds: [], dels: [], points: [], addClass: null, kind: "" };
 
 function coderLoadScript(src) {
     return new Promise((resolve, reject) => {
@@ -512,8 +514,8 @@ const CODER_PANEL = {
     caretLine: 1,
     caretCol: 1,
     selLen: 0,
-    // diff points opened from the git sidebar (see CODER_DIFF above)
-    diff: { active: false, count: 0, idx: -1, label: "" },
+    // diff points opened from the git sidebar or deslop review (see CODER_DIFF above)
+    diff: { active: false, count: 0, idx: -1, label: "", kind: "" },
     _reveal: 0, // line to jump to once the loaded file is in the editor
     _silent: false, // set while swapping files in (keeps change events from dirtying)
 
@@ -969,13 +971,19 @@ const CODER_PANEL = {
         const last = cm.lastLine();
         const clamp = (n) => Math.max(0, Math.min(n - 1, last));
 
-        for (const n of new Set(spec.adds.map(clamp))) {
+        // deslop markers get their own amber highlight instead of the git green
+        const isDeslop = spec.kind === "deslop";
+        const addClass = isDeslop ? "cm-deslop-add" : "cm-diff-add";
+        CODER_DIFF.addClass = addClass;
+        CODER_DIFF.kind = spec.kind || "git";
+
+        for (const n of new Set((spec.adds || []).map(clamp))) {
             const h = cm.getLineHandle(n);
-            cm.addLineClass(h, "background", "cm-diff-add");
+            cm.addLineClass(h, "background", addClass);
             CODER_DIFF.adds.push(h);
         }
 
-        if (spec.dels.length) {
+        if (spec.dels && spec.dels.length) {
             if (cm.getOption("gutters").indexOf("cm-diff-gutter") === -1) {
                 cm.setOption("gutters", cm.getOption("gutters").concat("cm-diff-gutter"));
             }
@@ -990,12 +998,20 @@ const CODER_PANEL = {
         }
 
         // navigation points: every deletion site + the start of each
-        // contiguous run of added lines, sorted
-        const nums = new Set(spec.dels.map(clamp));
-        let prev = -2;
-        for (const n of [...new Set(spec.adds.map(clamp))].sort((a, b) => a - b)) {
-            if (n !== prev + 1) nums.add(n);
-            prev = n;
+        // contiguous run of added lines, sorted. deslop markers are
+        // individual review targets, so there every marker line becomes its
+        // own point (adjacent markers must stay separately reachable, and
+        // the side panel relies on point index == marker index).
+        const nums = new Set((spec.dels || []).map(clamp));
+        const addNums = [...new Set((spec.adds || []).map(clamp))].sort((a, b) => a - b);
+        if (isDeslop) {
+            for (const n of addNums) nums.add(n);
+        } else {
+            let prev = -2;
+            for (const n of addNums) {
+                if (n !== prev + 1) nums.add(n);
+                prev = n;
+            }
         }
 
         CODER_DIFF.points = [...nums].sort((a, b) => a - b).map((n) => cm.getLineHandle(n));
@@ -1003,19 +1019,21 @@ const CODER_PANEL = {
             active: CODER_DIFF.points.length > 0,
             count: CODER_DIFF.points.length,
             idx: -1,
-            label: spec.label || "changes",
+            label: spec.label || (isDeslop ? "deslop markers" : "changes"),
+            kind: spec.kind || "git",
         };
     },
 
     clearDiffMarks() {
-        this.diff = { active: false, count: 0, idx: -1, label: "" };
+        this.diff = { active: false, count: 0, idx: -1, label: "", kind: "" };
 
         const old = CODER_DIFF;
-        CODER_DIFF = { spec: null, adds: [], dels: [], points: [] };
+        CODER_DIFF = { spec: null, adds: [], dels: [], points: [], addClass: null, kind: "" };
 
         if (!CODER_CM) return;
+        const addClass = old.addClass || "cm-diff-add";
         for (const h of old.adds) {
-            try { CODER_CM.removeLineClass(h, "background", "cm-diff-add"); } catch (e) {}
+            try { CODER_CM.removeLineClass(h, "background", addClass); } catch (e) {}
         }
         for (const h of old.dels) {
             try { CODER_CM.setGutterMarker(h, "cm-diff-gutter", null); } catch (e) {}
@@ -1049,6 +1067,26 @@ const CODER_PANEL = {
             if (line != null) break;
         }
         if (line == null) return; // every point's line is gone
+
+        this.diff.idx = idx;
+        const pos = { line: line, ch: 0 };
+        cm.setCursor(pos);
+        cm.scrollIntoView(pos, 120);
+        cm.focus();
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-14
+       jump straight to a navigation point by index (used by the deslop
+       side panel's marker list; F8/shift+F8 keep cycling instead). */
+    diffGoTo(idx) {
+        const cm = CODER_CM;
+        const pts = CODER_DIFF.points;
+        const n = pts ? pts.length : 0;
+        if (!cm || !n) return;
+
+        idx = Math.max(0, Math.min(idx, n - 1));
+        const line = cm.getLineNumber(pts[idx]);
+        if (line == null) return; // that point's line is gone
 
         this.diff.idx = idx;
         const pos = { line: line, ch: 0 };
@@ -1237,6 +1275,24 @@ const CODER_PANEL = {
             this.caretLine = cur.line + 1;
             this.caretCol = cur.ch + 1;
             this.selLen = c.somethingSelected() ? c.getSelection().length : 0;
+
+            /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-14
+               deslop: keep the side panel's marker selection in sync with
+               the caret. the active point is the last one at or above the
+               caret; index changes are broadcast so deslop.js can repaint. */
+            if (this.diff.active && this.diff.kind === "deslop") {
+                let idx = -1;
+                for (let i = 0; i < CODER_DIFF.points.length; i++) {
+                    const l = c.getLineNumber(CODER_DIFF.points[i]);
+                    if (l == null) continue;
+                    if (l <= cur.line) idx = i;
+                    else break;
+                }
+                if (idx !== this.diff.idx) {
+                    this.diff.idx = idx;
+                    window.dispatchEvent(new CustomEvent("deslop-caret", { detail: { idx: idx } }));
+                }
+            }
 
             // fallback for vim mode: some mode transitions are easiest to
             // catch from the live vim state when the cursor/selection moves.
@@ -1468,7 +1524,7 @@ const CODER_PANEL = {
         } else {
             text = "ctrl+f find · ctrl+h replace · ctrl+alt+g line · ctrl+/ comment";
         }
-        if (this.diff.active) text += " · F8 changes";
+        if (this.diff.active) text += " · F8 " + (this.diff.kind === "deslop" ? "markers" : "changes");
         return text;
     },
 
