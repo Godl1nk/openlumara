@@ -507,6 +507,8 @@ Hard rules:
         # structures (tool_calls lists etc.) with the chat storage via shallow copies, so
         # holding dict references lets post-build mutations rewrite the "previous" state
         # in-place and hide the real diff.
+        import hashlib
+
         snaps = []
         for msg in context:
             snaps.append(json.dumps(msg, sort_keys=True, ensure_ascii=False, default=str))
