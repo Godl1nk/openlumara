@@ -273,6 +273,8 @@ class Context:
             return False
 
         self.compressing = True
+        # allow system prompt to be regenerated
+        self.chat._cached_system_prompt = None
 
         # if this chat was compacted before, its summary is merged into rather than re-summarized
         prev_summary = await self.get_latest_summary()
