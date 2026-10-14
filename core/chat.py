@@ -16,6 +16,9 @@ class Chat:
         self.data = core.storage.StorageList(os.path.join(self.path, "index"), "msgpack")
         self.messages = None # initialized by autoload()
 
+        # cache system prompt so that it never changes during the course of a chat
+        self._cached_system_prompt = None
+
         # store currently loaded chat index
         self.current = None
         self.current_save_path = core.get_data_path(os.path.join(self.path, f"current"))
@@ -40,6 +43,134 @@ class Chat:
     # ------------------
     # helper functions
     # ------------------
+    async def get_system_prompt(self):
+        if self._cached_system_prompt:
+            # freeze system prompt on chat start,
+            # so that the system prompt can never be modified by toolcalls
+            # and the changed system prompt will only apply in a new chat
+            return self._cached_system_prompt
+        
+        # only run on_system_prompt if the manager has a channel reference
+        if not self.channel:
+            return ""
+
+        if self.channel.manager.pure_mode:
+            return ""
+
+        system_prompt = []
+
+        active_character = None
+        if self.channel:
+            active_character = self.get("metadata").get("character")
+
+        # automatically insert system prompts returned by modules (such as memory)
+        sysprompt_top = []
+        sysprompt_middle = []
+        sysprompt_bottom = []
+
+        for module_name, module in self.channel.manager.modules.items():
+            if not core.config.get("model").get("use_tools", False) and module_name not in core.modules.nonagentic:
+                # skip most prompts if tools are turned off
+                continue
+
+            if module_name in self.channel.manager.broken_modules:
+                continue
+
+            char_modules_exempt = ["characters"]
+            if (
+                self.channel.manager.modules.get("writing_style") and
+                self.channel.manager.modules.get("characters") and
+                self.channel.manager.modules["characters"].config.get("use_writing_style")
+            ):
+                char_modules_exempt.append("writing_style")
+
+            if active_character and module_name not in char_modules_exempt and "characters" in self.channel.manager.modules.keys():
+                # if a character is currently active, display ONLY the character system prompt
+                char_disable_agent_prompts = self.channel.manager.modules["characters"].config.get("disable_agent_prompts_when_character_active")
+
+                if char_disable_agent_prompts:
+                    continue
+
+            try:
+                module_sysprompt = await module.on_system_prompt()
+            except Exception as e:
+                self.log("module error", f"{module_name}: in on_system_prompt(): {core.detail_error(e)}")
+                self.channel.manager.broken_modules.append(module_name)
+                continue
+
+            if module_sysprompt and (module_name not in core.config.get("modules").get("disabled_prompts", [])):
+                # default to module name
+                sysprompt_header = ' '.join(module_name.split('_')).capitalize()
+                if hasattr(module, "header") and module.header:
+                    # but allow overriding the header
+                    sysprompt_header = module.header
+                prompt_chunk = f"# {sysprompt_header}\n{str(module_sysprompt).strip()}"
+
+                if module_name in ("agent_framework_awareness", "identity", "memory", "writing_style"):
+                    sysprompt_top.append(prompt_chunk)
+                elif module_name in ("time", "system"):
+                    sysprompt_bottom.append(prompt_chunk)
+                else:
+                    sysprompt_middle.append(prompt_chunk)
+
+        system_prompt = sysprompt_top+sysprompt_middle+sysprompt_bottom
+
+        if system_prompt:
+            sysprompt_str = "\n\n".join(system_prompt)
+            self._cached_system_prompt = sysprompt_str
+            
+            return sysprompt_str
+        else:
+            return ""
+
+    async def get_end_prompt(self, prevent_recursion=False):
+        # only run if the manager has a channel reference
+        if not self.channel:
+            return None
+        
+        # don't return endprompt if characters module is active
+        active_character = None
+        if self.channel:
+            active_character = self.get("metadata").get("character")
+
+        # automatically insert system prompts returned by modules (such as memory)
+        histend_prompt = []
+        for module_name, module in self.channel.manager.modules.items():
+            if module_name in self.channel.manager.broken_modules:
+                continue
+
+            # if a character is active, use only the character module's endprompt
+            if active_character and module_name != "characters":
+                continue
+
+            if prevent_recursion and module_name == "token_threshold":
+                # if we try to count the system prompt's tokens from the function that counts tokens.. we get recursion
+                continue
+
+            if not core.config.get("model").get("use_tools", False) and module_name not in core.modules.nonagentic:
+                # skip most prompts if tools are turned off
+                continue
+
+            try:
+                module_sysprompt = await module.on_end_prompt()
+            except Exception as e:
+                self.log("module error", f"{module_name}: in on_end_prompt(): {core.detail_error(e)}")
+                self.channel.manager.broken_modules.append(module_name)
+                continue
+
+            if module_sysprompt:
+                sysprompt_header = ' '.join(module_name.split('_')).capitalize()
+                if hasattr(module, "header") and module.header:
+                    # but allow overriding the header
+                    sysprompt_header = module.header
+                prompt_chunk = f"# {sysprompt_header}\n{str(module_sysprompt).strip()}"
+                histend_prompt.append(prompt_chunk)
+
+        if histend_prompt:
+            return "\n\n".join(histend_prompt)
+        else:
+            return ""
+        
     async def _set_current(self, index: int):
         """load a chat and its messages by index"""
         # guard against a stale current index (e.g. after the chat it pointed
@@ -63,6 +194,9 @@ class Chat:
         if old_id != new_id:
             self.channel.tool_loader.reset_for_new_chat()
             self.channel.tool_loader.restore_chat_tools()
+            
+        # let the system prompt be generated anew
+        self._cached_system_prompt = None
 
     def _find_index(self, id: str):
         """find index of the chat with that ID"""

@@ -44,7 +44,7 @@ class Context:
         system_msg = []
         if system_prompt:
             try:
-                content = await self.channel.manager.get_system_prompt()
+                content = await self.chat.get_system_prompt()
             except Exception as e:
                 self.channel.log_error("Error while getting system prompt", e)
 
@@ -104,7 +104,7 @@ class Context:
 
         end_msg = []
         if end_prompt:
-            histend = await self.channel.manager.get_end_prompt(prevent_recursion=prevent_recursion)
+            histend = await self.chat.get_end_prompt(prevent_recursion=prevent_recursion)
             if histend:
                 end_msg = [{"role": dev_role, "content": histend}]
 
@@ -354,10 +354,10 @@ Hard rules:
         # determine whether the system prompt and end prompt parts exist within the built context,
         # so we can slice the full context into system + history + end parts
         try:
-            system_present = bool(await self.channel.manager.get_system_prompt())
+            system_present = bool(await self.chat.get_system_prompt())
         except Exception:
             system_present = False
-        histend = await self.channel.manager.get_end_prompt(prevent_recursion=True)
+        histend = await self.chat.get_end_prompt(prevent_recursion=True)
 
         sys_msgs = full[:1] if (system_present and full) else []
         end_msgs = full[-1:] if (histend and len(full) > len(sys_msgs)) else []
