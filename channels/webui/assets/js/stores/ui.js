@@ -295,6 +295,12 @@ UI_STORE = {
 
     showSidebar: true,
 
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+    // collapsed sidebar: only the vertical tab strip stays visible.
+    // toggled by clicking the already-active sidebar tab (sidebar.html);
+    // lives in the ui store so #sidebar itself can shrink via a class.
+    sidebarCollapsed: false,
+
     expandReasoning: true,
 
     async init() {
@@ -304,6 +310,10 @@ UI_STORE = {
 
         // hide sidebar on mobile (in favor of a hamburger button)
         this.showSidebar = !this.isMobile;
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+        // restore the collapsed-sidebar preference (default: expanded)
+        this.sidebarCollapsed = localStorage.getItem("sidebarCollapsed") === 'true';
 
         this.expandReasoning = localStorage.getItem("expandReasoning") !== 'false';
 

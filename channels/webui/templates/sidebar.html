@@ -28,10 +28,35 @@
             const saved = localStorage.getItem('sidebarTab') || '';
             const tabs = Array.from(document.querySelectorAll('.sidebar-tab')).map(b => b.dataset.tab);
             this.sidebarTab = tabs.includes(saved) ? saved : '';
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+            // with no extension tabs the tab bar is hidden, so a saved
+            // collapsed state would leave an empty strip with no way to
+            // expand - drop it in that case.
+            if (!$store.ui.isMobile && $store.ui.sidebarCollapsed &&
+                document.querySelectorAll('.sidebar-tab.ext').length === 0) {
+                $store.ui.sidebarCollapsed = false;
+                localStorage.setItem('sidebarCollapsed', 'false');
+            }
         },
         setTab(tab) {
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+            // clicking the already-active tab collapses/expands the
+            // sidebar (desktop only - on mobile it's a full-screen
+            // overlay, so collapsing makes no sense there). the state
+            // lives in the ui store so #sidebar itself can shrink;
+            // persisted to localStorage.
+            if (tab === this.sidebarTab && !$store.ui.isMobile) {
+                $store.ui.sidebarCollapsed = !$store.ui.sidebarCollapsed;
+                localStorage.setItem('sidebarCollapsed', String($store.ui.sidebarCollapsed));
+                return;
+            }
             this.sidebarTab = tab;
             localStorage.setItem('sidebarTab', tab);
+            // switching to a different tab always reveals the panel again
+            if ($store.ui.sidebarCollapsed) {
+                $store.ui.sidebarCollapsed = false;
+                localStorage.setItem('sidebarCollapsed', 'false');
+            }
         },
     }">
     <nav class="sidebar-tabbar" aria-label="Sidebar tabs">
@@ -53,7 +78,11 @@
 
 <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
      tagPanel: local state for the tag filter panel toggle below -->
-<div id="chat-list" x-ref="chat-list" x-cloak x-show="sidebarTab === ''" x-data="{ tagPanel: false }">
+<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+     panels stay hidden while the sidebar is collapsed (active tab was
+     clicked); the isMobile escape hatch keeps the list visible if the
+     window shrinks to mobile while a collapsed desktop state is active. -->
+<div id="chat-list" x-ref="chat-list" x-cloak x-show="sidebarTab === '' && ($store.ui.isMobile || !$store.ui.sidebarCollapsed)" x-data="{ tagPanel: false }">
     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
          category picker dropdown, replaces the old category sidebar -->
     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
@@ -407,7 +436,7 @@
          sidebarTab state above, same trick modals use with currentModal).
          panels are expected to be a flex-column like #chat-list. -->
     {% for panel in extension_sidebars() %}
-    <div class="sidebar-panel" x-show="sidebarTab === '{{ panel.module }}/{{ panel.name }}'" x-cloak>
+    <div class="sidebar-panel" x-show="sidebarTab === '{{ panel.module }}/{{ panel.name }}' && ($store.ui.isMobile || !$store.ui.sidebarCollapsed)" x-cloak>
         {% include panel.template %}
     </div>
     {% endfor %}
