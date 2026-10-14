@@ -17,15 +17,16 @@
                  x-effect fires on init, which would otherwise re-collapse a
                  settled expanded card (history cards always have a
                  response) the instant it renders. -->
+            {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13): tool call display annotations moved under tool._metadata #}
             <div class="tool-calls-container"
-                 x-data="{ collapsed: {% if toolcard_in_step %}localStorage.getItem('collapseToolcallsDefault') === 'true' || ($store.stream.state === 'idle' ? toolIdx > 0 : !!tool.response){% else %}$store.stream.state === 'idle' || !!tool.response || localStorage.getItem('collapseToolcallsDefault') === 'true'{% endif %}, autoCollapsed: !!tool.response, cacheKey: tool.id ?? (message.tool_call_id + ':' + toolIdx) }"
-                 x-effect="if (tool.response && !autoCollapsed) { autoCollapsed = true; collapsed = true }">
+                 x-data="{ collapsed: {% if toolcard_in_step %}localStorage.getItem('collapseToolcallsDefault') === 'true' || ($store.stream.state === 'idle' ? toolIdx > 0 : !!(tool._metadata?.response))){% else %}$store.stream.state === 'idle' || !!(tool._metadata?.response) || localStorage.getItem('collapseToolcallsDefault') === 'true'{% endif %}, autoCollapsed: !!(tool._metadata?.response), cacheKey: tool.id ?? (message.tool_call_id + ':' + toolIdx) }"
+                 x-effect="if (tool._metadata?.response && !autoCollapsed) { autoCollapsed = true; collapsed = true }">
             <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
                  tool-pending marks in-flight calls (no response yet) so the
                  timeline pulses exactly the active nodes regardless of
                  collapse state; tool-error marks calls whose response has
                  status:"error" -->
-            <div class="tool-call-card" :class="{ 'tool-pending': !tool.response, 'tool-error': tool.failed }">
+            <div class="tool-call-card" :class="{ 'tool-pending': !tool._metadata?.response, 'tool-error': tool._metadata?.failed }">
                     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
                          timeline node: circle + chevron on the spine (design B) -->
                     <div class="node-dot" :class="{expanded: !collapsed}" @click.stop="collapsed = !collapsed">
@@ -54,11 +55,11 @@
                              args now show live while streaming (lenient-parse
                              summary from the backend); only the result hint
                              below still waits for tool.response -->
-                        <span class="call-args" x-show="tool.summary"
-                              x-text="tool.summary ?? ''"></span>
+                        <span class="call-args" x-show="tool._metadata?.summary"
+                              x-text="tool._metadata?.summary ?? ''"></span>
                         <!-- result hint from the display registry (default:
                              displays define no summary, so this stays empty) -->
-                        <span class="call-result" x-show="tool.response"
+                        <span class="call-result" x-show="tool._metadata?.response"
                               x-text="toolCallResultSummary(tool, cacheKey)"></span>
                     </div>
 
@@ -93,18 +94,18 @@
                             <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                                  args are parsed backend-side now (args_parsed
                                  is stamped onto every tool call) -->
-                            <template x-for="(value, key) in tool.args_parsed ?? {}">
+                            <template x-for="(value, key) in tool._metadata?.args_parsed ?? {}">
                                 <div class="arg-row">
                                     <span class="arg-name" x-fade-text="key"></span>
                                     <span class="arg-value" x-box x-auto-scroll x-fade-text="(value !== null && typeof value === 'object') ? JSON.stringify(value, null, 2) : value"></span>
                                 </div>
                             </template>
 
-                            <template x-if="tool.response">
+                            <template x-if="tool._metadata?.response">
                                 <div class="response-row" x-data="{
                                          get parsed() {
                                             try {
-                                                const p = JSON.parse(this.tool.response);
+                                                const p = JSON.parse(this.tool._metadata?.response);
                                                 return (p !== null && typeof p === 'object') ? p : null;
                                             } catch {
                                                 return null;
@@ -115,7 +116,7 @@
                                     <div class="content" x-html="toolResponseRenderer(parsed)"></div>
                                 </template>
                                 <template x-if="parsed === null">
-                                    <p x-fade-text="tool.response" class="raw-response"></p>
+                                    <p x-fade-text="tool._metadata?.response" class="raw-response"></p>
                                 </template>
                                 </div>
                             </template>
