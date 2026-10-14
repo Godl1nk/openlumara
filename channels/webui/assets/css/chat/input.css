@@ -20,7 +20,7 @@
                hover background reaches top to bottom) even while the
                textarea autosizes taller */
             align-items: stretch;
-            width: 100%;
+            width: var(--chat-content-width);
             border: 1px solid var(--border-color);
             border-radius: var(--radius-sm);
             margin-bottom: 9px;
