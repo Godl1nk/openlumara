@@ -9,11 +9,23 @@
 
     <div class="char-header">
         <span class="char-title">Characters</span>
-        <button type="button" class="char-new" title="New chat with this character"
-            :disabled="!selected || $store.stream.state !== 'idle'"
-            @click="newChat()">
-            {% include 'svg/add.svg' %}
-        </button>
+        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+             gear opens the character management modal
+             (modals/manage_characters.html, auto-discovered) -->
+        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+             the new-chat plus button is gone (the footer keeps one); this
+             slot is now a refresh that re-pulls the character list -->
+        <div class="char-header-actions">
+            <button type="button" class="char-new" title="Manage characters"
+                @click="$store.ui.openModal('characters')">
+                {% include 'svg/gear.svg' %}
+            </button>
+            <button type="button" class="char-new" title="Refresh character list"
+                :disabled="loading"
+                @click="load()">
+                {% include 'svg/reload.svg' %}
+            </button>
+        </div>
     </div>
 
     <!-- character picker: custom dropdown mirroring the category one -->

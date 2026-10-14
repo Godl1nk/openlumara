@@ -94,3 +94,187 @@ const CHARACTERS_PANEL = {
         }
     },
 };
+
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+   character management modal (add / edit / delete with inline confirm /
+   import json & png cards). opened via $store.ui.openModal('characters')
+   from the sidebar tab's gear button; markup lives in
+   templates/modals/manage_characters.html (auto-discovered). */
+function characterManager() {
+    return {
+        view: 'list',      // 'list' | 'editor'
+        mode: 'add',       // 'add' | 'edit'
+        characters: [],    // full character objects from /all
+        loading: false,
+        busy: false,
+        confirming: null,  // storage key awaiting delete confirmation
+        error: '',
+        form: {
+            key: '',
+            name: '',
+            profile: '',
+            scenario: '',
+            first_message: '',
+            post_history: '',
+            category: '',
+            tags: '',      // comma-separated string in the form
+        },
+
+        async init() {
+            await this.load();
+        },
+
+        // escape: editor -> back to list, list -> close the modal
+        esc() {
+            if (this.view === 'editor') { this.backToList(); return; }
+            Alpine.store('ui').closeModal();
+        },
+
+        async load() {
+            this.loading = true;
+            try {
+                this.characters = await simpleApiFetch('/api/ext/characters/all');
+            } catch (e) {
+                this.error = typeof e === 'string' ? e : 'failed to load characters';
+                this.characters = [];
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        openAdd() {
+            this.error = '';
+            this.confirming = null;
+            this.mode = 'add';
+            this.form = {
+                key: '',
+                name: '',
+                profile: '',
+                scenario: '',
+                first_message: '',
+                post_history: '',
+                category: '',
+                tags: '',
+            };
+            this.view = 'editor';
+        },
+
+        async edit(key) {
+            this.error = '';
+            // grab the freshest copy from the backend rather than trusting
+            // the list snapshot (another tab may have edited it)
+            let char = this.characters.find(c => c.key === key);
+            try {
+                char = await simpleApiFetch(`/api/ext/characters/get?name=${encodeURIComponent(key)}`);
+            } catch (e) {
+                // fall back to the list copy if the fetch failed
+            }
+            if (!char) { return; }
+
+            this.mode = 'edit';
+            this.form = {
+                key: key,
+                name: char.name || key,
+                profile: char.profile || '',
+                scenario: char.scenario || '',
+                first_message: char.first_message || '',
+                post_history: char.post_history || '',
+                category: char.category || '',
+                tags: (char.tags || []).join(', '),
+            };
+            this.view = 'editor';
+        },
+
+        backToList() {
+            this.view = 'list';
+            this.error = '';
+            this.confirming = null;
+        },
+
+        async save() {
+            this.error = '';
+            const name = this.form.name.trim();
+            const profile = this.form.profile.trim();
+
+            if (!name) { this.error = 'character name cannot be empty'; return; }
+            if (!profile) { this.error = 'character profile must not be blank'; return; }
+
+            const payload = {
+                name: name,
+                profile: profile,
+                scenario: this.form.scenario,
+                first_message: this.form.first_message,
+                post_history: this.form.post_history,
+                category: this.form.category.trim(),
+                tags: this.form.tags,
+            };
+
+            this.busy = true;
+            try {
+                if (this.mode === 'add') {
+                    await simpleApiPost('/api/ext/characters/add', payload);
+                } else {
+                    payload.key = this.form.key;
+                    await simpleApiPost('/api/ext/characters/edit', payload);
+                }
+                await this.load();
+                this.backToList();
+            } catch (e) {
+                this.error = typeof e === 'string' ? e : 'failed to save character';
+            } finally {
+                this.busy = false;
+            }
+        },
+
+        async remove(key) {
+            this.busy = true;
+            try {
+                await simpleApiPost('/api/ext/characters/remove', { name: key });
+                this.confirming = null;
+                await this.load();
+            } catch (e) {
+                this.error = typeof e === 'string' ? e : 'failed to delete character';
+            } finally {
+                this.busy = false;
+            }
+        },
+
+        // reads the picked file(s) locally and hands the bytes to the
+        // backend as base64 (keeps the route plain JSON, no multipart)
+        async importFiles(event) {
+            const input = event.target;
+            const files = Array.from(input.files || []);
+            input.value = '';   // allow re-picking the same file later
+            if (files.length === 0) { return; }
+
+            this.error = '';
+            this.busy = true;
+            const failures = [];
+
+            for (const file of files) {
+                try {
+                    const data = await this._readAsBase64(file);
+                    await simpleApiPost('/api/ext/characters/import_file', {
+                        filename: file.name,
+                        data: data,
+                    });
+                } catch (e) {
+                    failures.push(`${file.name}: ${typeof e === 'string' ? e : 'import failed'}`);
+                }
+            }
+
+            if (failures.length) { this.error = failures.join(' • '); }
+            this.busy = false;
+            await this.load();
+        },
+
+        _readAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(`${file.name}: could not be read`);
+                reader.readAsDataURL(file);
+            });
+        },
+    };
+}

@@ -1,0 +1,149 @@
+{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+   character management modal, opened from the gear button in the
+   characters sidebar tab. two views inside one box: a list (with inline
+   delete-confirm) and an add/edit form. logic lives in
+   assets/js/characters.js (characterManager). #}
+<template x-if="$store.ui.currentModal === 'characters'" x-cloak>
+    <div @keydown.escape.window="esc()">
+        <div class="modal characters-modal" x-data="characterManager()" x-init="init()">
+
+            <!-- ============ list view ============ -->
+            <template x-if="view === 'list'">
+                <div class="char-mgr-list-wrap">
+                    <div class="header">
+                        <h2>Manage characters</h2>
+                        <button class="close" @click="$store.ui.closeModal()" aria-label="Close">&times;</button>
+                    </div>
+
+                    <div class="char-mgr-content">
+                        <template x-if="loading">
+                            <div class="char-mgr-hint">loading..</div>
+                        </template>
+
+                        <template x-if="!loading && characters.length === 0">
+                            <div class="char-mgr-hint">no characters yet - add one below or import a card</div>
+                        </template>
+
+                        <div class="char-mgr-rows">
+                            <template x-for="char in characters" :key="char.key">
+                                <div class="char-mgr-row">
+                                    <div class="char-mgr-info">
+                                        <span class="char-mgr-name" x-text="char.name"></span>
+                                        <span class="char-mgr-meta" x-show="char.category" x-text="char.category"></span>
+                                    </div>
+
+                                    <div class="char-mgr-actions">
+                                        <template x-if="confirming !== char.key">
+                                            <div class="char-mgr-btns">
+                                                <button class="action-btn" @click="edit(char.key)" title="Edit character">
+                                                    {% include 'svg/pencil.svg' %}
+                                                </button>
+                                                <button class="action-btn delete" @click="confirming = char.key" title="Delete character">
+                                                    {% include 'svg/trash.svg' %}
+                                                </button>
+                                            </div>
+                                        </template>
+                                        <template x-if="confirming === char.key">
+                                            <div class="confirm-inline">
+                                                <span class="confirm-text" x-text="'delete ' + char.name + '?'"></span>
+                                                <button class="rename-action-btn save" @click="remove(char.key)" :disabled="busy" title="Confirm delete">
+                                                    {% include 'svg/checkmark.svg' %}
+                                                </button>
+                                                <button class="rename-action-btn cancel" @click="confirming = null" title="Cancel">
+                                                    {% include 'svg/cross.svg' %}
+                                                </button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <template x-if="error">
+                            <div class="char-mgr-error" x-text="error"></div>
+                        </template>
+                    </div>
+
+                    <div class="char-mgr-footer">
+                        <button class="char-mgr-btn primary" @click="openAdd()" :disabled="busy">
+                            {% include 'svg/add.svg' %}
+                            <span>New character</span>
+                        </button>
+                        <button class="char-mgr-btn" @click="$refs.fileInput.click()" :disabled="busy">
+                            {% include 'svg/download.svg' %}
+                            <span>Import JSON / PNG</span>
+                        </button>
+                        <input type="file" x-ref="fileInput" accept=".json,.png,application/json,image/png"
+                            multiple hidden @change="importFiles($event)">
+                    </div>
+                </div>
+            </template>
+
+            <!-- ============ editor view ============ -->
+            <template x-if="view === 'editor'">
+                <div class="char-mgr-editor-wrap">
+                    <div class="header">
+                        <h2 x-text="mode === 'add' ? 'New character' : 'Edit character'"></h2>
+                        <button class="close" @click="$store.ui.closeModal()" aria-label="Close">&times;</button>
+                    </div>
+
+                    <div class="char-mgr-content">
+                        <div class="char-mgr-field-row">
+                            <div class="char-mgr-field">
+                                <label for="char-mgr-name">Name</label>
+                                <input id="char-mgr-name" type="text" x-model="form.name" placeholder="Character name">
+                            </div>
+                            <div class="char-mgr-field">
+                                <label for="char-mgr-category">Category</label>
+                                <input id="char-mgr-category" type="text" x-model="form.category" placeholder="optional">
+                            </div>
+                        </div>
+
+                        <div class="char-mgr-field">
+                            <label for="char-mgr-tags">Tags <span class="char-mgr-sublabel">(comma separated)</span></label>
+                            <input id="char-mgr-tags" type="text" x-model="form.tags" placeholder="tag1, tag2">
+                        </div>
+
+                        <div class="char-mgr-field">
+                            <label for="char-mgr-profile">Profile</label>
+                            <textarea id="char-mgr-profile" x-model="form.profile" rows="6"
+                                placeholder="Who this character is. Use {{ '{{char}}' }} to refer to the character and {{ '{{user}}' }} to refer to the user."
+                                x-autosize></textarea>
+                        </div>
+
+                        <div class="char-mgr-field">
+                            <label for="char-mgr-scenario">Scenario</label>
+                            <textarea id="char-mgr-scenario" x-model="form.scenario" rows="3"
+                                placeholder="optional" x-autosize></textarea>
+                        </div>
+
+                        <div class="char-mgr-field">
+                            <label for="char-mgr-first">First message</label>
+                            <textarea id="char-mgr-first" x-model="form.first_message" rows="3"
+                                placeholder="optional - sent automatically when starting a new chat with this character"
+                                x-autosize></textarea>
+                        </div>
+
+                        <div class="char-mgr-field">
+                            <label for="char-mgr-post">Post-history instructions</label>
+                            <textarea id="char-mgr-post" x-model="form.post_history" rows="3"
+                                placeholder="optional - appended to the end of the prompt"
+                                x-autosize></textarea>
+                        </div>
+
+                        <template x-if="error">
+                            <div class="char-mgr-error" x-text="error"></div>
+                        </template>
+                    </div>
+
+                    <div class="actions">
+                        <button @click="backToList()">Cancel</button>
+                        <button @click="save()" :disabled="busy || !form.name.trim() || !form.profile.trim()">
+                            <span x-text="busy ? 'Saving..' : 'Save'"></span>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</template>

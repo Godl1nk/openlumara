@@ -52,6 +52,14 @@
     height: 16px;
 }
 
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+   gear + add buttons grouped in the panel header */
+.characters-panel .char-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
 /* trigger mirrors the core .category-trigger look */
 .characters-panel .char-select .category-trigger {
     width: 100%;
@@ -144,4 +152,288 @@
     margin-left: auto;
     font-size: 12px;
     color: var(--text-secondary, #999);
+}
+
+/* ==========================================================================
+   -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+   character management modal (templates/modals/manage_characters.html).
+   base .modal / .header / .close / .actions come from the core modals.css;
+   this adds the two view wrappers, list rows and form fields.
+   ========================================================================== */
+
+.characters-modal {
+    width: 50%;
+    max-width: 640px;
+    height: fit-content;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* the x-if wrapper is the only child of .modal, so it carries the column
+   layout down (header pinned, content scrolls, footer pinned) */
+.characters-modal .char-mgr-list-wrap,
+.characters-modal .char-mgr-editor-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: inherit;
+}
+
+.characters-modal .char-mgr-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.characters-modal .char-mgr-hint {
+    padding: 18px 4px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-secondary, #999);
+}
+
+/* --- list rows --- */
+.characters-modal .char-mgr-rows {
+    display: flex;
+    flex-direction: column;
+}
+
+.characters-modal .char-mgr-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 6px;
+    border-radius: var(--radius-sm, 8px);
+}
+
+.characters-modal .char-mgr-row:hover {
+    background: var(--bg-primary, rgba(255, 255, 255, 0.04));
+}
+
+.characters-modal .char-mgr-info {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.characters-modal .char-mgr-name {
+    font-size: 14px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.characters-modal .char-mgr-meta {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-secondary, #999);
+}
+
+.characters-modal .char-mgr-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.characters-modal .char-mgr-btns {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.characters-modal .action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm, 8px);
+    background: none;
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.characters-modal .action-btn:hover {
+    background: var(--button-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.characters-modal .action-btn.delete:hover {
+    color: #ff5c5c;
+    border-color: #ff5c5c;
+}
+
+.characters-modal .confirm-inline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.characters-modal .confirm-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.characters-modal .rename-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 8px);
+    background: none;
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.characters-modal .rename-action-btn.save:hover {
+    color: #4ade80;
+    border-color: #4ade80;
+}
+
+.characters-modal .rename-action-btn.cancel:hover {
+    color: #ff5c5c;
+    border-color: #ff5c5c;
+}
+
+.characters-modal .rename-action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* --- footer (list view) --- */
+.characters-modal .char-mgr-footer {
+    display: flex;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+}
+
+.characters-modal .char-mgr-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--button-bg);
+    color: var(--button-text);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--font-primary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.characters-modal .char-mgr-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-soft);
+}
+
+.characters-modal .char-mgr-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.characters-modal .char-mgr-btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg-primary);
+    font-weight: 600;
+}
+
+.characters-modal .char-mgr-btn.primary:hover:not(:disabled) {
+    box-shadow: 0 0 16px var(--accent-glow);
+}
+
+.characters-modal .char-mgr-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* --- editor form --- */
+.characters-modal .char-mgr-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.characters-modal .char-mgr-field-row {
+    display: flex;
+    gap: 12px;
+}
+
+.characters-modal .char-mgr-field-row .char-mgr-field {
+    flex: 1;
+    min-width: 0;
+}
+
+.characters-modal .char-mgr-field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.characters-modal .char-mgr-sublabel {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    opacity: 0.7;
+}
+
+.characters-modal .char-mgr-field input,
+.characters-modal .char-mgr-field textarea {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-primary);
+    resize: none;
+    overflow-y: auto;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.characters-modal .char-mgr-field textarea {
+    max-height: 40vh;
+}
+
+.characters-modal .char-mgr-field input:focus,
+.characters-modal .char-mgr-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+/* --- error strip (both views) --- */
+.characters-modal .char-mgr-error {
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, #ff5c5c 50%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, #ff5c5c 10%, transparent);
+    color: #ff8080;
+    font-size: 13px;
+    line-height: 1.4;
+    word-break: break-word;
 }
