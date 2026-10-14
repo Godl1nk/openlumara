@@ -183,6 +183,21 @@ class Webui(core.channel.Channel):
             return enabled.strip().lower() not in ("false", "0", "no", "off", "")
         return bool(enabled)
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+    def _ext_module_config(self, module):
+        """settings of a module for use inside its shipped templates"""
+        values = {}
+        for name in (getattr(module, "settings", None) or {}):
+            values[name] = module.config.get(name)
+        return values
+
+    def _ext_template_vars(self, template_name):
+        """jinja vars for a prefixed extension template ('<module>/..'):
+        the owning module's settings, exposed as `module_config`.
+        an empty dict for templates."""
+        module = self.manager.modules.get(template_name.split("/", 1)[0])
+        return {"module_config": self._ext_module_config(module) if module else {}}
+
     def _ui_extension_dirs(self):
         """collect webui template folders from all enabled modules, as {module_name: path}"""
         dirs = {}
@@ -278,15 +293,14 @@ class Webui(core.channel.Channel):
         def extension_modals():
             """auto-discovers modal templates: every .html file directly in
             <module>/webui/templates/modals/ is included by the core modal area.
-            index.html inside modals/ is skipped (legacy manual-hook file).
-            -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-            top level only: subdirs of modals/ mirror core slot template paths
-            (e.g. modals/settings/sidebar.html) and must not be auto-included."""
+            index.html inside modals/ is skipped (legacy manual-hook file)."""
             found = []
             for module_name in sorted(dirs):
                 modal_root = os.path.join(dirs[module_name], "modals")
                 if not os.path.isdir(modal_root):
                     continue
+                module = self.manager.modules.get(module_name)
+                module_config = self._ext_module_config(module) if module else {}
                 for filename in sorted(os.listdir(modal_root)):
                     filepath = os.path.join(modal_root, filename)
                     if not os.path.isfile(filepath):
@@ -300,22 +314,27 @@ class Webui(core.channel.Channel):
                     except Exception as e:
                         self.log("webui", f"skipping UI modal '{template_name}': {core.detail_error(e)}")
                         continue
-                    found.append(template_name)
+                    found.append({"template": template_name, "config": module_config})
             return found
 
         def extension_sidebars():
-            """auto-discovers sidebar tab panels: every .html file directly in
+            """
+            auto-discovers sidebar tab panels: every .html file directly in
             <module>/webui/templates/sidebars/ renders as its own tab in the
             core sidebar. a same-named .svg next to it becomes the tab icon
             (inlined raw, so it inherits currentColor and themes for free).
             the tab label is derived from the filename (underscores/hyphens
             become spaces, title-cased) - zero config, just drop files in.
-            -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)"""
+
+			templates can access module config using var `module_config`
+            """
             found = []
             for module_name in sorted(dirs):
                 sidebar_root = os.path.join(dirs[module_name], "sidebars")
                 if not os.path.isdir(sidebar_root):
                     continue
+                module = self.manager.modules.get(module_name)
+                module_config = self._ext_module_config(module) if module else {}
                 for filename in sorted(os.listdir(sidebar_root)):
                     filepath = os.path.join(sidebar_root, filename)
                     if not os.path.isfile(filepath):
@@ -344,6 +363,7 @@ class Webui(core.channel.Channel):
                         "label": label,
                         "template": template_name,
                         "icon": icon,
+                        "config": module_config,
                     })
             return found
 
@@ -353,20 +373,24 @@ class Webui(core.channel.Channel):
             calling template's path (or the explicit one). lets a single module file
             fill multiple named regions of a core component:
             {% macro left() %}...{% endmacro %} -> {{ extension_slot("left") }}.
-            slot templates should contain macro definitions only - importing runs
-            the template body, so stray markup outside macros is executed and discarded.
             the caller's context is passed to a macro as the `ctx` kwarg only if the
             macro declares it, so slots needing scoped data (turn/message in chat
             templates) declare `{% macro below_message(ctx) %}` and read
             `ctx['message']`. zero-arg macros are called plain, untouched.
-            modules that don't define the slot are silently skipped."""
+            modules that don't define the slot are silently skipped.
+
+            the owning module's settings are injected as `module_config`, so a
+            slot template can gate its own markup with plain jinja:
+            `{% if module_config.get("show_welcome_card", true) %}`.
+            """
             relative_path = relative_path or ctx.name
             if not relative_path:
                 return markupsafe.Markup("")
             parts = []
             for template_name in _extension_templates(relative_path):
                 try:
-                    macro = getattr(env.get_template(template_name).module, slot_name, None)
+                    template_vars = self._ext_template_vars(template_name)
+                    macro = getattr(env.get_template(template_name).make_module(vars=template_vars), slot_name, None)
                     if macro is not None:
                         if "ctx" in getattr(macro, "arguments", ()):
                             parts.append(str(macro(ctx=ctx.get_all())))

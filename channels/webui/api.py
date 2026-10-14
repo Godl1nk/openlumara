@@ -1,4 +1,4 @@
-# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
+# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03) status:reviewed
 """
 Zero-dependency helper for modules that want to expose webui API endpoints.
 
@@ -38,7 +38,6 @@ CONTRACT:
 - Routes are namespaced per module and discovered automatically at startup
   and after settings saves (module reloads). No registration call needed.
 """
-
 
 def route(path: str, method: str = "GET"):
     """Marks a module method as a webui extension route at

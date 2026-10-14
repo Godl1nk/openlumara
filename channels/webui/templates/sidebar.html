@@ -436,6 +436,10 @@
          sidebarTab state above, same trick modals use with currentModal).
          panels are expected to be a flex-column like #chat-list. -->
     {% for panel in extension_sidebars() %}
+    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+       the owning module's settings are exposed to the included panel as
+       `module_config` (a loop-scoped set is visible to includes) #}
+    {% set module_config = panel.config %}
     <div class="sidebar-panel" x-show="sidebarTab === '{{ panel.module }}/{{ panel.name }}' && ($store.ui.isMobile || !$store.ui.sidebarCollapsed)" x-cloak>
         {% include panel.template %}
     </div>
