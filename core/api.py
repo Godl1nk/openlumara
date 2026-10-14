@@ -470,12 +470,15 @@ class APIClient():
             self.manager.log("API", "Sending prompt in advance to make AI response instant.. (prompt warmup)")
 
     async def _run_warmup(self, context=None, notify=True):
+        # DEPRECATED CODE... should probably be removed or moved to a seperate branch
+        # since this feature still needs a lot of refinement
+        
         self._warmup_done.clear()
         self.prompt_warming_up = True
 
         try:
             if context is None:
-                prompt = await self.manager.get_system_prompt()
+                # prompt = await self.manager.get_system_prompt()
                 context = [{"role": "system", "content": prompt}]
 
             response = await self._request(context, stream=True, tools=self.manager.tools, use_thinking=False, max_completion_tokens=1)

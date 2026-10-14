@@ -940,7 +940,7 @@ class Commands:
             return "CONTEXT DISABLED"
         
         if not len(args):
-            _sysprompt = await self.channel.manager.get_system_prompt()
+            _sysprompt = await self.channel.context.chat.get_system_prompt()
             if not _sysprompt:
                 _sysprompt = "BLANK"
             sysprompt = f"=== system prompt ===\n{_sysprompt}"
@@ -948,7 +948,7 @@ class Commands:
             if disabled_prompts:
                 sysprompt += "\n\n=== disabled prompts ===\n"
                 sysprompt += "\n".join([mod_name for mod_name in disabled_prompts])
-            endprompt = await self.channel.manager.get_end_prompt()
+            endprompt = await self.channel.context.chat.get_end_prompt()
             if endprompt:
                 sysprompt += f"\n\n=== end prompts ===\n{endprompt}"
             
