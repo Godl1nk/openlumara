@@ -111,7 +111,11 @@
 
             <section id="main-wrapper">
                 {% if config.get("enable_sidebar") %}
-                    <section id="sidebar" 
+                    <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+                         'collapsed' shrinks the sidebar down to just its tab
+                         strip (toggled by clicking the active tab) -->
+                    <section id="sidebar"
+                        :class="{ 'collapsed': $store.ui.sidebarCollapsed && !$store.ui.isMobile }"
                         x-show="$store.ui.showSidebar"
                         x-transition:enter="transition ease-out duration-200"
                         x-transition:enter-start="-translate-x-full"

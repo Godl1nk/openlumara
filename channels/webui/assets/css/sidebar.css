@@ -12,6 +12,32 @@
     height: 100%;
     overflow: hidden;
     border-right: 1px solid var(--border-color);
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+       smooth width change when collapsing/expanding */
+    transition: flex-basis 0.15s ease, width 0.15s ease;
+}
+
+/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+   collapsed sidebar (active tab clicked): panels are hidden via x-show,
+   only the vertical tab strip remains - shrink to exactly its width.
+   the strip carries its own border-right, so #sidebar's own is dropped
+   to avoid a double line eating into the strip. */
+#sidebar.collapsed {
+    flex: 0 0 46px;
+    width: 46px;
+    max-width: 46px;
+    border-right: none;
+    
+    .sidebar-tab.active {
+        background: var(--bg-primary);
+        color: var(--text-secondary);
+        
+        &:hover {
+            background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
+            color: var(--text-primary, #eee);
+        }
+    }
 }
 
 /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
@@ -39,7 +65,6 @@
     width: 46px;
     padding: 7px 4px;
     box-sizing: border-box;
-    border-right: 1px solid var(--border-color);
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -91,6 +116,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    border-left: 1px solid var(--border-color);
     background: var(--bg-primary);
 }
 
@@ -136,6 +162,7 @@
 
     gap: var(--gap);
     background: var(--bg-primary);
+    border-left: 1px solid var(--border-color);
 
     /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
        category dropdown, sits above the search box (replaces the old
