@@ -128,6 +128,19 @@ class Context:
         approved_keys = ["role", "content", "reasoning_content", "tool_calls", "tool_call_id", "function_call", "tool"]
         messages = [{k: v for k, v in msg.items() if k in approved_keys} for msg in messages]
 
+        # strip metadata from tool calls
+        messages = [
+            {
+                **msg,
+                "tool_calls": [
+                    {k: v for k, v in tc.items() if k != "_metadata"} if isinstance(tc, dict) else tc
+                    for tc in msg["tool_calls"]
+                ]
+            }
+            if msg.get("tool_calls") else msg
+            for msg in messages
+        ]
+
         # enforce correct turn order
         # system -> user -> assistant -> user -> assistant -> ...
         # assistant -> tool -> assistant is VALID (tool use flow)

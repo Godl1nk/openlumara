@@ -4,7 +4,6 @@ import json
 
 import partial_json_parser
 
-
 # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
 # parse streamed tool-call arguments with partial_json_parser (same
 # approach as core/channel.py): the backend parses what it can at every
@@ -32,8 +31,10 @@ def turn_hash(turn):
     every message on every history reload."""
     parts = []
     for message in turn.get("messages", []):
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        # display annotations live under the tool call's _metadata key
         calls = ",".join(
-            f"{tc.get('id')}:{tc.get('response')}"
+            f"{tc.get('id')}:{(tc.get('_metadata') or {}).get('response')}"
             for tc in (message.get("tool_calls") or [])
         )
         parts.append("|".join([
@@ -71,6 +72,14 @@ class TurnCollector:
         current_assistant_turn = None
 
         for index, msg in enumerate(history):
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            # copy the message before stamping anything onto it: turns hold
+            # references to the stored chat messages, and in-place annotations
+            # (index, and the tool call annotations further down) rewrote chat
+            # storage, which changed already-sent context and invalidated the
+            # provider-side prompt cache on the next build.
+            msg = dict(msg)
+
             role = msg.get('role')
 
             # add the index to the message so that it can be directly targeted no matter which turn it is in
@@ -119,20 +128,36 @@ class TurnCollector:
 
             for msg in turn["messages"]:
                 if msg.get("tool_calls"):
+                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+                    # rebuild the tool_calls list with copies of each call: the
+                    # original dicts are shared with chat storage (shallow copies
+                    # all the way down), so annotating in place rewrote stored
+                    # history and invalidated the provider-side prompt cache.
+                    annotated_tools = []
                     for tool in msg["tool_calls"]:
+                        tool = dict(tool)
+                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+                        # all display annotations go under _metadata (mirroring
+                        # the message-level convention). context.get() strips
+                        # _metadata off tool calls before the API call, so even
+                        # a leaked copy can never bloat requests or invalidate
+                        # the provider-side prompt cache.
+                        meta = {}
+                        tool["_metadata"] = meta
                         if tool.get("id") in response_map:
-                            tool["response"] = response_map[tool["id"]]
-                        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+                            meta["response"] = response_map[tool["id"]]
                         # precompute the failed flag so channels don't
                         # re-parse every response just to tint a card
-                        tool["failed"] = self._tool_call_failed(tool)
+                        meta["failed"] = self._tool_call_failed(tool)
                         # ... and the one-line arg summary for headers
-                        tool["summary"] = self._tool_call_summary(tool)
+                        meta["summary"] = self._tool_call_summary(tool)
                         # ... and the parsed arguments, so channels never
                         # parse the raw json string themselves
-                        tool["args_parsed"] = parse_lenient_json(
+                        meta["args_parsed"] = parse_lenient_json(
                             (tool.get("function") or {}).get("arguments")
                         )
+                        annotated_tools.append(tool)
+                    msg["tool_calls"] = annotated_tools
 
         # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         # stamp a content hash per turn so channels can keep their existing
@@ -163,7 +188,9 @@ class TurnCollector:
     @staticmethod
     def _tool_call_failed(tool):
         # a tool call failed when its parsed response is {status: "error"}
-        response = tool.get("response")
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        # response lives under the call's _metadata key
+        response = (tool.get("_metadata") or {}).get("response")
         if response is None:
             return False
         try:
@@ -269,7 +296,7 @@ class TurnCollector:
         # failed. thoughts: tool-less step.
         if not tool_calls:
             return "thoughts"
-        if any(t.get("response") is None for t in tool_calls):
+        if any((t.get("_metadata") or {}).get("response") is None for t in tool_calls):
             return "running"
         if all(TurnCollector._tool_call_failed(t) for t in tool_calls):
             return "failed"
@@ -485,7 +512,9 @@ class TurnCollector:
                 parsed = prev
             else:
                 args_cache[tool_id] = parsed
-            tool["args_parsed"] = parsed
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            # annotations live under the call's _metadata key
+            tool.setdefault("_metadata", {})["args_parsed"] = parsed
 
         async for raw_token in stream_generator:
             # copy the token so we don't mutate it
@@ -572,7 +601,11 @@ class TurnCollector:
                     current_segment.setdefault("content", token.get("content", ''))
                 elif segment_type == 'tool_calls':
                     # copy the list since we mutate it in place during merges
-                    current_segment.setdefault("tool_calls", list(token.get("tool_calls", [])))
+                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+                    # also copy each call dict: these token dicts are shared with
+                    # the message the toolcall manager stores into chat history,
+                    # and the annotations below would rewrite stored history
+                    current_segment.setdefault("tool_calls", [dict(tc) for tc in token.get("tool_calls", [])])
                     last_tool_calls_segment = current_segment  # remember this for later merging
                 elif segment_type == 'tool':
                     current_segment["type"] = "tool_response"
@@ -592,6 +625,9 @@ class TurnCollector:
                         # merge the tool calls using their id
                         # so that batched tool calls properly show up
                         for incoming_call in token["tool_calls"]:
+                            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+                            # copy on insert: shared with the stored message's tool calls
+                            incoming_call = dict(incoming_call)
                             call_id = incoming_call.get("id")
                             if call_id:
                                 for idx, existing_call in enumerate(existing_calls):
@@ -628,13 +664,15 @@ class TurnCollector:
                 # merge tool responses into tool calls for display
                 if current_segment.get("tool_calls"):
                     for tool in current_segment["tool_calls"]:
+                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+                        # annotations live under the call's _metadata key
+                        meta = tool.setdefault("_metadata", {})
                         if tool.get("id") in stream_response_map:
-                            tool["response"] = stream_response_map[tool["id"]]
-                            # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+                            meta["response"] = stream_response_map[tool["id"]]
                             # precomputed failed flag (mirrors group_history)
-                            tool["failed"] = self._tool_call_failed(tool)
+                            meta["failed"] = self._tool_call_failed(tool)
                         # arg summary (mirrors group_history)
-                        tool["summary"] = self._tool_call_summary(tool)
+                        meta["summary"] = self._tool_call_summary(tool)
                         # parsed args (mirrors group_history)
                         _stamp_args(tool)
                     # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
@@ -652,11 +690,13 @@ class TurnCollector:
             elif last_tool_calls_segment:
                 # tool response segment: update and re-yield the tool_calls segment instead
                 for tool in last_tool_calls_segment["tool_calls"]:
+                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+                    # annotations live under the call's _metadata key
+                    meta = tool.setdefault("_metadata", {})
                     if tool.get("id") in stream_response_map:
-                        tool["response"] = stream_response_map[tool["id"]]
-                        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                        tool["failed"] = self._tool_call_failed(tool)
-                    tool["summary"] = self._tool_call_summary(tool)
+                        meta["response"] = stream_response_map[tool["id"]]
+                        meta["failed"] = self._tool_call_failed(tool)
+                    meta["summary"] = self._tool_call_summary(tool)
                     _stamp_args(tool)
                 # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                 # responses landed: refresh the re-yielded step's status

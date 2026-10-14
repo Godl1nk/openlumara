@@ -41,7 +41,9 @@ function toolCallResultSummary(tool, cacheKey) {
     if (!display || typeof display.summary !== 'function') return '';
     let parsed = null;
     try {
-        parsed = JSON.parse(tool.response);
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        // display annotations moved under the tool call's _metadata key
+        parsed = JSON.parse(tool._metadata?.response);
     } catch {
         return '';
     }
@@ -59,7 +61,9 @@ function toolCallResultSummary(tool, cacheKey) {
 // while streaming); the frontend's partial-JSON parser is gone.
 // cacheKey is kept in the signature so view call-sites don't churn.
 function toolArgs(tool, cacheKey) {
-    const a = tool?.args_parsed;
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+    // args_parsed lives under the tool call's _metadata key
+    const a = tool?._metadata?.args_parsed;
     if (a !== null && typeof a === 'object') return a;
     return {};
 }
@@ -68,7 +72,9 @@ function toolArgs(tool, cacheKey) {
 // for use inside the view templates.
 function toolResponse(tool) {
     try {
-        const p = JSON.parse(tool.response);
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+        // response lives under the tool call's _metadata key
+        const p = JSON.parse(tool._metadata?.response);
         if (p !== null && typeof p === 'object') return p;
     } catch { /* response not (fully) here yet */ }
     return null;

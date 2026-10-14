@@ -476,8 +476,10 @@ function shellViewInfo(tool, cacheKey) {
         // response present but unparseable (plain-string error): show raw
         return {
             command: args.command ?? '',
-            output: typeof tool?.response === 'string' ? tool.response : '',
-            done: !!tool?.response,
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            // response lives under the tool call's _metadata key
+            output: typeof tool?._metadata?.response === 'string' ? tool._metadata.response : '',
+            done: !!tool?._metadata?.response,
             multiline,
         };
     }
