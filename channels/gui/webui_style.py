@@ -19,7 +19,7 @@ a plain rgba with the accent's own channels.
 """
 import json
 import os
-import re
+import regex as re
 
 # channels/gui -> channels -> the webui's theme files live next door
 THEMES_DIR = os.path.join(

@@ -1228,8 +1228,8 @@ class QtChatWindow(QtWidgets.QMainWindow):
         the full qss from them, system mode only borrows them for the
         application palette while the platform style draws the widgets"""
         channel = self.channel
-        family = str(channel._val("webui_theme_family", "pro-monochrome"))
-        mode = str(channel._val("webui_theme_mode", "dark"))
+        family = str(channel._val("theme", "pro-monochrome"))
+        mode = str(channel._val("theme_mode", "dark"))
         try:
             variables = webui_style.load_theme(family, mode)
         except Exception:
