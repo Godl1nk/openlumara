@@ -12,7 +12,7 @@ import math
 import re
 from collections import Counter
 
-# -- AI GENERATED CODE (qwen/Qwen3.8-Flash-Next-Q4) :: 2026-10-02
+# -- AI GENERATED CODE (qwen/Qwen3.8-Flash-Next-Q4) :: 2026-10-02 status:reviewed harness:openlumara
 # splitting rules: words are runs of letters OR runs of digits, nothing else.
 # - underscores split: "about_lumara" becomes "about" + "lumara", so searching
 #   "lumara" finds filenames and snake_case code (the old \w+ pattern glued
@@ -70,7 +70,7 @@ def _extract(entry, field_weights):
                 fields[key] = " ".join(parts)
     return fields
 
-# -- AI GENERATED CODE (qwen/Qwen3.8-Flash-Next-Q4) :: 2026-10-02
+# -- AI GENERATED CODE (qwen/Qwen3.8-Flash-Next-Q4) :: 2026-10-02 status:reviewed harness:openlumara
 # word-tally cache: counting the words in a big chat is the slowest part of
 # searching, but the same text almost never changes between searches. so we
 # remember the tally for every text we have ever counted and reuse it.

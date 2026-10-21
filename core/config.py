@@ -492,7 +492,7 @@ def _refresh_module_schema_cache(cache, cache_path, force_full_refresh=False):
                 sections_to_refresh.add(section_key)
                 continue
 
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13) status:reviewed
             # detect any recursive change in the module/channel folder: files or
             # folders added, removed, renamed, or modified.
             folder_fingerprint = _get_module_folder_fingerprint(package, name)
@@ -769,7 +769,7 @@ def _get_module_folder_fingerprint(package, module_name):
     This intentionally uses paths, sizes and mtimes rather than file contents so
     that adding/removing/changing files is cheap to detect without hashing large
     asset folders on every startup.
-    -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
+    -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13) status:reviewed
     """
     folder = _get_module_folder_path(package, module_name)
     if not folder or not os.path.isdir(folder):
