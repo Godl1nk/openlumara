@@ -15,13 +15,14 @@ import ipaddress
 import base64
 import html as html_module
 import threading
+import asyncio
+import aiohttp
 from datetime import datetime
 from urllib.parse import urlparse, unquote
-import urllib.request
+import urllib.parse
 from collections import Counter
 
 import core
-import requests
 
 # ============================================================================
 # Prompt Injection Defense Layer (Research-backed, 2025-2026)
@@ -733,6 +734,8 @@ class Http(core.module.Module):
 
     category = "web"
 
+    dependencies = ["aiohttp"]
+
     # ==================== Security constants ====================
     ALLOWED_SCHEMES = {'http', 'https'}
     MAX_REDIRECTS = 5
@@ -800,14 +803,29 @@ class Http(core.module.Module):
         self._request_counter = 0
         self._last_request_time = 0
         self._lock = threading.Lock()
+        self._session = None
 
         # fetch & cache our public IP so we can censor it
         try:
-            self.server_ipv4 = urllib.request.urlopen("https://api.ipify.org").read().decode()
-            self.server_ipv6 = urllib.request.urlopen("https://api64.ipify.org").read().decode()
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                async with session.get("https://api.ipify.org") as resp:
+                    self.server_ipv4 = (await resp.text()).strip()
+                async with session.get("https://api64.ipify.org") as resp:
+                    self.server_ipv6 = (await resp.text()).strip()
         except:
             self.server_ipv4 = None
             self.server_ipv6 = None
+
+    def _get_session(self):
+        """lazily create the shared aiohttp session (must happen inside the event loop)"""
+        if getattr(self, "_session", None) is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def on_shutdown(self):
+        if self._session is not None and not self._session.closed:
+            await self._session.close()
+        self._session = None
 
     # ==================== Untrusted-content wrapper ====================
     # Based on Digital Applied's 12-layer framework: untrusted fencing + provenance
@@ -1200,9 +1218,9 @@ class Http(core.module.Module):
 
     # ==================== Request Execution ====================
 
-    async def _make_request(self, func, url: str, **kwargs):
+    async def _make_request(self, method: str, url: str, **kwargs):
         """
-        Make an HTTP request with full security checks.
+        Make an HTTP request with full security checks (aiohttp).
 
         - Validates URL format.
         - Enforces rate limit.
@@ -1233,7 +1251,7 @@ class Http(core.module.Module):
         timeout = kwargs.get("timeout", self.REQUEST_TIMEOUT)
         include_content = kwargs.pop("include_content", False)
 
-        # Build the kwargs we actually pass to requests; we control redirects,
+        # Build the kwargs we actually pass to aiohttp; we control redirects,
         # streaming, verification and timeout ourselves.
         passthrough = {
             k: v for k, v in kwargs.items()
@@ -1250,47 +1268,53 @@ class Http(core.module.Module):
                     self._log(f"Blocked URL ({current_url}): {err}")
                     return self.result("URL blocked by security policy", False)
 
-                resp = func(
+                # aiohttp doesn't have a per-call verify flag; the default
+                # connector always verifies TLS, which is what we want.
+                resp = await self._get_session().request(
+                    method,
                     current_url,
                     headers=headers,
                     allow_redirects=False,   # manual redirect handling
-                    stream=True,             # stream so we can cap bytes
-                    verify=True,             # always verify TLS
-                    timeout=timeout,
+                    timeout=aiohttp.ClientTimeout(total=timeout),
                     **passthrough,
                 )
 
-                # Handle redirects manually so each hop is re-validated.
-                if resp.is_redirect or resp.is_permanent_redirect:
-                    location = resp.headers.get("Location")
-                    resp.close()
-                    if not location:
-                        return self.result("Redirect with no Location header", False)
-                    current_url = requests.compat.urljoin(current_url, location)
-                    continue
+                try:
+                    # Handle redirects manually so each hop is re-validated.
+                    if resp.status in (301, 302, 303, 307, 308):
+                        location = resp.headers.get("Location")
+                        resp.close()
+                        if not location:
+                            return self.result("Redirect with no Location header", False)
+                        current_url = urllib.parse.urljoin(current_url, location)
+                        continue
 
-                return self._build_response(resp, include_content)
+                    return await self._build_response(resp, include_content)
+                finally:
+                    # release the connection if _build_response didn't consume the body
+                    if not resp.closed:
+                        resp.close()
 
             self._log(f"Too many redirects starting from {url}")
             return self.result(
                 f"Too many redirects (maximum: {self.MAX_REDIRECTS})", False
             )
 
-        except requests.exceptions.Timeout:
+        except asyncio.TimeoutError:
             self._log(f"Request timeout: {url}")
             return self.result(f"Request timed out after {timeout} seconds", False)
-        except requests.exceptions.SSLError as e:
+        except aiohttp.ClientSSLError as e:
             self._log(f"SSL error for {url}: {e}")
             return self.result("SSL verification failed", False)
-        except requests.exceptions.TooManyRedirects:
+        except aiohttp.TooManyRedirects:
             self._log(f"Too many redirects: {url}")
             return self.result(
                 f"Too many redirects (maximum: {self.MAX_REDIRECTS})", False
             )
-        except requests.exceptions.ConnectionError as e:
+        except aiohttp.ClientConnectionError as e:
             self._log(f"Connection error for {url}: {e}")
             return self.result("Connection error", False)
-        except requests.exceptions.RequestException as e:
+        except aiohttp.ClientError as e:
             self._log(f"Request failed for {url}: {e}")
             return self.result("Request failed", False)
         except Exception as e:
@@ -1307,7 +1331,7 @@ class Http(core.module.Module):
         # For now, we assume safe.
         return True
 
-    def _build_response(self, resp, include_content: bool):
+    async def _build_response(self, resp, include_content: bool):
         """
         Build the response dict with enhanced security wrapping.
         
@@ -1317,16 +1341,16 @@ class Http(core.module.Module):
         - Detection results are included for downstream processing
         """
         response = {
-            "status": f"{resp.status_code} {resp.reason}",
+            "status": f"{resp.status} {resp.reason}",
             "headers": dict(resp.headers),
-            "cookies": dict(resp.cookies),
-            "url": resp.url,
+            "cookies": {m.key: m.value for m in resp.cookies.values()},
+            "url": str(resp.url),
         }
 
         if include_content:
             body = bytearray()
             try:
-                for chunk in resp.iter_content(self.DOWNLOAD_CHUNK):
+                async for chunk in resp.content.iter_chunked(self.DOWNLOAD_CHUNK):
                     if not chunk:
                         continue
                     body.extend(chunk)
@@ -1338,7 +1362,13 @@ class Http(core.module.Module):
             finally:
                 resp.close()
 
-            encoding = resp.encoding or "utf-8"
+            # aiohttp exposes the charset from the Content-Type header.
+            # fall back to utf-8 for anything missing or unknown.
+            try:
+                encoding = resp.charset or "utf-8"
+            except Exception:
+                encoding = "utf-8"
+
             raw_content = bytes(body[:self.MAX_CONTENT_SIZE]).decode(
                 encoding, errors="replace"
             )
@@ -1427,7 +1457,7 @@ class Http(core.module.Module):
         else:
             resp.close()
 
-        self._log(f"Request completed: {resp.status_code} - {resp.url}")
+        self._log(f"Request completed: {resp.status} - {resp.url}")
         return self.result(response)
     
     def _sanitize_json_recursive(self, data):
@@ -1442,9 +1472,13 @@ class Http(core.module.Module):
 
     # ==================== HTTP Methods ====================
 
+    # note: the json= passthrough kwarg is handled by _make_request -> aiohttp.
+    # aiohttp accepts json= (serializes for us) and data= (form-encoded),
+    # just like requests did.
+
     async def get(self, url: str, headers: dict = None, params: dict = None):
         return await self._make_request(
-            requests.get,
+            "GET",
             url,
             params=params,
             headers=headers,
@@ -1456,7 +1490,7 @@ class Http(core.module.Module):
             return self.result("Cannot use both 'data' and 'json' parameters", False)
 
         return await self._make_request(
-            requests.post,
+            "POST",
             url,
             data=data,
             json=json,
@@ -1466,7 +1500,7 @@ class Http(core.module.Module):
 
     async def head(self, url: str, params: dict = None, headers: dict = None):
         return await self._make_request(
-            requests.head,
+            "HEAD",
             url,
             params=params,
             headers=headers,
@@ -1475,7 +1509,7 @@ class Http(core.module.Module):
 
     async def options(self, url: str, params: dict = None, headers: dict = None):
         return await self._make_request(
-            requests.options,
+            "OPTIONS",
             url,
             params=params,
             headers=headers,
@@ -1484,7 +1518,7 @@ class Http(core.module.Module):
 
     async def put(self, url: str, data: dict = None, headers: dict = None):
         return await self._make_request(
-            requests.put,
+            "PUT",
             url,
             data=data,
             headers=headers,
@@ -1493,7 +1527,7 @@ class Http(core.module.Module):
 
     async def patch(self, url: str, data: dict = None, headers: dict = None):
         return await self._make_request(
-            requests.patch,
+            "PATCH",
             url,
             data=data,
             headers=headers,
@@ -1502,7 +1536,7 @@ class Http(core.module.Module):
 
     async def delete(self, url: str, params: dict = None, headers: dict = None):
         return await self._make_request(
-            requests.delete,
+            "DELETE",
             url,
             params=params,
             headers=headers,

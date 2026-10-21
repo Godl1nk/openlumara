@@ -1,7 +1,5 @@
 import core
 import asyncio
-import requests
-import aiohttp
 import urllib.parse
 import re
 import modules.http
@@ -118,7 +116,7 @@ class WebReader(modules.http.Http):
             domain = url_parser.netloc
 
             result = await self._make_request(
-                requests.get,
+                "GET",
                 path,
                 include_content=True
             )
