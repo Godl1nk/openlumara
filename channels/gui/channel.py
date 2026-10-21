@@ -51,32 +51,27 @@ class Qt6Channel(core.channel.Channel):
     settings = {
         "window_title": {
             "default": "AI",
-            "description": "Window title and assistant label.",
+            "description": "Title of the window, also the display name above the AI's messages",
         },
-        "allow_commands": {
+        "allow_admin_commands": {
             "type": "boolean",
             "default": True,
-            "description": "Whether this channel may run OpenLumara slash commands.",
+            "description": "Allow running admin commands in this channel (such as /restart)",
         },
         "shutdown_on_close": {
             "type": "boolean",
             "default": True,
-            "description": "Shut down OpenLumara when the Qt window is closed.",
-        },
-        "show_logs": {
-            "type": "boolean",
-            "default": False,
-            "description": "Show framework logs inside the Qt window too. Errors are always shown.",
+            "description": "Shut down the OpenLumara server when the window is closed",
         },
         "follow_system_style": {
             "type": "boolean",
             "default": False,
-            "description": "On: defer to the platform's own look (Windows/macOS styles, or the widget style, color scheme and icons chosen in KDE System Settings on Plasma) - forced, the webui theme is never painted. Off: paint the webui theme (webui_theme_family/webui_theme_mode).",
+            "description": "Off: use our included styling that looks similar to the WebUI but is 100% native GUI. On: use your system's own native GUI style.",
         },
         "show_chat_sidebar": {
             "type": "boolean",
             "default": True,
-            "description": "Show the chat list sidebar (like the webui), for switching, renaming and deleting chats.",
+            "description": "Show the chat list sidebar, for switching, renaming and deleting chats.",
         },
         "auto_refresh_models": {
             "type": "boolean",
@@ -84,38 +79,41 @@ class Qt6Channel(core.channel.Channel):
             "description": "Automatically fetch the model list from the API on startup.",
         },
         "font_family": {
-            "default": "Sans Serif",
-            "description": "Qt UI font family. The point size is never overridden: the app's default font size applies everywhere.",
+            "default": "Sans Serif"
         },
-        "webui_theme_family": {
+        "theme": {
             "type": "select",
             "options": _theme_family_options(),
-            "default": "pro-monochrome",
-            "description": "Which webui theme this window replicates: a theme file in channels/webui/themes. The Qt window reads the same css variables the webui paints itself with.",
+            "default": "pro-material",
+            "description": "Which theme to use (uses the webui's themes)",
         },
-        "webui_theme_mode": {
+        "theme_mode": {
             "type": "select",
             "options": {
                 "dark": "The theme's dark color mode",
                 "light": "The theme's light color mode",
             },
-            "default": "dark",
-            "description": "Which mode of the chosen webui theme to replicate.",
+            "default": "dark"
         },
         "show_reasoning": {
             "type": "boolean",
             "default": False,
-            "description": "Whether to show the model's internal reasoning within sent messages. It renders as a collapsible 'Thoughts' block: still streaming stays open, finished thoughts tuck themselves away until you click the header.",
+            "description": "Whether to show thinking",
         },
         "stream_tool_calls": {
             "type": "boolean",
             "default": True,
-            "description": "Whether to stream tool call arguments as they are written by the AI.",
+            "description": "Whether to stream tool call arguments. Very useful for coding!",
+        },
+        "show_logs": {
+            "type": "boolean",
+            "default": False,
+            "description": "Whether to show system logs. Errors are always shown.",
         },
         "show_unsafe_settings": {
             "type": "boolean",
             "default": False,
-            "description": "Reveal settings marked unsafe in the settings dialog: options that can break the framework or bypass safeguards. They are hidden unless this is on.",
+            "description": "Reveal settings that are marked as unsafe",
         },
     }
 
@@ -601,7 +599,7 @@ class Qt6Channel(core.channel.Channel):
 
             self._emit_ui("set_status", "thinking...")
 
-            authorized = bool(self._val("allow_commands", True))
+            authorized = bool(self._val("allow_admin_commands", True))
             stream = self.send_stream(text, commands_authorized=authorized)
             await self._display_stream(stream)
         except asyncio.CancelledError:
