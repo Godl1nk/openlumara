@@ -1,4 +1,4 @@
-# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+# -- AI GENERATED CODE (Qwen3.8 Flash Next (local) + GLM 5.3 security audit (openrouter)) :: (2026-10-22) harness:openlumara
 """
 a tiny HTTP/1.1 client built on asyncio streams + h11.
 
@@ -10,7 +10,9 @@ framing, chunked transfer-encoding, keep-alive negotiation and EOF handling.
 on top of h11 this adds:
 - keep-alive connection pooling, with recovery from stale pooled connections
   (retried only for idempotent methods, and only before any response bytes)
-- basic-auth credentials are dropped on cross-origin redirects (never leaked)
+- auth credentials are dropped on cross-origin redirects (never leaked) --
+  this covers the basic_auth parameter AND caller-supplied Authorization /
+  Cookie / Proxy-Authorization headers
 - streaming response bodies (SSE) as an async iterator
 - transparent gzip/deflate decompression via stdlib zlib
 - json / form-urlencoded / raw bodies, query params, basic auth
@@ -19,6 +21,21 @@ on top of h11 this adds:
 - hard-closing an in-flight response to cancel a stream
 
 deliberately NOT implemented: cookies, proxies, brotli/zstd, HTTP/2, expect-continue.
+
+security audit (2026-10-22) -- fixes applied, search "audit fix":
+#1 credential headers stripped on cross-origin redirects; body descriptor
+   headers dropped when 301/302/303 rewrite the request into a GET
+#2 _return_conn no longer pools a socket after the client was closed
+#3 query params merged into the URL query string (never appended after '#')
+#4 local h11 request-validation errors are never classified as stale
+   connections, so they are never retried
+#5 invalid ports raise HTTPError instead of leaking a bare ValueError
+#6 text() honors the response charset, falling back to utf-8
+#7 keep-alive pooling decided via documented h11 state (both sides IDLE);
+   requests now always send EndOfMessage so that state is reachable
+   (without it, bodyless requests could never be pooled)
++   Response is now an async context manager
++   _request_once closes its socket when cancelled
 """
 import asyncio
 import base64
@@ -37,11 +54,32 @@ MAX_IDLE_CONNS = 6
 # cannot duplicate a side effect
 IDEMPOTENT_METHODS = ("GET", "HEAD", "OPTIONS", "PUT", "DELETE")
 
+# headers carrying credentials or origin-pinned routing state: these must
+# never survive a cross-origin redirect (audit fix #1)
+_SENSITIVE_HEADERS = frozenset((
+    "authorization",
+    "cookie",
+    "proxy-authorization",
+    "host",
+))
+# body descriptor headers that must not survive a 301/302/303 method change
+# to GET -- the body is dropped, so describing it would desync the request
+_BODY_DESCRIPTOR_HEADERS = frozenset(("content-type", "content-length"))
+
 
 def _origin_of(parsed):
-    """(scheme, host, port) tuple used to compare redirect origins"""
+    """(scheme, host, port) tuple used to compare redirect origins.
+
+    returns None when the port cannot be parsed; None compares unequal to
+    any real origin, so a redirect to an unparseable target always counts
+    as cross-origin and credentials get dropped (fail-safe)."""
     scheme = (parsed.scheme or "").lower()
-    port = parsed.port or (443 if scheme == "https" else 80)
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if port is None:
+        port = 443 if scheme == "https" else 80
     return (scheme, (parsed.hostname or "").lower(), port)
 
 
@@ -138,7 +176,8 @@ class Response:
     an aiohttp-ClientResponse-shaped response with a still-open connection.
     consume the body via iter_any()/read()/text(), then it is returned to the
     pool automatically; close() severs the connection for good (also used to
-    cancel an in-flight stream).
+    cancel an in-flight stream). async-with is supported: the body is drained
+    and pooled on clean exit, the connection severed on error.
     """
 
     def __init__(self, client, key, reader, writer, conn, status, reason, headers, deadline):
@@ -163,6 +202,17 @@ class Response:
 
         self._finished = False
         self._returned = False
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        # audit hardening: an async-with caller can never leak an
+        # unconsumed connection
+        if exc_type is None:
+            await self.release()
+        else:
+            self.close()
 
     async def iter_any(self):
         """yield the (decompressed) response body as it arrives"""
@@ -217,7 +267,13 @@ class Response:
         return data
 
     async def text(self):
-        return (await self.read()).decode("utf-8", errors="replace")
+        data = await self.read()
+        encoding = self.charset or "utf-8"
+        try:
+            return data.decode(encoding, errors="replace")
+        except LookupError:
+            # unknown or bogus charset label: fall back to utf-8 (audit fix #6)
+            return data.decode("utf-8", errors="replace")
 
     async def json(self):
         return json.loads(await self.text())
@@ -263,12 +319,18 @@ class Response:
             return
         self._returned = True
 
-        # h11 knows whether this exchange may continue on the same connection;
+        # h11 knows whether this exchange may continue on the same connection:
+        # both state machines must be back in IDLE (audit fix #7: uses the
+        # documented our_state/their_state, not undocumented helpers);
         # trailing_data must be empty too (junk after the body would desync
         # the next request on this socket)
         poolable = False
         try:
-            poolable = self._conn.can_keep_alive() and not self._conn.trailing_data()[0]
+            poolable = (
+                self._conn.our_state is h11.IDLE
+                and self._conn.their_state is h11.IDLE
+                and not self._conn.trailing_data()[0]
+            )
         except Exception:
             poolable = False
 
@@ -318,14 +380,28 @@ class HTTPClient:
     async def post(self, url, headers=None, json_body=None, body=None, form=None, params=None, timeout_total=None):
         return await self.request("POST", url, headers=headers, json_body=json_body, body=body, form=form, params=params, timeout_total=timeout_total)
 
-    async def request(self, method, url, headers=None, json_body=None, body=None, form=None, params=None, basic_auth=None, timeout_total=None, allow_redirects=True, max_redirects=5):
+    async def request(self, method, url, headers=None, json_body=None, body=None, form=None,
+                      params=None, basic_auth=None, timeout_total=None,
+                      allow_redirects=True, max_redirects=5):
         if self._closed:
             raise HTTPError("Client is closed")
 
         deadline = None if timeout_total is None else asyncio.get_running_loop().time() + timeout_total
 
         if params:
-            url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+            # audit fix #3: merge params into the query string properly --
+            # never append after a '#' fragment (params can carry API keys)
+            parts = urllib.parse.urlsplit(url)
+            extra = urllib.parse.urlencode(params)
+            query = f"{parts.query}&{extra}" if parts.query else extra
+            url = urllib.parse.urlunsplit(
+                (parts.scheme, parts.netloc, parts.path, query, parts.fragment)
+            )
+
+        # normalize caller headers to a plain mutable dict once, up front:
+        # keeps the redirect-time credential stripping simple and guarantees
+        # .items() works later
+        headers = dict(headers) if headers is not None else None
 
         # body precedence: explicit raw body > json > form; each implies a default content-type
         default_content_type = None
@@ -341,8 +417,7 @@ class HTTPClient:
             if not any(k.lower() == "content-type" for k in headers):
                 headers["Content-Type"] = default_content_type
 
-        # never leak basic-auth credentials across origins on redirects
-        auth_origin = _origin_of(urllib.parse.urlsplit(url)) if basic_auth else None
+        origin = _origin_of(urllib.parse.urlsplit(url))
 
         redirects = 0
         while True:
@@ -355,12 +430,30 @@ class HTTPClient:
                     resp.close()
                     redirects += 1
                     url = urllib.parse.urljoin(url, location)
-                    if basic_auth and _origin_of(urllib.parse.urlsplit(url)) != auth_origin:
-                        basic_auth = None  # cross-origin hop: drop the credentials
+
+                    if _origin_of(urllib.parse.urlsplit(url)) != origin:
+                        # audit fix #1: cross-origin hop -> drop credentials
+                        # from EVERY source: the basic_auth parameter, and
+                        # any caller-supplied Authorization / Cookie /
+                        # Proxy-Authorization / Host headers. an unparseable
+                        # redirect target counts as cross-origin too (the
+                        # _origin_of None fail-safe), and the follow-up
+                        # request will then fail on the invalid port.
+                        basic_auth = None
+                        headers = {
+                            k: v for k, v in (headers or {}).items()
+                            if k.lower() not in _SENSITIVE_HEADERS
+                        }
+
                     if resp.status in (301, 302, 303):
-                        # browser-style: these become a bodyless GET
+                        # browser-style: these become a bodyless GET; stale
+                        # body descriptor headers must not survive either
                         method = "GET"
                         body = None
+                        headers = {
+                            k: v for k, v in (headers or {}).items()
+                            if k.lower() not in _BODY_DESCRIPTOR_HEADERS
+                        }
                     continue
 
             return resp
@@ -378,7 +471,15 @@ class HTTPClient:
         if not host:
             raise HTTPError(f"URL has no host: {url}")
 
-        port = parsed.port or (443 if scheme == "https" else 80)
+        # audit fix #5: a non-numeric port raises ValueError from
+        # urlsplit().port -- keep the "everything is HTTPError" contract
+        try:
+            port = parsed.port
+        except ValueError:
+            raise HTTPError(f"Invalid port in URL: {url}") from None
+        if port is None:
+            port = 443 if scheme == "https" else 80
+
         path = parsed.path or "/"
         if parsed.query:
             path += "?" + parsed.query
@@ -410,6 +511,15 @@ class HTTPClient:
                         and isinstance(e, _StaleConnection)
                         and method.upper() in IDEMPOTENT_METHODS):
                     continue
+                raise
+            except BaseException:
+                # audit hardening: includes asyncio.CancelledError --
+                # never leak the socket when a request is cancelled mid-flight
+                if writer is not None:
+                    try:
+                        writer.close()
+                    except Exception:
+                        pass
                 raise
 
     async def _connect(self, scheme, host, port, deadline):
@@ -465,11 +575,18 @@ class HTTPClient:
             payload = conn.send(h11.Request(method=method, target=path, headers=header_pairs))
             if body is not None:
                 payload += conn.send(h11.Data(data=body))
-                payload += conn.send(h11.EndOfMessage())
+            # audit fix #7 companion: always finish the request framing, even
+            # bodyless ones. h11 needs EndOfMessage to move our_state to
+            # DONE (and then both sides to IDLE), which is exactly what the
+            # keep-alive pooling check in Response._pool_or_close looks at.
+            # for bodyless requests this emits no extra bytes on the wire.
+            payload += conn.send(h11.EndOfMessage())
         except (h11.LocalProtocolError, ValueError, UnicodeEncodeError) as e:
-            if pooled:
-                raise _StaleConnection(f"pooled connection rejected the request: {e}")
-            raise HTTPError(f"Invalid request: {e}")
+            # audit fix #4: these are deterministic local validation
+            # failures (bad method/target/header bytes) -- the pooled
+            # connection is innocent, so this is never a stale connection
+            # and must never be retried on a fresh socket
+            raise HTTPError(f"Invalid request: {e}") from e
 
         try:
             writer.write(payload)
@@ -542,11 +659,14 @@ class HTTPClient:
 
     def _return_conn(self, key, reader, writer):
         if self._closed:
+            # audit fix #2: the original had the return inside the except
+            # block, so a successful writer.close() fell through and pooled
+            # a dead socket after the client was closed
             try:
                 writer.close()
             except Exception:
-                return
-
+                pass
+            return
         conns = self._idle.setdefault(key, [])
         while len(conns) >= MAX_IDLE_CONNS:
             _, old_writer = conns.pop(0)
