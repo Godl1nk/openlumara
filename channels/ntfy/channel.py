@@ -1,6 +1,5 @@
-# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-21 harness:openlumara
 import core
-import aiohttp
+import core.http_client
 
 class Ntfy(core.channel.Channel):
     """
@@ -26,7 +25,7 @@ class Ntfy(core.channel.Channel):
         }
     }
 
-    dependencies = ["aiohttp"]
+    dependencies = []
 
     async def run(self):
         # this is not a normal channel lol
@@ -48,13 +47,18 @@ class Ntfy(core.channel.Channel):
         }
 
         try:
-            timeout = aiohttp.ClientTimeout(total=5)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(url, data=content.encode("utf-8"), headers=headers) as response:
+            client = core.http_client.HTTPClient()
+            try:
+                response = await client.post(url, body=content.encode("utf-8"), headers=headers, timeout_total=5)
+                try:
                     if response.status in (200, 201, 204):
                         self.log(self.name, "Sent push message to NTFY")
                     else:
                         self.log(self.name, f"Failed to send NTFY notification. Status: {response.status}")
+                finally:
+                    await response.release()
+            finally:
+                await client.close()
         except Exception as e:
             self.log(self.name, f"Error forwarding to NTFY: {core.detail_error(e)}")
 
