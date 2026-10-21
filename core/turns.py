@@ -149,13 +149,22 @@ class TurnCollector:
                         # precompute the failed flag so channels don't
                         # re-parse every response just to tint a card
                         meta["failed"] = self._tool_call_failed(tool)
-                        # ... and the one-line arg summary for headers
-                        meta["summary"] = self._tool_call_summary(tool)
-                        # ... and the parsed arguments, so channels never
-                        # parse the raw json string themselves
-                        meta["args_parsed"] = parse_lenient_json(
+                        # ... and the parsed arguments (plus the one-line arg
+                        # summary for headers). tools_call proxies are unwrapped
+                        # so the card shows the proxied call, not the wrapper.
+                        parsed_args = parse_lenient_json(
                             (tool.get("function") or {}).get("arguments")
                         )
+                        bridge_name, bridge_args = self._bridge_from_args(
+                            (tool.get("function") or {}).get("name"), parsed_args
+                        )
+                        if bridge_name:
+                            meta["display_name"] = bridge_name
+                            meta["args_parsed"] = bridge_args
+                            meta["summary"] = self._summary_from_args(bridge_args)
+                        else:
+                            meta["args_parsed"] = parsed_args
+                            meta["summary"] = self._tool_call_summary(tool)
                         annotated_tools.append(tool)
                     msg["tool_calls"] = annotated_tools
 
@@ -234,20 +243,39 @@ class TurnCollector:
             return "false"
         return str(value)
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+    # tools_call (and friends) proxy the real call as {name, arguments}.
+    # display-wise we unwrap that: the card shows the proxied call's name
+    # and arguments, never the wrapper. unwrap results live under the call's
+    # _metadata (display_name + swapped args_parsed), so requests and stored
+    # history are untouched.
+    BRIDGE_TOOLS = ("tools_call",)
+
     @classmethod
-    def _tool_call_summary(cls, tool):
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # lenient parse instead of strict json.loads: headers can now show
-        # the arg summary LIVE while arguments stream in, not only once
-        # the full JSON is complete.
-        raw = (tool.get("function") or {}).get("arguments")
-        if not isinstance(raw, str):
-            return ""
-        args = parse_lenient_json(raw)
-        # drop the non-JSON fallback so raw garbage never shows in headers
-        if "_raw" in args:
-            return ""
-        if not isinstance(args, dict) or not args:
+    def _bridge_from_args(cls, tool_name, wrapper_args):
+        """If a bridge tool's wrapper args, return (inner_name, inner_args)."""
+        if tool_name not in cls.BRIDGE_TOOLS or not isinstance(wrapper_args, dict):
+            return None, None
+        name = wrapper_args.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return None, None
+        inner = wrapper_args.get("arguments")
+        if isinstance(inner, str):
+            # common model slip: inner arguments passed as a JSON string
+            inner = parse_lenient_json(inner)
+        if not isinstance(inner, dict):
+            inner = {}
+        return name.strip(), inner
+
+    @staticmethod
+    def _display_name(tool):
+        """The name a tool call should display as (unwrapped bridge name if any)."""
+        return ((tool.get("_metadata") or {}).get("display_name")
+                or (tool.get("function") or {}).get("name"))
+
+    @classmethod
+    def _summary_from_args(cls, args):
+        if not isinstance(args, dict) or not args or "_raw" in args:
             return ""
         entries = list(args.items())
         chosen = None
@@ -260,6 +288,17 @@ class TurnCollector:
             chosen = next(((k, v) for k, v in entries if isinstance(v, str)), entries[0])
         return "(" + cls._truncate_arg(cls._arg_to_string(chosen[1])) + ")"
 
+    @classmethod
+    def _tool_call_summary(cls, tool):
+        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+        # lenient parse instead of strict json.loads: headers can now show
+        # the arg summary LIVE while arguments stream in, not only once
+        # the full JSON is complete.
+        raw = (tool.get("function") or {}).get("arguments")
+        if not isinstance(raw, str):
+            return ""
+        return cls._summary_from_args(parse_lenient_json(raw))
+
     @staticmethod
     def _modules_for(tool_calls):
         # deduped per-function counts grouped by module (first token):
@@ -267,7 +306,10 @@ class TurnCollector:
         counts = {}
         order = []
         for tool in tool_calls or []:
-            fn = (tool.get("function") or {}).get("name")
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+            # prefer the unwrapped bridge name so proxied calls group under
+            # their real module ("Calendar: add event", not "Tools: call")
+            fn = TurnCollector._display_name(tool)
             if not fn:
                 continue
             if fn not in counts:
@@ -317,7 +359,8 @@ class TurnCollector:
         # tool call as "Module: action", or what the model is busy doing
         tool_calls = segment.get("tool_calls")
         if tool_calls:
-            fn = (tool_calls[-1].get("function") or {}).get("name")
+            # unwrapped bridge name when available (staticmethod: no self!)
+            fn = TurnCollector._display_name(tool_calls[-1])
             if fn:
                 parts = fn.split("_")
                 return parts[0][:1].upper() + parts[0][1:] + ": " + " ".join(parts[1:])
@@ -514,7 +557,18 @@ class TurnCollector:
                 args_cache[tool_id] = parsed
             # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
             # annotations live under the call's _metadata key
-            tool.setdefault("_metadata", {})["args_parsed"] = parsed
+            meta = tool.setdefault("_metadata", {})
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+            # unwrap tools_call proxies so bridged calls render as the real
+            # call while streaming too (mirrors group_history)
+            bridge_name, bridge_args = self._bridge_from_args(
+                (tool.get("function") or {}).get("name"), parsed
+            )
+            if bridge_name:
+                meta["display_name"] = bridge_name
+                meta["args_parsed"] = bridge_args
+            else:
+                meta["args_parsed"] = parsed
 
         async for raw_token in stream_generator:
             # copy the token so we don't mutate it
@@ -671,10 +725,13 @@ class TurnCollector:
                             meta["response"] = stream_response_map[tool["id"]]
                             # precomputed failed flag (mirrors group_history)
                             meta["failed"] = self._tool_call_failed(tool)
-                        # arg summary (mirrors group_history)
-                        meta["summary"] = self._tool_call_summary(tool)
-                        # parsed args (mirrors group_history)
+                        # parsed args (mirrors group_history; unwraps tools_call)
                         _stamp_args(tool)
+                        # arg summary on the (possibly unwrapped) args
+                        if meta.get("display_name"):
+                            meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
+                        else:
+                            meta["summary"] = self._tool_call_summary(tool)
                     # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                     # live step status + precomputed module display data
                     current_segment["step_status"] = self._step_status(current_segment["tool_calls"])
@@ -696,8 +753,11 @@ class TurnCollector:
                     if tool.get("id") in stream_response_map:
                         meta["response"] = stream_response_map[tool["id"]]
                         meta["failed"] = self._tool_call_failed(tool)
-                    meta["summary"] = self._tool_call_summary(tool)
                     _stamp_args(tool)
+                    if meta.get("display_name"):
+                        meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
+                    else:
+                        meta["summary"] = self._tool_call_summary(tool)
                 # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                 # responses landed: refresh the re-yielded step's status
                 last_tool_calls_segment["step_status"] = self._step_status(last_tool_calls_segment["tool_calls"])

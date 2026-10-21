@@ -27,9 +27,18 @@ function toolDisplayFor(name) {
     return TOOL_DISPLAYS.find(d => d.match.test(name)) ?? null;
 }
 
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+// the name a call should display as: calls proxied through tools_call are
+// unwrapped by core/turns.py into _metadata.display_name (and their inner
+// args into _metadata.args_parsed), so bridged calls render exactly like
+// native ones. falls back to the raw function name for everything else.
+function toolDisplayName(tool) {
+    return tool?._metadata?.display_name || tool?.function?.name || '';
+}
+
 // which template branch (if any) renders this call's body; null = default
 function toolDisplayView(tool) {
-    return toolDisplayFor(tool?.function?.name)?.view ?? null;
+    return toolDisplayFor(toolDisplayName(tool))?.view ?? null;
 }
 
 // one-line result hint for the completed tool call header; by default
@@ -37,7 +46,7 @@ function toolDisplayView(tool) {
 // summaries get (parsedResponse, tool) - many stats (diff sizes, glob
 // counts) live in the ARGS, so they need the tool itself as well.
 function toolCallResultSummary(tool, cacheKey) {
-    const display = toolDisplayFor(tool.function?.name);
+    const display = toolDisplayFor(toolDisplayName(tool));
     if (!display || typeof display.summary !== 'function') return '';
     let parsed = null;
     try {
@@ -47,7 +56,10 @@ function toolCallResultSummary(tool, cacheKey) {
     } catch {
         return '';
     }
-    return display.summary(parsed, tool, cacheKey) ?? '';
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+    // cacheKey is only a streamMemo hint; default to the call id so callers
+    // outside a card x-data scope (and completed calls) still memoize sanely
+    return display.summary(parsed, tool, cacheKey ?? tool?.id ?? '') ?? '';
 }
 
 // -- generic template helpers ----------------------------------------------

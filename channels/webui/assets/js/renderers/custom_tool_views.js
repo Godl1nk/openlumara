@@ -451,7 +451,7 @@ function coderRunningInfo(tool, cacheKey) {
     // moves stream a destination too: surface it so the running one-liner
     // reads "moving · dev: a.py -> b.py" instead of hiding where it goes
     return {
-        label: CODER_RUNNING_LABELS[tool?.function?.name] ?? 'in',
+        label: CODER_RUNNING_LABELS[toolDisplayName(tool)] ?? 'in',
         sandbox: args.sandbox ?? '',
         path,
         out: args.target_path ?? '',
