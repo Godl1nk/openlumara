@@ -249,9 +249,20 @@ class ToolLoader:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Exact tool name to call"},
+                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+                        # arguments is TRANSPORTED as a JSON-encoded string on purpose:
+                        # string-typed fields stream token by token, while object-typed
+                        # nested values arrive as one atomic chunk from the model server
+                        # (verified in the bridge debug log) - which made long bridged
+                        # args pop in all at once instead of streaming. execution-side
+                        # coercion of str -> dict already exists in tools_call(), and a
+                        # model that emits a raw object anyway keeps working.
                         "arguments": {
-                            "type": "object",
-                            "description": "Arguments for the tool, matching its schema",
+                            "type": "string",
+                            "description": (
+                                "JSON-encoded arguments object for the tool, matching "
+                                "its schema. Example: {\"path\": \"foo.py\", \"content\": \"...\"}"
+                            ),
                         },
                     },
                     "required": ["name", "arguments"],
@@ -601,15 +612,15 @@ class ToolLoader:
             )
         return coerced, None
 
-    async def tools_call(self, name: str, arguments: dict = None):
+    async def tools_call(self, name: str, arguments=None):
         """Calls a cataloged tool directly by name without loading it into your toolset.
 
         Args:
         name (str): Exact name of the tool to call
-        arguments (dict): Arguments for the tool, matching its schema
+        arguments (str): JSON-encoded arguments object for the tool, matching its schema (a raw object is accepted too)
         """
         if isinstance(arguments, str):
-            # common model slip: arguments passed as a JSON string
+            # transport format: JSON-encoded string (streams token by token)
             try:
                 arguments = json_repair.loads(arguments)
             except Exception:

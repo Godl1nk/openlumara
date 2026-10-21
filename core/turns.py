@@ -1,6 +1,26 @@
 import asyncio
 import hashlib
 import json
+import json_repair
+import os
+import re
+
+# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+# TEMPORARY bridge-stream debug logging: the running stream is the one
+# layer I cannot observe from my sandbox, so _stamp_args appends one line
+# per tools_call stamp to <repo>/.bridge_debug.log for post-mortem reading.
+# REMOVE AFTER THE BRIDGE STREAMING BUG IS FIXED.
+DEBUG_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".bridge_debug.log")
+
+
+def _bridge_debug(line):
+    try:
+        if os.path.exists(DEBUG_LOG) and os.path.getsize(DEBUG_LOG) > 300000:
+            os.remove(DEBUG_LOG)
+        with open(DEBUG_LOG, "a") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
 
 import partial_json_parser
 
@@ -152,16 +172,17 @@ class TurnCollector:
                         # ... and the parsed arguments (plus the one-line arg
                         # summary for headers). tools_call proxies are unwrapped
                         # so the card shows the proxied call, not the wrapper.
-                        parsed_args = parse_lenient_json(
-                            (tool.get("function") or {}).get("arguments")
-                        )
+                        raw_args = (tool.get("function") or {}).get("arguments")
+                        parsed_args = parse_lenient_json(raw_args)
                         bridge_name, bridge_args = self._bridge_from_args(
-                            (tool.get("function") or {}).get("name"), parsed_args
+                            (tool.get("function") or {}).get("name"), parsed_args, raw_args
                         )
-                        if bridge_name:
-                            meta["display_name"] = bridge_name
-                            meta["args_parsed"] = bridge_args
-                            meta["summary"] = self._summary_from_args(bridge_args)
+                        if bridge_name is not None or bridge_args is not None:
+                            meta["bridge"] = True
+                            if bridge_name:
+                                meta["display_name"] = bridge_name
+                            meta["args_parsed"] = bridge_args if bridge_args is not None else {}
+                            meta["summary"] = self._summary_from_args(meta["args_parsed"])
                         else:
                             meta["args_parsed"] = parsed_args
                             meta["summary"] = self._tool_call_summary(tool)
@@ -252,20 +273,83 @@ class TurnCollector:
     BRIDGE_TOOLS = ("tools_call",)
 
     @classmethod
-    def _bridge_from_args(cls, tool_name, wrapper_args):
-        """If a bridge tool's wrapper args, return (inner_name, inner_args)."""
+    def _bridge_from_args(cls, tool_name, wrapper_args, raw=""):
+        """Extract whatever is confidently known from a bridge tool's (possibly
+        partial) wrapper args: (display_name_or_None, inner_args_or_None).
+
+        Both None means "not a recognisable bridge call yet" -> render raw.
+        Order-agnostic: models may stream {"arguments": {...}, "name": ...},
+        and the inner args must already display while the name is still
+        pending, or long arguments never appear to stream at all.
+        """
         if tool_name not in cls.BRIDGE_TOOLS or not isinstance(wrapper_args, dict):
             return None, None
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+        # trust the name only once it is terminated in the raw stream: the
+        # JSON is complete (history / final delta) or the value is closed by
+        # its own quote ("name": "foo"). the old "a sibling key parsed beside
+        # it" heuristic was order-dependent: with arguments-before-name the
+        # completed arguments sibling let the still-growing name value
+        # ("c" -> "co" -> ...) through, flickering the header and registry
+        # match during the last ~1% of the stream.
         name = wrapper_args.get("name")
-        if not isinstance(name, str) or not name.strip():
-            return None, None
+        name = name.strip() if isinstance(name, str) and name.strip() else None
+        if name is not None:
+            complete = False
+            if raw:
+                if len(raw) < 512:
+                    try:
+                        json.loads(raw)
+                        complete = True
+                    except (ValueError, TypeError):
+                        pass
+                if not complete:
+                    complete = re.search(
+                        r'"name"\s*:\s*"' + re.escape(name) + r'\s*"', raw
+                    ) is not None
+            else:
+                # no raw to check (shouldn't happen via turns): fall back to
+                # the old sibling heuristic so history still unwraps.
+                complete = "arguments" in wrapper_args or len(wrapper_args) >= 2
+            if not complete:
+                name = None
+
         inner = wrapper_args.get("arguments")
         if isinstance(inner, str):
-            # common model slip: inner arguments passed as a JSON string
-            inner = parse_lenient_json(inner)
-        if not isinstance(inner, dict):
-            inner = {}
-        return name.strip(), inner
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+            # transport format: arguments rides as a JSON-encoded string so the
+            # provider streams it token by token (object-typed nested values
+            # arrive as one atomic chunk - bridge debug log 2026-10-21). the
+            # lenient parser surfaces the partial string value; json_repair
+            # then decodes whatever of the inner json exists so far into a
+            # growing dict (it never raises).
+            inner_parsed = parse_lenient_json(inner)
+            if "_raw" in inner_parsed:
+                try:
+                    inner_parsed = json_repair.loads(inner)
+                except Exception:
+                    inner_parsed = None
+            inner = inner_parsed if isinstance(inner_parsed, dict) else None
+        elif inner is not None and not isinstance(inner, dict):
+            inner = None
+        if inner is None and raw:
+            # partial-JSON parsers can DROP an in-progress nested value
+            # entirely: while the wrapper's "arguments" object is unclosed
+            # it may never surface in the lenient wrapper parse, leaving the
+            # unwrap blind until the JSON completes - which is precisely why
+            # long bridged args showed nothing while streaming. slice the
+            # inner value out of the raw text and parse it ON ITS OWN: a
+            # top-level partial object hits the same lenient path that makes
+            # native (unbridged) tool args stream.
+            started = re.search(r'"arguments"\s*:\s*[{"\[]', raw)
+            if started:
+                sliced = parse_lenient_json(raw[started.end() - 1:])
+                if isinstance(sliced, dict) and "_raw" not in sliced:
+                    inner = sliced
+        if name is None and inner is None:
+            return None, None
+        return name, inner
 
     @staticmethod
     def _display_name(tool):
@@ -546,10 +630,14 @@ class TurnCollector:
         # monotonic args_parsed cache keyed by tool call id: a mid-stream
         # parse can never yield fewer keys than what was already sent.
         args_cache = {}
+        # same idea for unwrapped bridge calls: the inner arguments object
+        # resolved from the raw wrapper stream (see _bridge_from_args).
+        inner_cache = {}
 
         def _stamp_args(tool):
             tool_id = tool.get("id")
-            parsed = parse_lenient_json((tool.get("function") or {}).get("arguments"))
+            raw = (tool.get("function") or {}).get("arguments")
+            parsed = parse_lenient_json(raw)
             prev = args_cache.get(tool_id)
             if prev is not None and len(prev) > len(parsed):
                 parsed = prev
@@ -559,16 +647,36 @@ class TurnCollector:
             # annotations live under the call's _metadata key
             meta = tool.setdefault("_metadata", {})
             # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-            # unwrap tools_call proxies so bridged calls render as the real
-            # call while streaming too (mirrors group_history)
+            # unwrap tools_call proxies order-agnostically so bridged calls
+            # render as the real call while streaming too (mirrors history)
+            fn = (tool.get("function") or {}).get("name")
             bridge_name, bridge_args = self._bridge_from_args(
-                (tool.get("function") or {}).get("name"), parsed
+                fn, parsed, raw
             )
-            if bridge_name:
-                meta["display_name"] = bridge_name
-                meta["args_parsed"] = bridge_args
-            else:
+            if bridge_name is None and bridge_args is None:
                 meta["args_parsed"] = parsed
+            else:
+                meta["bridge"] = True
+                if bridge_args is None:
+                    bridge_args = inner_cache.get(tool_id)
+                elif inner_cache.get(tool_id) is not None and len(inner_cache[tool_id]) > len(bridge_args):
+                    bridge_args = inner_cache[tool_id]
+                if bridge_args is not None:
+                    inner_cache[tool_id] = bridge_args
+                if bridge_name:
+                    meta["display_name"] = bridge_name
+                meta["args_parsed"] = bridge_args if bridge_args is not None else {}
+            # TEMP DEBUG (remove with _bridge_debug after fix): one line per
+            # bridge stamp: wrapper keys, resolved name/inner, raw shape.
+            if fn == "tools_call" and isinstance(raw, str):
+                _head = raw[:60]
+                _tail = raw[-30:] if len(raw) > 100 else ""
+                _bridge_debug("id=%s len=%d wkeys=%s name=%r ikeys=%s head=%r tail=%r" % (
+                    tool_id, len(raw), sorted(parsed.keys()),
+                    bridge_name,
+                    sorted(bridge_args.keys()) if isinstance(bridge_args, dict) else bridge_args,
+                    _head, _tail,
+                ))
 
         async for raw_token in stream_generator:
             # copy the token so we don't mutate it
@@ -728,7 +836,7 @@ class TurnCollector:
                         # parsed args (mirrors group_history; unwraps tools_call)
                         _stamp_args(tool)
                         # arg summary on the (possibly unwrapped) args
-                        if meta.get("display_name"):
+                        if meta.get("bridge"):
                             meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
                         else:
                             meta["summary"] = self._tool_call_summary(tool)
@@ -754,7 +862,7 @@ class TurnCollector:
                         meta["response"] = stream_response_map[tool["id"]]
                         meta["failed"] = self._tool_call_failed(tool)
                     _stamp_args(tool)
-                    if meta.get("display_name"):
+                    if meta.get("bridge"):
                         meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
                     else:
                         meta["summary"] = self._tool_call_summary(tool)
