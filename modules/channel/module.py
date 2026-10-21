@@ -12,7 +12,7 @@ class Channel(core.module.Module):
         # },
         "enable_tutorial_prompts": {
             "description": "Whether to insert channel instructions into the system prompt so that your AI can guide you when you're new to OpenLumara. You'll want to turn this off once you're used to openlumara, to save tokens.",
-            "default": True
+            "default": False
         }
     }
 
