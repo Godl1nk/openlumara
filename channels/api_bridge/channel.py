@@ -58,7 +58,7 @@ class ApiBridge(core.channel.Channel):
     }
 
     dependencies = ["fastapi", "uvicorn"]
-    # pydantic and httpx are already included with openlumara
+    # pydantic comes in automatically with fastapi
 
     # -------------------------
     #   EVENT HANDLERS
