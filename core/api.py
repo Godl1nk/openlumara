@@ -1,10 +1,10 @@
 import core
-import httpx
-import openai
+import aiohttp
 import asyncio
+import copy
 import json
+import ssl
 import time
-import inspect
 import urllib.parse
 
 class APIError:
@@ -28,16 +28,22 @@ class APIError:
 
         return err_str
 
+class APIHTTPError(Exception):
+    """replaces the openai library's APIStatusError: an HTTP response with a non-200 status"""
+    def __init__(self, status: int, body: str = ""):
+        self.status = status
+        self.body = body or ""
+        super().__init__(f"HTTP {status}: {self.body[:500]}")
+
 class APIClient():
     """
-    wrapper around the openAI API to make sending/receiving messages easier to work with
+    wrapper around an OpenAI-compatible chat completions API
     """
     def __init__(self, manager):
         # store a reference to the manager
         self.manager = manager
 
         self.connected = False
-        self._AI = None # replaced later using .connect()
         self.is_streaming = False
 
         self._messages = []
@@ -49,14 +55,100 @@ class APIClient():
         # self._warmup_queue = asyncio.Queue()
         # self._warmup_done = asyncio.Event()
 
-        # used for insecure SSL connections
-        self._httpx_client = None
+        # the aiohttp session is the one HTTP client for everything
+        self._session = None
+        self._ssl_ctx = None # only set when TLS verification is disabled
 
         self.supports_developer_role = False
 
         # origin of the API when it's a llama.cpp router. enables the model load progress feed.
         self._router_origin = None
 
+    # -------------------
+    # HTTP plumbing
+    # -------------------
+    def _api_headers(self):
+        """auth headers for calls to the API"""
+        key = core.config.get("api", "key")
+        if key:
+            return {"Authorization": f"Bearer {key}"}
+        return {}
+
+    def _json_headers(self):
+        headers = self._api_headers()
+        headers["Content-Type"] = "application/json"
+        return headers
+
+    def _make_session(self):
+        """create the shared aiohttp session"""
+        # infinite read timeout (long generations and model loads must not be cut off)
+        timeout = aiohttp.ClientTimeout(total=None, connect=5.0)
+        return aiohttp.ClientSession(timeout=timeout)
+
+    async def _http_get(self, url, timeout_total=None):
+        """GET a url and return (status, body_text)"""
+        kwargs = {"headers": self._api_headers()}
+        if self._ssl_ctx is not None:
+            kwargs["ssl"] = self._ssl_ctx
+        if timeout_total is not None:
+            kwargs["timeout"] = aiohttp.ClientTimeout(total=timeout_total)
+
+        async with self._session.get(url, **kwargs) as resp:
+            return resp.status, await resp.text()
+
+    async def _iter_sse(self, response):
+        """
+        parses a text/event-stream response body into JSON objects
+        """
+        buffer = ""
+        async for raw in response.content.iter_any():
+            buffer += raw.decode("utf-8", errors="replace")
+
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                line = line.rstrip("\r")
+
+                if not line.startswith("data:"):
+                    # skip comments (":") and event:/id: fields
+                    continue
+
+                data_str = line[5:].strip()
+                if not data_str:
+                    continue
+
+                if data_str == "[DONE]":
+                    return
+
+                try:
+                    yield json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+
+    def _error_for_status(self, status, body, prefix=""):
+        """maps an HTTP error response onto a APIError"""
+        e = APIHTTPError(status, body)
+        error_str = (body or "").lower()
+
+        if status == 400:
+            # check if the error message specifically mentions the model is not found
+            if "model" in error_str and ("not found" in error_str or "missing" in error_str):
+                return APIError("Model with that name does not exist!", e)
+            return APIError("Bad request", e)
+
+        if status in (401, 403):
+            return APIError("Authentication failed. Check whether your API key is valid!", e)
+
+        if status == 404:
+            return APIError("Model with that name does not exist!", e)
+
+        if status == 429:
+            return APIError("Rate limit exceeded", e)
+
+        return APIError("API Status Error", e)
+
+    # -------------------
+    # Connection management
+    # -------------------
     async def connect(self, silent=False):
         if self.connected:
             return True
@@ -66,50 +158,39 @@ class APIClient():
         if api_config.get("url") == "http://API_URL_HERE/v1":
             return APIError("The API connection has not been set up yet! Please set up your API connection by either using the WebUI, the /config command, or editing the config file")
 
-        # infinite timeout
-        httpx_timeout = httpx.Timeout(
-            connect=5.0,
-            read=None,
-            write=None,
-            pool=None
-        )
-
         use_secure_connection = not self.manager.args.insecure_tls
         if not use_secure_connection:
             self.manager.log("API", "WARNING: TLS certificate and hostname verification are disabled")
 
         try:
-            self._httpx_client = httpx.AsyncClient(
-                verify=use_secure_connection,
-                timeout=httpx_timeout
-            )
+            self._session = self._make_session()
 
-            self._AI = openai.AsyncOpenAI(
-                base_url=api_config.get("url"),
-                api_key=api_config.get("key"),
-                http_client=self._httpx_client
-            )
-            await self._AI.models.list()
+            if not use_secure_connection:
+                self._ssl_ctx = ssl.create_default_context()
+                self._ssl_ctx.check_hostname = False
+                self._ssl_ctx.verify_mode = ssl.CERT_NONE
 
-        except openai.BadRequestError as e:
-            # Check if the error message specifically mentions the model is not found
-            error_str = str(e).lower()
-            if "model" in error_str and ("not found" in error_str or "missing" in error_str):
-                return APIError("Model not found.")
-            else:
-                # It's a different kind of 400 error (e.g., invalid parameters)
-                return APIError(f"Bad request", e)
+            # validate the connection by listing models
+            status, body = await self._http_get(f"{api_config.get('url')}/models")
 
-        except openai.AuthenticationError as e:
-            #await self.disconnect()
-            return APIError("Authentication failed. Check if your API key is valid.", e)
+            if status == 400:
+                error_str = body.lower()
+                if "model" in error_str and ("not found" in error_str or "missing" in error_str):
+                    return APIError("Model not found.")
+                return APIError("Bad request", APIHTTPError(status, body))
 
-        except openai.APIConnectionError as e:
-            #await self.disconnect()
+            if status in (401, 403):
+                return APIError("Authentication failed. Check if your API key is valid.", APIHTTPError(status, body))
+
+            if status != 200:
+                return APIError("Failed to connect to the API", APIHTTPError(status, body))
+
+        except aiohttp.ClientError as e:
+            await self._close_session()
             return APIError("Failed to connect to the API", e)
 
         except Exception as e:
-            #await self.disconnect()
+            await self._close_session()
             import traceback
             if core.debug:
                 traceback.print_exc()
@@ -130,9 +211,6 @@ class APIClient():
         # (thanks to https://www.reddit.com/r/LocalLLaMA/comments/1uskb1g/speculative_cache_warming_warms_your_cache_while/ for the idea)
         
 
-        # PROMPT WARMING DISABLED FOR NOW (it's extremely buggy and needs a few days of extra polish. it's causing race conditions all over the place)
-        #await self.start_prompt_warmup(context=[{"role": "system", "content": await self.manager.get_system_prompt()}], notify=False)
-
         return True
     
     async def attempt_connect(self):
@@ -152,14 +230,16 @@ class APIClient():
             "model": core.config.get("model", "name")
         }
 
+    async def _close_session(self):
+        if self._session:
+            await self._session.close()
+            self._session = None
+
     async def disconnect(self):
         """disconnect from the API"""
-        if self._httpx_client:
-            await self._httpx_client.aclose()
-            self._httpx_client = None
+        await self._close_session()
 
         self.connected = False
-        self._AI = None
         return True
 
     async def reconnect(self):
@@ -167,14 +247,9 @@ class APIClient():
         await self.disconnect()
         return await self.connect()
 
+    # -------------------
     # llama.cpp router support
-    def _api_headers(self):
-        """auth headers for httpx calls to the API"""
-        key = core.config.get("api", "key")
-        if key:
-            return {"Authorization": f"Bearer {key}"}
-        return {}
-
+    # -------------------
     async def _detect_router(self):
         """
         probe the API to detect if it's a llamacpp instance that's in router mode
@@ -191,12 +266,12 @@ class APIClient():
                 return
 
             origin = f"{parsed.scheme}://{parsed.netloc}"
-            resp = await self._httpx_client.get(f"{origin}/models", timeout=5.0, headers=self._api_headers())
+            status, body = await self._http_get(f"{origin}/models", timeout_total=5.0)
 
-            if resp.status_code != 200:
+            if status != 200:
                 return
 
-            body = resp.json()
+            body = json.loads(body)
             entries = body.get("data")
 
             if isinstance(entries, list) and any(isinstance(e, dict) and "status" in e for e in entries):
@@ -209,55 +284,46 @@ class APIClient():
         """reads the llamacpp router's /models/sse feed while a model loads"""
         try:
             url = f"{self._router_origin}/models/sse"
-            async with self._httpx_client.stream("GET", url, headers=self._api_headers()) as feed:
-                buffer = ""
+            kwargs = {"headers": self._api_headers()}
+            if self._ssl_ctx is not None:
+                kwargs["ssl"] = self._ssl_ctx
 
-                async for chunk in feed.aiter_text():
-                    buffer += chunk
+            async with self._session.get(url, **kwargs) as feed:
+                async for event in self._iter_sse(feed):
+                    if event.get("event") not in ("status_change", "model_status"):
+                        continue
 
-                    while "\n\n" in buffer:
-                        record, buffer = buffer.split("\n\n", 1)
-                        record = record.strip()
+                    data = event.get("data") or {}
+                    status = data.get("status") or ""
+                    name = event.get("model") or ""
 
-                        if not record.startswith("data:"):
-                            continue
+                    if status in ("loaded", "unloaded"):
+                        # let the prompt/content tokens take over the progress indicator
+                        if name == model_name:
+                            return
+                        continue
 
-                        try:
-                            event = json.loads(record[5:])
-                        except json.JSONDecodeError:
-                            continue
+                    if status not in ("loading", "queued", "downloading"):
+                        continue
 
-                        if event.get("event") not in ("status_change", "model_status"):
-                            continue
+                    progress = data.get("progress") or {}
+                    value = progress.get("value")
 
-                        data = event.get("data") or {}
-                        status = data.get("status") or ""
-                        name = event.get("model") or ""
-
-                        if status in ("loaded", "unloaded"):
-                            # let the prompt/content tokens take over the progress indicator
-                            if name == model_name:
-                                return
-                            continue
-
-                        if status not in ("loading", "queued", "downloading"):
-                            continue
-
-                        progress = data.get("progress") or {}
-                        value = progress.get("value")
-
-                        await queue.put({
-                            "model": name,
-                            "status": status,
-                            "stage": progress.get("current") or "",
-                            "percent": round(value * 100) if isinstance(value, (int, float)) else None,
-                        })
+                    await queue.put({
+                        "model": name,
+                        "status": status,
+                        "stage": progress.get("current") or "",
+                        "percent": round(value * 100) if isinstance(value, (int, float)) else None,
+                    })
 
         except asyncio.CancelledError:
             raise
         except Exception:
             pass
 
+    # -------------------
+    # Model config
+    # -------------------
     def get_model(self):
         return core.config.get("model", "name")
 
@@ -267,8 +333,41 @@ class APIClient():
 
         return True
 
+    # -------------------
+    # Requests
+    # -------------------
+    async def _post_chat_completion(self, payload, stream=False):
+        """
+        sends the chat completions request over HTTP.
+        returns a parsed JSON dict when not streaming,
+        or an open aiohttp ClientResponse (to be consumed by _recv_stream) when streaming.
+        """
+        url = f"{core.config.get('api', 'url')}/chat/completions"
+
+        kwargs = {"json": payload, "headers": self._json_headers()}
+        if self._ssl_ctx is not None:
+            kwargs["ssl"] = self._ssl_ctx
+
+        if stream:
+            resp = await self._session.post(url, **kwargs)
+
+            if resp.status != 200:
+                body = await resp.text()
+                await resp.release()
+                raise APIHTTPError(resp.status, body)
+
+            return resp
+
+        async with self._session.post(url, **kwargs) as resp:
+            body = await resp.text()
+
+            if resp.status != 200:
+                raise APIHTTPError(resp.status, body)
+
+            return json.loads(body)
+
     async def _request(self, context, tools=None, stream=False, use_thinking=True, **kwargs):
-        """send a request to the LLM and return the response object"""
+        """send a request to the LLM and return the response (dict, or an open SSE response when streaming)"""
 
         if not context:
             # this should never happen..
@@ -290,17 +389,19 @@ class APIClient():
         req = {
             "model": core.config.get("model", "name"),
             "messages": context,
-            "tools": tools,
             "stream": stream,
             "temperature": core.config.get("model", {}).get("temperature", 0.7),
             "max_completion_tokens": core.config.get("api", {}).get("max_output_tokens", 8192),
-            "extra_body": {
-                "chat_template_kwargs": {
-                    "enable_thinking": core.config.get("model", "enable_thinking", default=use_thinking)
-                },
-                "return_progress": True
-            }
+            # extra_body fields are flattened into the JSON body by the openai library
+            # anyway, so we just put them at the top level ourselves
+            "chat_template_kwargs": {
+                "enable_thinking": core.config.get("model", "enable_thinking", default=use_thinking)
+            },
+            "return_progress": True
         }
+
+        if tools:
+            req["tools"] = tools
 
         # add kwargs to the request
         for key, value in kwargs.items():
@@ -308,7 +409,7 @@ class APIClient():
             req[key] = value
 
         reasoning_effort = core.config.get("model", {}).get("reasoning_effort")
-        if reasoning_effort != "none":
+        if reasoning_effort and reasoning_effort != "none":
             req["reasoning_effort"] = reasoning_effort
 
         # allow inserting custom request fields
@@ -365,16 +466,16 @@ class APIClient():
         try:
             # if at this point a cancel was already requested,
             # it was likely from a toolcalling chain, so abort EVERYTHING
-            #if self.cancel_request and not self.prompt_warming_up:
             if self.cancel_request:
                 raise asyncio.CancelledError("Request cancelled")
 
-            request_task = asyncio.create_task(self._AI.chat.completions.create(**req))
+            request_task = asyncio.create_task(self._post_chat_completion(req, stream=stream))
 
-            # wrap the request in a way that we can check for cancellation
-            # since openai's async client doesn't natively support an abort signal
-            # easily through the high-level chat.completions.create, we use a task
-            # so we can actually cancel the task itself.
+            # wrap the request in a task that we can poll for cancellation,
+            # so a cancel (e.g. from the toolcalling chain or the UI's stop button)
+            # aborts even while a llama.cpp router is busy swapping a model in
+            # (against an openai-compatible router, the POST blocks while a model
+            #  is being loaded, which can take a while)
 
             while not request_task.done():
                 if self.cancel_request:
@@ -388,43 +489,18 @@ class APIClient():
                 raise asyncio.CancelledError("Request cancelled")
 
         except asyncio.CancelledError as e:
-            # fully kill the connection because ive been debuggging this for like 5 hours and im tired
-            # make it stop
-            #self.manager.log("api", "Force closing HTTP connection due to unclean state..")
-            #await self.disconnect()
             self.cancel_request = False
 
             # and propagate it up for any other stuff to handle
             raise
 
-        except openai.BadRequestError as e:
-            # Check if the error message specifically mentions the model is not found
-            error_str = str(e).lower()
-            if "model" in error_str and ("not found" in error_str or "missing" in error_str):
-                return APIError("Model with that name does not exist!", e)
-            else:
-                # It's a different kind of 400 error (e.g., invalid parameters)
-                return APIError("Bad request", e)
+        except APIHTTPError as e:
+            return self._error_for_status(e.status, e.body)
 
-        except openai.AuthenticationError as e:
-            #await self.disconnect()
-            return APIError("Authentication failed. Check whether your API key is valid!", e)
-
-        except openai.APIConnectionError as e:
-            #await self.disconnect()
-            return APIError("Failed to connect to API")
-
-        except openai.NotFoundError as e:
-            return APIError("Model with that name does not exist!", e)
-
-        except openai.RateLimitError as e:
-            return APIError("Rate limit exceeded", e)
-
-        except openai.APIStatusError as e:
-            return APIError("API Status Error",  e)
+        except aiohttp.ClientError as e:
+            return APIError("Failed to connect to API", e)
 
         except Exception as e:
-            #await self.disconnect()
             return APIError(None, e)
 
         finally:
@@ -458,64 +534,8 @@ class APIClient():
         self._warmup_task = None
         self.prompt_warming_up = False
 
-    async def start_prompt_warmup(self, context=None, notify=True):
-        # cancel existing warmup task if there's already one running
-        # (for example if the warmup is running for one chat,
-        # and the user switches to a different one)
-        await self.stop_prompt_warmup()
-        self._warmup_done.clear()
-
-        self._warmup_task = asyncio.create_task(self._run_warmup(context=context, notify=notify))
-        if notify:
-            self.manager.log("API", "Sending prompt in advance to make AI response instant.. (prompt warmup)")
-
-    async def _run_warmup(self, context=None, notify=True):
-        # DEPRECATED CODE... should probably be removed or moved to a seperate branch
-        # since this feature still needs a lot of refinement
-        
-        self._warmup_done.clear()
-        self.prompt_warming_up = True
-
-        try:
-            if context is None:
-                # prompt = await self.manager.get_system_prompt()
-                context = [{"role": "system", "content": prompt}]
-
-            response = await self._request(context, stream=True, tools=self.manager.tools, use_thinking=False, max_completion_tokens=1)
-
-            if isinstance(response, APIError):
-                self.manager.log("api", f"Failure while sending prompt warmup request to AI: {response}")
-                # thats an error
-                return
-
-        except Exception as e:
-            self.manager.log("api", f"Failure while sending prompt warmup request to AI: {core.detail_error(e)}")
-
-        try:
-            async for token in self._recv_stream(response):
-                if self.cancel_request:
-                    raise asyncio.CancelledError("Warmup task cancelled")
-
-                if token.get("type") == "prompt_progress":
-                    await self._warmup_queue.put(token)
-            if notify:
-                self.manager.log("API", "Prompt warmup complete")
-
-        except asyncio.CancelledError:
-            # fully kill the connection because ive been debuggging this for like 5 hours and im tired
-            # make it stop
-            #self.manager.log("api", "Force closing HTTP connection due to unclean state..")
-            #await self.disconnect()
-            self.manager.log("api", "Request was cancelled")
-        except Exception as e:
-            if notify:
-                self.manager.log("api", f"Warmup request failed: {core.detail_error(e)}")
-        finally:
-            self.prompt_warming_up = False
-            self._warmup_done.set()
-
     async def send(self, context: list, system_prompt=True, use_tools=True, tools=None, use_thinking=True, **kwargs):
-        """send a message to the LLM. returns a string or APIError"""
+        """send a message to the LLM. returns a dict or APIError"""
 
         self.cancel_request = False
 
@@ -524,12 +544,6 @@ class APIClient():
         if connected is not True:
             # thats an error!
             return connected
-
-        # wait for the system prompt warmup to finish if it's still running
-        # if self._warmup_task and not self._warmup_task.done():
-        #     if core.debug:
-        #         self.manager.log("API", "Waiting for prompt warmup to complete..")
-        #     await self._warmup_task
 
         # use default tools if not specified. allow overrides
         if not tools:
@@ -558,26 +572,6 @@ class APIClient():
             # that's an error
             yield {"type": "error", "content": str(connected)}
             return
-
-        # drain progress tokens while waiting for warmup to finish
-        # DISABLED DUE TO INTRODUCING A MYRIAD OF BUGS (see my other comments in connect())
-
-        # so that warmup progress can be shown in channels
-        # if self._warmup_task and not self._warmup_task.done():
-        #     while not self._warmup_done.is_set():
-        #         try:
-        #             token = self._warmup_queue.get_nowait()
-        #             yield token
-        #         except asyncio.QueueEmpty:
-        #             await asyncio.sleep(0.01)
-
-        # drain any remaining tokens that arrived while we were yielding
-        # while not self._warmup_queue.empty():
-        #     yield await self._warmup_queue.get()
-
-        # wait for the prompt warmup to actually finish
-        # if self._warmup_task and not self._warmup_task.done():
-        #     await self._warmup_task
 
         # use default tools if not specified. allow overrides
         if not tools:
@@ -637,6 +631,10 @@ class APIClient():
         finally:
             self.is_streaming = False
 
+            # make sure the SSE connection is always released
+            if response is not None and not isinstance(response, APIError) and hasattr(response, "close"):
+                response.close()
+
     async def cancel(self):
         """cancel a request that's been sent to the AI"""
         if not self.is_streaming:
@@ -651,27 +649,28 @@ class APIClient():
         return True
 
     async def _recv(self, response, use_tools=True):
-        """takes a response object and extracts the message from it, handling tool calls if needed"""
+        """takes a response dict and extracts the message from it, handling tool calls if needed"""
 
         try:
             # normal non-streaming mode
-            response_main = response.choices[0]
+            response_main = response["choices"][0]
         except Exception as e:
             raise e # raise it so send() can catch it
 
-        reasoning_content = getattr(response_main.message, "reasoning_content", None) or \
-                            getattr(response_main.message, "reasoning", None) or ""
+        message = response_main.get("message") or {}
+
+        reasoning_content = message.get("reasoning_content") or message.get("reasoning") or ""
 
         if reasoning_content and core.debug:
             self.manager.log("debug:reasoning", reasoning_content)
 
         # extract message content
-        final_content = response_main.message.content or ""
+        final_content = message.get("content") or ""
 
         # handle tool calls, if any
         tool_calls = None
-        if use_tools and core.config.get("model").get("use_tools", False) and response_main.message.tool_calls:
-            tool_calls = [tc.model_dump(warnings=False) for tc in response_main.message.tool_calls]
+        if use_tools and core.config.get("model").get("use_tools", False) and message.get("tool_calls"):
+            tool_calls = [copy.deepcopy(tc) for tc in message.get("tool_calls")]
 
         result = {}
 
@@ -688,7 +687,10 @@ class APIClient():
         return result
 
     async def _recv_stream(self, response, use_tools=True):
-        """Takes a response object and extracts the message from it, handling tool calls if needed. Streaming version."""
+        """
+        Takes a HTTP SSE response object and yields tokens from it,
+        handling tool calls if needed. Streaming version.
+        """
         final_tool_calls = []
         tool_call_buffer = {}
 
@@ -702,25 +704,24 @@ class APIClient():
 
         response_started = False
         try:
-            async for chunk in response:
+            async for chunk in self._iter_sse(response):
                 if not response_started:
                     # mark it as started so that we can detect if the API has returned a blank message
                     # (for example due to an error the inference server, i.e. llamacpp, failed to send)
                     response_started = True
 
                 if self.cancel_request:
-                    if hasattr(response, "close"):
-                        # support closing
-                        await response.close()
+                    # closing the response severs the HTTP connection immediately
+                    response.close()
                     raise asyncio.CancelledError("Request cancelled")
 
                 # uncomment if trying to see token stream chunks
                 #print(chunk)
 
-                if hasattr(chunk, 'prompt_progress') and chunk.prompt_progress is not None:
+                if chunk.get("prompt_progress") is not None:
                     yield {
                         "type": "prompt_progress",
-                        "content": chunk.prompt_progress
+                        "content": chunk.get("prompt_progress")
                     }
 
                 # Calculate time delta for real-time stats
@@ -728,26 +729,25 @@ class APIClient():
                 delta_ms = (current_time - last_token_time) * 1000
                 last_token_time = current_time
 
-                if chunk.choices:
-                    streamed_token = chunk.choices[0].delta
+                if chunk.get("choices"):
+                    streamed_token = chunk["choices"][0].get("delta") or {}
 
                     content_yield = None
 
                     # handle content token streaming
-                    if streamed_token.content:
-                        content_yield = {"type": "content", "content": streamed_token.content}
+                    if streamed_token.get("content"):
+                        content_yield = {"type": "content", "content": streamed_token["content"]}
 
                     # handle reasoning content streaming
-                    reason_part = getattr(streamed_token, "reasoning_content", None) or \
-                                getattr(streamed_token, "reasoning", None)
+                    reason_part = streamed_token.get("reasoning_content") or streamed_token.get("reasoning")
 
                     if reason_part:
                         content_yield = {"type": "reasoning", "content": reason_part}
 
                     # add timing data to the yielded token
-                    if streamed_token.content or reason_part:
+                    if streamed_token.get("content") or reason_part:
                         # Send timing data: Use native if available, otherwise calculate
-                        native_timings = getattr(chunk, 'timings', None)
+                        native_timings = chunk.get("timings")
                         if native_timings:
                             content_yield["timings"] = native_timings
 
@@ -764,54 +764,54 @@ class APIClient():
                         yield content_yield
 
                     # extract tool calls, if any
-                    if streamed_token.tool_calls and use_tools:
-                        for tool_call in streamed_token.tool_calls:
-                            index = tool_call.index
+                    if streamed_token.get("tool_calls") and use_tools:
+                        for tool_call in streamed_token["tool_calls"]:
+                            index = tool_call.get("index", 0)
 
                             if index not in tool_call_buffer:
-                                tool_call_buffer[index] = tool_call
+                                tool_call_buffer[index] = copy.deepcopy(tool_call)
                                 # ensure arguments is always a string
-                                if tool_call_buffer[index].function.arguments is None:
-                                    tool_call_buffer[index].function.arguments = ""
+                                if tool_call_buffer[index].get("function", {}).get("arguments") is None:
+                                    tool_call_buffer[index].setdefault("function", {})["arguments"] = ""
 
                                 yield {
                                     "type": "tool_call_delta",
-                                    "tool_calls": [tool_call_buffer[index].model_dump()]
+                                    "tool_calls": [copy.deepcopy(tool_call_buffer[index])]
                                 }
                             else:
-                                # the documentation for this was awful, so i had to use AI to figure it out
-                                # welcome to the reason i was forced to introduce AI slop to the core framework
-                                # (dont worry, i removed it by now)
-                                # thanks openAI for ruining your documentation of chat completion requests in favor of your stupid Responses API
-
                                 # it seems these properties will only show up in one chunk,
                                 # and the rest of the stream won't have them anymore..
-                                # so the AI (GLM-5) decided we should set these if they show up
+                                # so the AI decided we should set these if they show up
                                 # and then just assume it won't happen again
                                 # i guess if it does, it just overwrites it..
-                                if tool_call.id:
-                                    tool_call_buffer[index].id = tool_call.id
-                                if tool_call.function.name:
-                                    tool_call_buffer[index].function.name = tool_call.function.name
+                                if tool_call.get("id"):
+                                    tool_call_buffer[index]["id"] = tool_call["id"]
+
+                                incoming_fn = tool_call.get("function") or {}
+                                buffer_fn = tool_call_buffer[index].setdefault("function", {})
+
+                                if incoming_fn.get("name"):
+                                    buffer_fn["name"] = incoming_fn["name"]
 
                                 # function arguments seem to be the part that actually gets streamed
                                 # and which we must accumulate to get the full toolcall
-                                if tool_call.function.arguments:
-                                    tool_call_buffer[index].function.arguments += tool_call.function.arguments
+                                if incoming_fn.get("arguments"):
+                                    buffer_fn["arguments"] = buffer_fn.get("arguments", "") + incoming_fn["arguments"]
 
                                     # the magic sauce that allows streaming toolcall arguments
                                     yield {
                                         "type": "tool_call_delta",
-                                        "tool_calls": [tool_call_buffer[index].model_dump()]
+                                        "tool_calls": [copy.deepcopy(tool_call_buffer[index])]
                                     }
-                                    # we use model_dump() so that it converts the pydantic models to python dicts that can be json serialized
 
                 # if response has usage data, save it so we can use it to show to the user and to trim context
-                if hasattr(chunk, 'usage') and chunk.usage is not None:
-                    if hasattr(chunk.usage, 'prompt_tokens'):
-                        total_prompt_tokens = chunk.usage.prompt_tokens
-                    if hasattr(chunk.usage, 'completion_tokens'):
-                        total_completion_tokens = chunk.usage.completion_tokens
+                if chunk.get("usage") is not None:
+                    usage = chunk["usage"]
+
+                    if usage.get("prompt_tokens") is not None:
+                        total_prompt_tokens = usage["prompt_tokens"]
+                    if usage.get("completion_tokens") is not None:
+                        total_completion_tokens = usage["completion_tokens"]
 
                     token_usage = 0
                     if total_prompt_tokens > 0:
@@ -823,26 +823,30 @@ class APIClient():
                     if token_usage > 0:
                         yield {"type": "token_usage", "content": token_usage, "source": "API"}
 
-                if hasattr(chunk, 'timings'):
-                    yield {"type": "timings", "content": chunk.timings}
+                if chunk.get("timings") is not None:
+                    yield {"type": "timings", "content": chunk["timings"]}
 
             if use_tools:
                 for index in sorted(tool_call_buffer.keys()):
                     # filter out blank tool calls (rare model glitch)
                     tool_call = tool_call_buffer[index]
-                    if not tool_call.function.name:
+                    if not (tool_call.get("function") or {}).get("name"):
                         continue
 
                     final_tool_calls.append(tool_call)
 
                 if final_tool_calls and core.config.get("model").get("use_tools", False):
                     # yield the full toolcall object as a single token to be interpreted by the function that is iterating through _recv_stream()
-                    tool_call_dicts = [tc.model_dump(warnings=False) for tc in final_tool_calls]
+                    tool_call_dicts = [copy.deepcopy(tc) for tc in final_tool_calls]
                     yield {"type": "tool_calls", "tool_calls": tool_call_dicts}
 
         except Exception as e:
-            #self.manager.log_error("error while receiving response from AI", e)
             raise e # Re-raise so send_stream can catch it and yield the error type
+
+        finally:
+            # release the connection back to the pool (or close it if the stream ended early)
+            if hasattr(response, "close"):
+                response.close()
 
         if not response_started:
             # this means the inference server (such as llamacpp) failed to report an error
@@ -856,12 +860,14 @@ class APIClient():
 
         try:
             # get alphabetically sorted model list
-            models_model = await self._AI.models.list()
+            status, body = await self._http_get(f"{core.config.get('api', 'url')}/models")
 
-            # commented out but this is going to allow much more detailed model information once i get to implementing it
-            # models = models_model.model_dump()
+            if status != 200:
+                raise APIHTTPError(status, body)
 
-            model_list = [model.id for model in models_model.data]
+            body = json.loads(body)
+
+            model_list = [model["id"] for model in body.get("data", []) if isinstance(model, dict) and model.get("id")]
             model_list.sort()
 
         except Exception as e:
