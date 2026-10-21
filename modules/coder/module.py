@@ -1,6 +1,7 @@
 import core
 import channels.webui.api as webui
 import os
+import errno
 import importlib
 import shutil
 import regex
@@ -8,6 +9,43 @@ import glob
 import fnmatch
 import subprocess
 import tree_sitter_language_pack as tslp
+
+def _nofollow_open(path: str, mode: str = "r"):
+    """
+    a wrapper around os open() that refuses to follow symlinks.
+    because security!
+    """
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) status:reviewed harness:openlumara
+
+    flags = 0
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    if "x" in mode:
+        flags |= os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    elif "w" in mode:
+        flags |= os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    elif "r" in mode:
+        flags |= os.O_RDONLY
+    else:
+        raise ValueError(f"unsupported open mode: {mode}")
+
+    try:
+        # 0o666 matches plain open(): the umask still applies as usual
+        fd = os.open(path, flags, 0o666)
+    except OSError as e:
+        # make the ELOOP from O_NOFOLLOW read like the sandbox's own message
+        # instead of "Too many levels of symbolic links"
+        if e.errno == getattr(errno, "ELOOP", None):
+            raise ValueError("Symlinks are not allowed in the requested path")
+        raise
+
+    # fdopen has no 'x' mode; the O_EXCL already happened in os.open
+    fdopen_mode = mode.replace("x", "w")
+    if "b" in mode:
+        return os.fdopen(fd, fdopen_mode)
+    return os.fdopen(fd, fdopen_mode, encoding="utf-8")
+
 
 class Coder(core.module.Module):
     """Lets your AI write code within sandboxes, without using a shell. Validates code syntax before writing to disk to protect your code from breaking."""
@@ -418,7 +456,7 @@ class Coder(core.module.Module):
                             if ext[1:] not in file_extensions:
                                 continue
 
-                        with open(filepath, 'r', encoding="utf-8") as f:
+                        with _nofollow_open(filepath, "r") as f:
                             all_lines = f.readlines()
                             for line_num, line in enumerate(all_lines, 1):
                                 if compiled_pattern.search(line, timeout=self.regex_timeout):
@@ -481,7 +519,7 @@ class Coder(core.module.Module):
         # a race condition vulnerability that can escape sandboxes
         # am i the only one that thinks TOCTOU kinda sounds like TOC TUA aka HAWK TUAH? oh no
         try:
-            with open(target_path, 'x') as f:
+            with _nofollow_open(target_path, "x") as f:
                 f.write(content)
         except Exception as e:
             return self.result(str(e), success=False)
@@ -531,7 +569,7 @@ class Coder(core.module.Module):
         """provides information about source code. only works on source code files."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
         try:
-            with open(target_path, 'r', encoding="utf-8") as f:
+            with _nofollow_open(target_path, "r") as f:
                 file_content = f.read()
                 structure = await self._extract_code_structure(file_content, target_path)
                 if not structure:
@@ -549,7 +587,7 @@ class Coder(core.module.Module):
         # protect against tocccc touh
         try:
             content = None
-            with open(target_path, 'r', encoding="utf-8") as f:
+            with _nofollow_open(target_path, "r") as f:
                 content = f.read()
 
             if not content:
@@ -621,7 +659,7 @@ class Coder(core.module.Module):
 
         try:
             matches = []
-            with open(target_path, 'r', encoding="utf-8") as f:
+            with _nofollow_open(target_path, "r") as f:
                 all_lines = f.readlines()
                 for line_num, line in enumerate(all_lines, 1):
                     if compiled_pattern.search(line, timeout=self.regex_timeout):
@@ -695,7 +733,7 @@ class Coder(core.module.Module):
        file_content = None
        # protect against FAWK HUAH
        try:
-           with open(target_path, 'r', encoding="utf-8") as f:
+           with _nofollow_open(target_path, "r") as f:
                file_content = f.read()
        except Exception as e:
            return self.result(str(e), success=False)
@@ -717,7 +755,7 @@ class Coder(core.module.Module):
 
        # and write it to the file
        try:
-           with open(target_path, 'w', encoding="utf-8") as f:
+           with _nofollow_open(target_path, "w") as f:
                f.write(new_file_content)
        except Exception as e:
            # TAWK TOUHA
@@ -867,7 +905,7 @@ class Coder(core.module.Module):
             if size > self.ui_max_read_bytes:
                 return self.result(f"file is too large to edit in the webui ({size} bytes)", success=False)
 
-            with open(target, 'r', encoding="utf-8") as f:
+            with _nofollow_open(target, "r") as f:
                 content = f.read()
         except UnicodeDecodeError:
             return self.result("this looks like a binary file and can't be edited here", success=False)
@@ -900,7 +938,7 @@ class Coder(core.module.Module):
             return self.result({"errors": syntax_errors, "message": "Syntax errors detected! File was not written to disk."}, success=False)
 
         try:
-            with open(target, 'w', encoding="utf-8") as f:
+            with _nofollow_open(target, "w") as f:
                 f.write(content)
         except Exception as e:
             return self.result(str(e), success=False)
@@ -982,7 +1020,7 @@ class Coder(core.module.Module):
                 parent = os.path.dirname(target)
                 if parent:
                     os.makedirs(parent, exist_ok=True)
-                with open(target, 'x') as f:
+                with _nofollow_open(target, "x") as f:
                     f.write("")
         except Exception as e:
             return self.result(str(e), success=False)
@@ -1143,7 +1181,7 @@ class Coder(core.module.Module):
                     if os.path.getsize(fpath) > self.ui_max_read_bytes:
                         continue
 
-                    with open(fpath, 'r', encoding="utf-8") as f:
+                    with _nofollow_open(fpath, "r") as f:
                         for line_num, line in enumerate(f, 1):
                             if pattern:
                                 try:
@@ -1927,7 +1965,7 @@ class Coder(core.module.Module):
             # "both": concatenate both sides without conflict markers
             abs_path = os.path.normpath(os.path.join(root, rel_path))
             try:
-                with open(abs_path, "r", encoding="utf-8") as f:
+                with _nofollow_open(abs_path, "r") as f:
                     content = f.read()
                 # strip conflict markers, keep both sides
                 resolved = regex.sub(
@@ -1936,7 +1974,7 @@ class Coder(core.module.Module):
                     content,
                     flags=regex.DOTALL,
                 )
-                with open(abs_path, "w", encoding="utf-8") as f:
+                with _nofollow_open(abs_path, "w") as f:
                     f.write(resolved)
                 ok = True
                 out = "resolved (both)"
@@ -2032,7 +2070,7 @@ class Coder(core.module.Module):
             parent = os.path.dirname(target)
             if parent:
                 os.makedirs(parent, exist_ok=True)
-            with open(target, "wb") as f:
+            with _nofollow_open(target, "wb") as f:
                 f.write(raw)
         except Exception as e:
             return self.result(str(e), success=False)
