@@ -18,6 +18,7 @@ class ModuleConfig:
 
     def get(self, *args, **kwargs):
         default = kwargs.get("default", None)
+        explicit_default = "default" in kwargs
         if not args:
             return default
 
@@ -25,6 +26,7 @@ class ModuleConfig:
         # If the last argument is not a string, or is empty, treat it as an explicit default
         if keys and not isinstance(keys[-1], str) or not keys[-1]:
             default = keys.pop()
+            explicit_default = True
 
         current = self.config.to_dict()
 
@@ -33,6 +35,11 @@ class ModuleConfig:
             if isinstance(current, dict) and key in current:
                 current = current[key]
             else:
+                # fall back to default (as defined in the module schema) if no value was found
+                if not explicit_default and len(keys) == 1:
+                    declared = self.structure.get(keys[0])
+                    if isinstance(declared, dict) and "default" in declared:
+                        return copy.deepcopy(declared["default"])
                 return default
 
         return current
