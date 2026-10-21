@@ -1,5 +1,4 @@
 aiohttp
-requests
 msgpack
 pyyaml
 json-repair
