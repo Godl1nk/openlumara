@@ -189,18 +189,15 @@ class ToolLoader:
     def _build_meta_def(self):
         """Build the tools_load meta tool definition."""
         modules = ", ".join(self._enabled_module_names()) or "(none currently enabled)"
-        listing = self._catalog_listing()
         return {
             "type": "function",
             "function": {
                 "name": "tools_load",
                 "description": (
-                    "Returns the full parameter schemas of all tools in one or more enabled "
-                    "modules, as an array. The tools are NOT added to your tool list: call "
-                    "them with tools_call using the returned schemas (this keeps the prompt "
-                    "cache intact). Currently enabled modules (pass these names in "
-                    f"module_names): {modules}.\n\n"
-                    f"Tool catalog:\n{listing}"
+                    "Returns full schemas of all tools in the modules you request"
+                    ", as array. Tools are NOT added to your tool list: call "
+                    "them with tools_call using returned schemas."
+                    f"Currently enabled modules: {modules}"
                 ),
                 "parameters": {
                     "type": "object",
@@ -226,61 +223,14 @@ class ToolLoader:
     # (any change to it invalidates the request prefix and blows the
     # provider prompt cache): tools_load returns the schemas of a module's
     # tools as a tool result (append-only, so the cache survives) and the
-    # model invokes them through the generic tools_call bridge. Native
-    # registration is kept only for preloaded modules and for static mode
-    # (dynamic_tool_loading off). The catalog listing embedded in the
-    # tools_load description is rendered deterministically (sorted groups
-    # and names) so it stays byte-stable across rebuilds of an unchanged
-    # catalog, and degrades with budget: full lines -> names-only -> summary.
+    # model invokes them through the generic tools_call bridge. The model
+    # only ever needs module names (listed in the tools_load description);
+    # no per-tool catalog is embedded anywhere. The active array holds
+    # exactly: the meta tools, the preloaded modules' tools, and (legacy)
+    # tools restored from the chat's persisted modules. With
+    # dynamic_tool_loading off the whole system is bypassed and every tool
+    # registers natively.
     # ------------------------------------------------------------------
-
-    _LISTING_DESC_TRUNC = 120
-
-    def _catalog_listing(self):
-        """Render a stable manifest of catalog tools that are not active yet."""
-        try:
-            max_tokens = int(core.config.get("model", "tool_bridge_listing_max_tokens", default=2000))
-        except (TypeError, ValueError):
-            max_tokens = 2000
-        budget = max(0, max_tokens) * 4  # chars/4 estimate
-
-        modules = {}
-        for name, entry in self.catalog.items():
-            if name in self.active_names:
-                continue
-            if self._loadable_entry(name) is None:
-                continue
-            modules.setdefault(entry["module"], []).append(name)
-        if not modules:
-            return "(no additional tools are currently available)"
-
-        lines = []
-        for module_name in sorted(modules):
-            names = sorted(modules[module_name])
-            lines.append(f"{module_name}: ({len(names)})")
-            for name in names:
-                desc = (self.catalog[name]["description"] or "").strip().replace("\n", " ")
-                if len(desc) > self._LISTING_DESC_TRUNC:
-                    desc = desc[: self._LISTING_DESC_TRUNC - 3] + "..."
-                lines.append(f"- {name}: {desc}")
-        text = "\n".join(lines)
-        if len(text) <= budget:
-            return text
-
-        # names-only fallback
-        lines = []
-        for module_name in sorted(modules):
-            names = sorted(modules[module_name])
-            lines.append(f"{module_name}: ({len(names)})")
-            lines.extend(f"- {name}" for name in names)
-        text = "\n".join(lines)
-        if len(text) <= budget:
-            return text
-
-        # module-summary fallback
-        return "\n".join(
-            f"- {m}: {len(names)} tools" for m, names in sorted(modules.items())
-        )
 
     def _build_bridge_defs(self):
         """Build the tools_call bridge tool definition."""
@@ -289,10 +239,10 @@ class ToolLoader:
             "function": {
                 "name": "tools_call",
                 "description": (
-                    "Calls a cataloged tool directly by name. If you do not know the tool's "
-                    "parameters, call tools_load with its module name first to get the "
-                    "schemas. Arguments are validated against the tool's schema before it "
-                    "runs; invalid calls are rejected immediately with the valid parameter "
+                    "Calls tool directly by name. If do not know tool's "
+                    "params, call tools_load with module name first to get "
+                    "schemas. Arguments are validated against tool's schema before it "
+                    "runs; invalid calls are rejected with valid parameter "
                     "list."
                 ),
                 "parameters": {
@@ -301,7 +251,7 @@ class ToolLoader:
                         "name": {"type": "string", "description": "Exact tool name to call"},
                         "arguments": {
                             "type": "object",
-                            "description": "Arguments for the tool, matching its schema (see tools_load)",
+                            "description": "Arguments for the tool, matching its schema",
                         },
                     },
                     "required": ["name", "arguments"],
@@ -386,15 +336,14 @@ class ToolLoader:
             loaded.append(name)
 
         if loaded:
-            # keep the bridge listing in sync (drop the now-active tools from it)
+            # keep the meta tool descriptions in sync with the active set
             self.refresh_meta_tool_descriptions()
 
     def reset_for_new_chat(self):
         """Reset active tools to the baseline (meta tool + bridge + default tools)."""
         if core.config.get("model", "dynamic_tool_loading", default=True):
             self.active_tools, self.active_names = self._baseline_tools()
-            # rebuild the bridge listing so it reflects the reset active set
-            # (a previous chat may have loaded tools out of the listing)
+            # refresh meta tool descriptions to reflect the reset active set
             self.refresh_meta_tool_descriptions()
         else:
             self.active_tools = []
@@ -480,7 +429,7 @@ class ToolLoader:
         if disabled:
             result["disabled"] = disabled
         if loaded:
-            # the active array changed anyway; keep the bridge listing in sync
+            # the active array changed; keep the meta tool descriptions in sync
             self.refresh_meta_tool_descriptions()
         return result
 
@@ -536,7 +485,7 @@ class ToolLoader:
                 }
             return {
                 "status": "error",
-                "content": "None of those modules have loadable tools. Check the catalog in the tools_load tool description.",
+                "content": "None of those modules have loadable tools.",
             }
 
         result = {
@@ -680,7 +629,10 @@ class ToolLoader:
                 return {"status": "error", "content": f"Tool '{name}' is disabled (module or tool setting)."}
             return {
                 "status": "error",
-                "content": f"No tool named '{name}'. Check the catalog in your tools_load tool description.",
+                "content": (
+                    f"No tool named '{name}'. Call tools_load with a module name to get its "
+                    f"tools' schemas. Enabled modules: {', '.join(self._enabled_module_names())}."
+                ),
             }
 
         module = self.channel.manager.modules.get(entry["module"])
