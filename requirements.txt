@@ -1,4 +1,4 @@
-aiohttp
+h11
 msgpack
 pyyaml
 json-repair
