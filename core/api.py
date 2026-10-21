@@ -1,5 +1,5 @@
 import core
-import aiohttp
+import core.http_client
 import asyncio
 import copy
 import json
@@ -55,9 +55,8 @@ class APIClient():
         # self._warmup_queue = asyncio.Queue()
         # self._warmup_done = asyncio.Event()
 
-        # the aiohttp session is the one HTTP client for everything
+        # the shared http client is the one HTTP client for everything
         self._session = None
-        self._ssl_ctx = None # only set when TLS verification is disabled
 
         self.supports_developer_role = False
 
@@ -79,29 +78,26 @@ class APIClient():
         headers["Content-Type"] = "application/json"
         return headers
 
-    def _make_session(self):
-        """create the shared aiohttp session"""
-        # infinite read timeout (long generations and model loads must not be cut off)
-        timeout = aiohttp.ClientTimeout(total=None, connect=5.0)
-        return aiohttp.ClientSession(timeout=timeout)
+    def _make_session(self, ssl_ctx=None):
+        """create the shared http client"""
+        # infinite read timeout (long generations and model loads must not be cut off),
+        # connect timeout of 5 seconds
+        return core.http_client.HTTPClient(ssl_ctx=ssl_ctx, connect_timeout=5.0)
 
     async def _http_get(self, url, timeout_total=None):
         """GET a url and return (status, body_text)"""
-        kwargs = {"headers": self._api_headers()}
-        if self._ssl_ctx is not None:
-            kwargs["ssl"] = self._ssl_ctx
-        if timeout_total is not None:
-            kwargs["timeout"] = aiohttp.ClientTimeout(total=timeout_total)
-
-        async with self._session.get(url, **kwargs) as resp:
+        resp = await self._session.get(url, headers=self._api_headers(), timeout_total=timeout_total)
+        try:
             return resp.status, await resp.text()
+        finally:
+            await resp.release()
 
     async def _iter_sse(self, response):
         """
         parses a text/event-stream response body into JSON objects
         """
         buffer = ""
-        async for raw in response.content.iter_any():
+        async for raw in response.iter_any():
             buffer += raw.decode("utf-8", errors="replace")
 
             while "\n" in buffer:
@@ -163,12 +159,13 @@ class APIClient():
             self.manager.log("API", "WARNING: TLS certificate and hostname verification are disabled")
 
         try:
-            self._session = self._make_session()
-
+            ssl_ctx = None
             if not use_secure_connection:
-                self._ssl_ctx = ssl.create_default_context()
-                self._ssl_ctx.check_hostname = False
-                self._ssl_ctx.verify_mode = ssl.CERT_NONE
+                ssl_ctx = ssl.create_default_context()
+                ssl_ctx.check_hostname = False
+                ssl_ctx.verify_mode = ssl.CERT_NONE
+
+            self._session = self._make_session(ssl_ctx=ssl_ctx)
 
             # validate the connection by listing models
             status, body = await self._http_get(f"{api_config.get('url')}/models")
@@ -185,7 +182,7 @@ class APIClient():
             if status != 200:
                 return APIError("Failed to connect to the API", APIHTTPError(status, body))
 
-        except aiohttp.ClientError as e:
+        except core.http_client.HTTPError as e:
             await self._close_session()
             return APIError("Failed to connect to the API", e)
 
@@ -284,11 +281,8 @@ class APIClient():
         """reads the llamacpp router's /models/sse feed while a model loads"""
         try:
             url = f"{self._router_origin}/models/sse"
-            kwargs = {"headers": self._api_headers()}
-            if self._ssl_ctx is not None:
-                kwargs["ssl"] = self._ssl_ctx
-
-            async with self._session.get(url, **kwargs) as feed:
+            feed = await self._session.get(url, headers=self._api_headers())
+            try:
                 async for event in self._iter_sse(feed):
                     if event.get("event") not in ("status_change", "model_status"):
                         continue
@@ -315,6 +309,8 @@ class APIClient():
                         "stage": progress.get("current") or "",
                         "percent": round(value * 100) if isinstance(value, (int, float)) else None,
                     })
+            finally:
+                feed.close()
 
         except asyncio.CancelledError:
             raise
@@ -340,16 +336,12 @@ class APIClient():
         """
         sends the chat completions request over HTTP.
         returns a parsed JSON dict when not streaming,
-        or an open aiohttp ClientResponse (to be consumed by _recv_stream) when streaming.
+        or an open http_client Response (to be consumed by _recv_stream) when streaming.
         """
         url = f"{core.config.get('api', 'url')}/chat/completions"
 
-        kwargs = {"json": payload, "headers": self._json_headers()}
-        if self._ssl_ctx is not None:
-            kwargs["ssl"] = self._ssl_ctx
-
         if stream:
-            resp = await self._session.post(url, **kwargs)
+            resp = await self._session.post(url, json_body=payload, headers=self._json_headers())
 
             if resp.status != 200:
                 body = await resp.text()
@@ -358,13 +350,16 @@ class APIClient():
 
             return resp
 
-        async with self._session.post(url, **kwargs) as resp:
+        resp = await self._session.post(url, json_body=payload, headers=self._json_headers())
+        try:
             body = await resp.text()
 
             if resp.status != 200:
                 raise APIHTTPError(resp.status, body)
 
             return json.loads(body)
+        finally:
+            await resp.release()
 
     async def _request(self, context, tools=None, stream=False, use_thinking=True, **kwargs):
         """send a request to the LLM and return the response (dict, or an open SSE response when streaming)"""
@@ -497,7 +492,7 @@ class APIClient():
         except APIHTTPError as e:
             return self._error_for_status(e.status, e.body)
 
-        except aiohttp.ClientError as e:
+        except core.http_client.HTTPError as e:
             return APIError("Failed to connect to API", e)
 
         except Exception as e:
