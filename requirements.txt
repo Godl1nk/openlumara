@@ -5,5 +5,5 @@ json-repair
 partial-json-parser
 regex
 filetype
-pypdf2
+pypdf
 python-ulid

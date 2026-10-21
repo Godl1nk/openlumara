@@ -366,7 +366,7 @@ class Channel:
 
             elif mime_type == "application/pdf":
                 try:
-                    from PyPDF2 import PdfReader
+                    from pypdf import PdfReader
                     reader = PdfReader(io.BytesIO(file_data))
                     text_parts = []
                     for page in reader.pages:
