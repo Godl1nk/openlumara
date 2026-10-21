@@ -4,8 +4,8 @@ import sys
 import subprocess
 import tempfile
 
-class UnsafeShell(core.module.Module):
-    """Lets your AI run shell commands with full access to your system. EXTREMELY DANGEROUS! Enable at your own risk"""
+class HostShell(core.module.Module):
+    """Lets your AI run shell commands with full access to your host system. EXTREMELY DANGEROUS! Enable at your own risk"""
 
     category = "system"
 
