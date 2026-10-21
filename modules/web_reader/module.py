@@ -12,7 +12,7 @@ class WebReader(modules.http.Http):
 
     category = "web"
 
-    dependencies = ["beautifulsoup4", "aiohttp"]
+    dependencies = ["beautifulsoup4"]
 
     # ---------------------------------------------------------
     # Internal Helper Methods

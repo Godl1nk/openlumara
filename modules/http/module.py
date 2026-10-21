@@ -16,7 +16,7 @@ import base64
 import html as html_module
 import threading
 import asyncio
-import aiohttp
+import core.http_client
 from datetime import datetime
 from urllib.parse import urlparse, unquote
 import urllib.parse
@@ -734,7 +734,7 @@ class Http(core.module.Module):
 
     category = "web"
 
-    dependencies = ["aiohttp"]
+    dependencies = []
 
     # ==================== Security constants ====================
     ALLOWED_SCHEMES = {'http', 'https'}
@@ -806,20 +806,28 @@ class Http(core.module.Module):
         self._session = None
 
         # fetch & cache our public IP so we can censor it
+        client = core.http_client.HTTPClient()
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-                async with session.get("https://api.ipify.org") as resp:
-                    self.server_ipv4 = (await resp.text()).strip()
-                async with session.get("https://api64.ipify.org") as resp:
-                    self.server_ipv6 = (await resp.text()).strip()
+            resp = await client.get("https://api.ipify.org", timeout_total=10)
+            try:
+                self.server_ipv4 = (await resp.text()).strip()
+            finally:
+                await resp.release()
+            resp = await client.get("https://api64.ipify.org", timeout_total=10)
+            try:
+                self.server_ipv6 = (await resp.text()).strip()
+            finally:
+                await resp.release()
         except:
             self.server_ipv4 = None
             self.server_ipv6 = None
+        finally:
+            await client.close()
 
     def _get_session(self):
-        """lazily create the shared aiohttp session (must happen inside the event loop)"""
+        """lazily create the shared http client (must happen inside the event loop)"""
         if getattr(self, "_session", None) is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            self._session = core.http_client.HTTPClient()
         return self._session
 
     async def on_shutdown(self):
@@ -1007,31 +1015,43 @@ class Http(core.module.Module):
     def _resolve_and_validate(self, hostname: str):
         """
         Resolve a hostname to IP(s) and validate ALL of them against the
-        blocked-network list. Returns (ok, error_message).
+        blocked-network list. Returns (ok, error_message, pinned_ip).
 
         Validating every resolved address (and re-validating on each redirect
         hop) defeats the common 'hostname -> private IP' and single-record
         DNS-rebinding cases.
+
+        The pinned_ip (first validated address, RFC 6724 order) must be passed
+        to the http client as server_address: the client then connects to
+        THIS address instead of resolving the hostname a second time. That
+        second resolution used to be the DNS-rebinding TOCTOU window
+        (validation resolves to a safe IP, connect resolves to 127.0.0.1).
         """
         if not self.config.get("block_local_network_access"):
-            return True, None
+            return True, None, None
 
         try:
             infos = socket.getaddrinfo(hostname, None)
         except socket.gaierror as e:
             self._log(f"DNS resolution failed for {hostname}: {e}")
-            return False, "DNS resolution failed"
+            return False, "DNS resolution failed", None
 
-        ips = {info[4][0] for info in infos}
+        # keep resolution order (RFC 6724 preference) so the pinned address
+        # is the same one a normal client would try first
+        ips = []
+        for info in infos:
+            ip = info[4][0]
+            if ip not in ips:
+                ips.append(ip)
         if not ips:
-            return False, "Hostname did not resolve to any address"
+            return False, "Hostname did not resolve to any address", None
 
         for ip in ips:
             if _ip_is_blocked(ip):
                 self._log(f"Blocked resolved internal IP {ip} for {hostname}")
-                return False, "URL resolves to a blocked (internal) address"
+                return False, "URL resolves to a blocked (internal) address", None
 
-        return True, None
+        return True, None, ips[0]
 
     def _is_safe_url(self, url: str):
         """
@@ -1040,40 +1060,43 @@ class Http(core.module.Module):
         Order: scheme -> https-only -> hostname -> port -> domain policy ->
         DNS + resolved-IP validation.
 
-        Returns (ok, error_message).
+        Returns (ok, error_message, pinned_ip). pinned_ip is the validated
+        address to connect to (None when no pinning applies); it must be
+        passed to the http client as server_address so no second, unvalidated
+        DNS resolution happens for this URL.
         """
         try:
             parsed = urlparse(url)
         except Exception as e:
-            return False, f"URL parse error: {e}"
+            return False, f"URL parse error: {e}", None
 
         # Scheme
         if parsed.scheme.lower() not in self.ALLOWED_SCHEMES:
-            return False, f"Scheme not allowed: {parsed.scheme}"
+            return False, f"Scheme not allowed: {parsed.scheme}", None
 
         if self.config.get("https_only") and parsed.scheme.lower() != "https":
-            return False, "HTTPS-only mode is enabled"
+            return False, "HTTPS-only mode is enabled", None
 
         # Hostname
         hostname = parsed.hostname
         if not hostname:
-            return False, "URL has no hostname"
+            return False, "URL has no hostname", None
         hostname = hostname.lower()
 
         # Port
         if parsed.port and parsed.port in self.DANGEROUS_PORTS:
-            return False, f"Port {parsed.port} is blocked"
+            return False, f"Port {parsed.port} is blocked", None
 
         # Domain policy (whitelist/blacklist/metadata names)
         ok, err = self._check_domain_policy(hostname)
         if not ok:
-            return False, err
+            return False, err, None
 
         # Localhost shortcut (covered by IP check too, but cheap to short-circuit)
         if self.config.get("block_local_network_access") and hostname in (
             'localhost', '0.0.0.0',
         ):
-            return False, "Blocked localhost access"
+            return False, "Blocked localhost access", None
 
         # DNS + resolved-IP validation
         return self._resolve_and_validate(hostname)
@@ -1220,7 +1243,7 @@ class Http(core.module.Module):
 
     async def _make_request(self, method: str, url: str, **kwargs):
         """
-        Make an HTTP request with full security checks (aiohttp).
+        Make an HTTP request with full security checks (core.http_client).
 
         - Validates URL format.
         - Enforces rate limit.
@@ -1251,38 +1274,61 @@ class Http(core.module.Module):
         timeout = kwargs.get("timeout", self.REQUEST_TIMEOUT)
         include_content = kwargs.pop("include_content", False)
 
-        # Build the kwargs we actually pass to aiohttp; we control redirects,
-        # streaming, verification and timeout ourselves.
-        passthrough = {
-            k: v for k, v in kwargs.items()
-            if k not in ("headers", "allow_redirects", "stream",
-                         "verify", "timeout", "include_content")
-        }
+        # Translate requests-style kwargs for our http client:
+        # data=dict is form-encoded, data=str/bytes is a raw body, json=dict is JSON.
+        data = kwargs.get("data")
+        body, form = None, None
+        if isinstance(data, (bytes, bytearray)):
+            body = bytes(data)
+        elif isinstance(data, str):
+            body = data.encode("utf-8")
+        elif data is not None:
+            form = data
+
+        json_body = kwargs.get("json")
+        if not isinstance(json_body, (dict, list)):
+            json_body = None
 
         current_url = url
         try:
             for _hop in range(self.MAX_REDIRECTS + 1):
                 # Re-validate (incl. DNS + IP) on the initial URL and every hop.
-                ok, err = self._is_safe_url(current_url)
+                ok, err, pinned_ip = self._is_safe_url(current_url)
                 if not ok:
                     self._log(f"Blocked URL ({current_url}): {err}")
                     return self.result("URL blocked by security policy", False)
 
-                # aiohttp doesn't have a per-call verify flag; the default
-                # connector always verifies TLS, which is what we want.
+                # DNS-rebinding hardening: connect to the exact IP that was
+                # validated just above, instead of letting the client resolve
+                # the hostname again (the classic rebinding TOCTOU window).
+                pinned_address = None
+                if pinned_ip:
+                    hop = urlparse(current_url)
+                    default_port = 443 if hop.scheme.lower() == "https" else 80
+                    pinned_address = (pinned_ip, hop.port or default_port)
+
+                # TLS is always verified, and always against the ORIGINAL
+                # hostname (SNI + certificate checks stay hostname-based even
+                # when connecting to a pinned IP; no relaxed ssl context is
+                # ever passed here).
                 resp = await self._get_session().request(
                     method,
                     current_url,
                     headers=headers,
+                    params=kwargs.get("params"),
+                    body=body,
+                    form=form,
+                    json_body=json_body,
                     allow_redirects=False,   # manual redirect handling
-                    timeout=aiohttp.ClientTimeout(total=timeout),
-                    **passthrough,
+                    timeout_total=timeout,
+                    server_address=pinned_address,
                 )
+                resp.url = current_url
 
                 try:
                     # Handle redirects manually so each hop is re-validated.
                     if resp.status in (301, 302, 303, 307, 308):
-                        location = resp.headers.get("Location")
+                        location = resp.headers.get("location")
                         resp.close()
                         if not location:
                             return self.result("Redirect with no Location header", False)
@@ -1300,21 +1346,16 @@ class Http(core.module.Module):
                 f"Too many redirects (maximum: {self.MAX_REDIRECTS})", False
             )
 
-        except asyncio.TimeoutError:
-            self._log(f"Request timeout: {url}")
-            return self.result(f"Request timed out after {timeout} seconds", False)
-        except aiohttp.ClientSSLError as e:
+        except core.http_client.HTTPSSLError as e:
             self._log(f"SSL error for {url}: {e}")
             return self.result("SSL verification failed", False)
-        except aiohttp.TooManyRedirects:
-            self._log(f"Too many redirects: {url}")
-            return self.result(
-                f"Too many redirects (maximum: {self.MAX_REDIRECTS})", False
-            )
-        except aiohttp.ClientConnectionError as e:
+        except core.http_client.HTTPTimeout as e:
+            self._log(f"Request timeout: {url}")
+            return self.result(f"Request timed out after {timeout} seconds", False)
+        except core.http_client.HTTPConnectionError as e:
             self._log(f"Connection error for {url}: {e}")
             return self.result("Connection error", False)
-        except aiohttp.ClientError as e:
+        except core.http_client.HTTPError as e:
             self._log(f"Request failed for {url}: {e}")
             return self.result("Request failed", False)
         except Exception as e:
@@ -1343,14 +1384,14 @@ class Http(core.module.Module):
         response = {
             "status": f"{resp.status} {resp.reason}",
             "headers": dict(resp.headers),
-            "cookies": {m.key: m.value for m in resp.cookies.values()},
+            "cookies": dict(resp.cookies),  # our client is stateless, so this is always empty
             "url": str(resp.url),
         }
 
         if include_content:
             body = bytearray()
             try:
-                async for chunk in resp.content.iter_chunked(self.DOWNLOAD_CHUNK):
+                async for chunk in resp.iter_any():
                     if not chunk:
                         continue
                     body.extend(chunk)
@@ -1362,7 +1403,7 @@ class Http(core.module.Module):
             finally:
                 resp.close()
 
-            # aiohttp exposes the charset from the Content-Type header.
+            # our client exposes the charset from the Content-Type header.
             # fall back to utf-8 for anything missing or unknown.
             try:
                 encoding = resp.charset or "utf-8"
@@ -1472,9 +1513,9 @@ class Http(core.module.Module):
 
     # ==================== HTTP Methods ====================
 
-    # note: the json= passthrough kwarg is handled by _make_request -> aiohttp.
-    # aiohttp accepts json= (serializes for us) and data= (form-encoded),
-    # just like requests did.
+    # note: the json= kwarg is translated to json_body= by _make_request,
+    # and data= becomes form-urlencoded (dict) or a raw body (str/bytes),
+    # just like requests/aiohttp did.
 
     async def get(self, url: str, headers: dict = None, params: dict = None):
         return await self._make_request(

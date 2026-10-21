@@ -19,6 +19,9 @@ on top of h11 this adds:
 - optional TLS verification bypass and per-request total timeouts
 - browser-style redirects (disable with allow_redirects=False)
 - hard-closing an in-flight response to cancel a stream
+- optional pre-validated IP pinning (server_address=) so callers that
+  resolve+validate before connecting never face a second, unvalidated
+  DNS lookup (closes the DNS-rebinding TOCTOU window)
 
 deliberately NOT implemented: cookies, proxies, brotli/zstd, HTTP/2, expect-continue.
 
@@ -39,6 +42,7 @@ security audit (2026-10-22) -- fixes applied, search "audit fix":
 """
 import asyncio
 import base64
+import ipaddress
 import json
 import ssl
 import urllib.parse
@@ -382,7 +386,7 @@ class HTTPClient:
 
     async def request(self, method, url, headers=None, json_body=None, body=None, form=None,
                       params=None, basic_auth=None, timeout_total=None,
-                      allow_redirects=True, max_redirects=5):
+                      allow_redirects=True, max_redirects=5, server_address=None):
         if self._closed:
             raise HTTPError("Client is closed")
 
@@ -421,7 +425,7 @@ class HTTPClient:
 
         redirects = 0
         while True:
-            resp = await self._request_once(method, url, headers, body, deadline, basic_auth)
+            resp = await self._request_once(method, url, headers, body, deadline, basic_auth, server_address)
             resp.url = url
 
             if allow_redirects and resp.status in (301, 302, 303, 307, 308):
@@ -430,6 +434,10 @@ class HTTPClient:
                     resp.close()
                     redirects += 1
                     url = urllib.parse.urljoin(url, location)
+
+                    # a pinned address belongs to the previous URL only;
+                    # following a redirect with it could connect somewhere else
+                    server_address = None
 
                     if _origin_of(urllib.parse.urlsplit(url)) != origin:
                         # audit fix #1: cross-origin hop -> drop credentials
@@ -461,7 +469,7 @@ class HTTPClient:
     # ---------------------------
     # internals
     # ---------------------------
-    async def _request_once(self, method, url, headers, body, deadline, basic_auth=None):
+    async def _request_once(self, method, url, headers, body, deadline, basic_auth=None, server_address=None):
         parsed = urllib.parse.urlsplit(url)
         scheme = (parsed.scheme or "https").lower()
         if scheme not in ("http", "https"):
@@ -494,7 +502,7 @@ class HTTPClient:
                 if pooled is not None:
                     reader, writer = pooled
                 else:
-                    reader, writer = await self._connect(scheme, host, port, deadline)
+                    reader, writer = await self._connect(scheme, host, port, deadline, server_address)
 
                 return await self._exchange(
                     reader, writer, scheme, method, path, host, port,
@@ -522,7 +530,7 @@ class HTTPClient:
                         pass
                 raise
 
-    async def _connect(self, scheme, host, port, deadline):
+    async def _connect(self, scheme, host, port, deadline, server_address=None):
         ctx = None
         if scheme == "https":
             ctx = self._ssl_ctx if self._ssl_ctx is not None else ssl.create_default_context()
@@ -531,9 +539,33 @@ class HTTPClient:
         if deadline is not None:
             timeout = min(timeout, max(0.1, deadline - asyncio.get_running_loop().time()))
 
+        # DNS-rebinding hardening: server_address lets a caller that already
+        # resolved+validated the hostname pin the exact IP to connect to.
+        # for https the TLS handshake still uses the original hostname for
+        # SNI and certificate verification (the cert is checked against the
+        # hostname, never against the pinned IP).
+        # note on pooling: a pooled connection keeps serving its original
+        # (validated-at-connect) endpoint, which preserves the safety
+        # guarantee; a changed pin opens a fresh connection.
+        if server_address is not None:
+            connect_host, connect_port = server_address
+        else:
+            connect_host, connect_port = host, port
+
+        # SNI must not carry an IP literal (RFC 6066): for real hostnames we
+        # pin server_hostname explicitly (cert is verified against the
+        # hostname, never the pinned IP); for IP-literal hosts we omit it and
+        # let asyncio skip SNI and verify against IP SAN entries instead.
+        connect_kwargs = {"ssl": ctx}
+        if scheme == "https":
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:
+                connect_kwargs["server_hostname"] = host
+
         try:
             return await asyncio.wait_for(
-                asyncio.open_connection(host, port, ssl=ctx),
+                asyncio.open_connection(connect_host, connect_port, **connect_kwargs),
                 timeout=timeout,
             )
         except asyncio.TimeoutError:
