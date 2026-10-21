@@ -19,7 +19,7 @@
                  response) the instant it renders. -->
             {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13): tool call display annotations moved under tool._metadata #}
             <div class="tool-calls-container"
-                 x-data="{ collapsed: {% if toolcard_in_step %}localStorage.getItem('collapseToolcallsDefault') === 'true' || ($store.stream.state === 'idle' ? toolIdx > 0 : !!(tool._metadata?.response))){% else %}$store.stream.state === 'idle' || !!(tool._metadata?.response) || localStorage.getItem('collapseToolcallsDefault') === 'true'{% endif %}, autoCollapsed: !!(tool._metadata?.response), cacheKey: tool.id ?? (message.tool_call_id + ':' + toolIdx) }"
+                 x-data="{ collapsed: {% if toolcard_in_step %}localStorage.getItem('collapseToolcallsDefault') === 'true' || ($store.stream.state === 'idle' ? toolIdx > 0 : !!(tool._metadata?.response)){% else %}$store.stream.state === 'idle' || !!(tool._metadata?.response) || localStorage.getItem('collapseToolcallsDefault') === 'true'{% endif %}, autoCollapsed: !!(tool._metadata?.response), cacheKey: tool.id ?? (message.tool_call_id + ':' + toolIdx) }"
                  x-effect="if (tool._metadata?.response && !autoCollapsed) { autoCollapsed = true; collapsed = true }">
             <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
                  tool-pending marks in-flight calls (no response yet) so the
@@ -39,13 +39,13 @@
                              little expand indicator (hidden elsewhere via css) -->
                         <svg class="card-chevron" :class="{'expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"></polyline></svg>
                         {% include 'svg/wrench.svg' %}
-                        <span class="name" x-show="tool.function?.name">
+                        <span class="name" x-show="toolDisplayName(tool)">
                           <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
                                function names also stream in via tool_call_delta -->
-                          <span class="module" x-fade-text="tool.function?.name.split('_')[0].replace(/^\w/, c => c.toUpperCase())+': '"></span>
-                          <span x-fade-text="tool.function?.name.split('_').slice(1).join(' ')"></span>
+                          <span class="module" x-fade-text="toolDisplayName(tool).split('_')[0].replace(/^\w/, c => c.toUpperCase())+': '"></span>
+                          <span x-fade-text="toolDisplayName(tool).split('_').slice(1).join(' ')"></span>
                         </span>
-                        <span class="name" x-show="!tool.function?.name">unknown</span>
+                        <span class="name" x-show="!toolDisplayName(tool)">unknown</span>
                         <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
                              once the call completes, the header shows its args
                              inline, de-emphasized vs the tool name.
@@ -59,8 +59,12 @@
                               x-text="tool._metadata?.summary ?? ''"></span>
                         <!-- result hint from the display registry (default:
                              displays define no summary, so this stays empty) -->
+                        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
+                             self-contained memo key (same pattern as combined_block.html):
+                             the bare card-scope cacheKey can drop out when Alpine re-runs
+                             header effects after step swaps replaced the ancestor scope -->
                         <span class="call-result" x-show="tool._metadata?.response"
-                              x-text="toolCallResultSummary(tool, cacheKey)"></span>
+                              x-text="toolCallResultSummary(tool, tool.id ?? message?.tool_call_id)"></span>
                     </div>
 
                     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
