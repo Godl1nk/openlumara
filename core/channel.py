@@ -14,7 +14,6 @@ import json_repair
 import partial_json_parser
 import regex
 import base64
-import filetype
 import io
 
 # an error occurred please try again later
@@ -297,6 +296,43 @@ class Channel:
     # ---------------------
     # Content Processors
     # ---------------------
+    @staticmethod
+    def _sniff_mime(data: bytes) -> str:
+        """Guess mime type from magic bytes"""
+        if not data:
+            return "application/octet-stream"
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if data.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+            return "image/gif"
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return "image/webp"
+        if data.startswith(b"BM"):
+            return "image/bmp"
+        if data[:4] in (b"II*\x00", b"MM\x00*"):
+            return "image/tiff"
+        if data.startswith(b"%PDF-"):
+            return "application/pdf"
+        if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+            return "audio/wav"
+        if data[:4] == b"\x1a\x45\xdf\xa3":
+            return "audio/webm"  # matroska/webm EBML header
+        if data[4:8] == b"ftyp":
+            brand = data[8:12]
+            if brand in (b"M4A ", b"M4B ", b"M4P ", b"mp42", b"isom", b"iso2"):
+                return "audio/mp4"
+        if data[0] == 0xFF and len(data) > 1 and (data[1] & 0xF6) == 0xF0:
+            return "audio/aac"  # ADTS frame sync
+        if data.startswith(b"OggS"):
+            return "audio/ogg"  # opus/vorbis/speex all share this container
+        if data.startswith(b"fLaC"):
+            return "audio/flac"
+        if data[4:8] == b"ID3\x0a" or (len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0):
+            return "audio/mpeg"
+        return "application/octet-stream"
+
     async def _process_multimodal(self, message: str = None, files: list = None) -> list:
         """
         Converts a list of file handler objects into an openAI API multimodal message object,
@@ -344,8 +380,7 @@ class Channel:
             if not file_data:
                 continue
 
-            kind = filetype.guess(file_data)
-            mime_type = kind.mime if kind else "application/octet-stream"
+            mime_type = self._sniff_mime(file_data)
 
             if mime_type.startswith("image/"):
                 b64 = base64.b64encode(file_data).decode("utf-8")

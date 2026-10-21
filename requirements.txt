@@ -4,6 +4,5 @@ pyyaml
 json-repair
 partial-json-parser
 regex
-filetype
 pypdf
 python-ulid
