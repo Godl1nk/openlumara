@@ -437,3 +437,185 @@
     line-height: 1.4;
     word-break: break-word;
 }
+
+/* ==========================================================================
+   -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+   world info editor: repeatable keyword -> info rows inside the editor
+   form, collapsed behind a header toggle. inherits the .char-mgr-field
+   input/textarea look above.
+   ========================================================================== */
+.characters-modal .char-mgr-worldinfo {
+    gap: 8px;
+}
+
+/* header toggle: chevron + title + sublabel + entry count */
+.characters-modal .char-wi-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    margin: -6px -8px 0;   /* widen the click target past the text */
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm, 8px);
+    background: none;
+    color: var(--text-secondary, #999);
+    font-family: var(--font-primary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+}
+
+.characters-modal .char-wi-toggle:hover {
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+    color: var(--text-primary);
+}
+
+/* title mirrors the uppercase .char-mgr-field label look */
+.characters-modal .char-wi-toggle .char-mgr-field-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: inherit;
+}
+
+.characters-modal .char-wi-chevron {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+
+.characters-modal .char-wi-toggle[aria-expanded="true"] .char-wi-chevron {
+    transform: rotate(90deg);
+}
+
+/* entry-count pill, only shown when there are entries */
+.characters-modal .char-wi-count {
+    margin-left: auto;
+    min-width: 20px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.08));
+    color: var(--text-secondary, #999);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* expanded content reuses the field column layout */
+.characters-modal .char-wi-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.characters-modal .char-wi-hint {
+    font-size: 13px;
+    color: var(--text-secondary, #999);
+    font-style: italic;
+    padding: 2px 0;
+}
+
+.characters-modal .char-wi-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 26%) 1fr auto;
+    gap: 6px;
+    align-items: start;
+}
+
+/* -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+   the keyword input floats at the vertical center of the row, whatever
+   height the (autosizing) info textarea happens to have. */
+.characters-modal .char-wi-row input {
+    align-self: center;
+}
+
+.characters-modal .char-wi-row input,
+.characters-modal .char-wi-row textarea {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-primary);
+    resize: none;
+    overflow-y: auto;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.characters-modal .char-wi-row textarea {
+    max-height: 30vh;
+}
+
+.characters-modal .char-wi-row input:focus,
+.characters-modal .char-wi-row textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.characters-modal .char-wi-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-top: 2px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm, 8px);
+    background: none;
+    color: var(--text-secondary, #999);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.characters-modal .char-wi-remove:hover {
+    color: #ff5c5c;
+    border-color: #ff5c5c;
+}
+
+.characters-modal .char-wi-remove svg {
+    width: 13px;
+    height: 13px;
+}
+
+.characters-modal .char-wi-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+    padding: 5px 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-secondary, #999);
+    font-size: 13px;
+    font-family: var(--font-primary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.characters-modal .char-wi-add:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.characters-modal .char-wi-add svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* keep the rows usable on narrow (mobile) modals: stack the pairs */
+@media (max-width: 480px) {
+    .characters-modal .char-wi-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .characters-modal .char-wi-row input {
+        grid-column: 1 / -1;
+    }
+}

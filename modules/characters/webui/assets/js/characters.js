@@ -100,6 +100,11 @@ const CHARACTERS_PANEL = {
    import json & png cards). opened via $store.ui.openModal('characters')
    from the sidebar tab's gear button; markup lives in
    templates/modals/manage_characters.html (auto-discovered). */
+/* -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+   unique id source for world info rows, so Alpine's x-for keys stay
+   stable while the user adds/removes entries in the editor. */
+let _wi_uid = 0;
+
 function characterManager() {
     return {
         view: 'list',      // 'list' | 'editor'
@@ -109,6 +114,7 @@ function characterManager() {
         busy: false,
         confirming: null,  // storage key awaiting delete confirmation
         error: '',
+        wiOpen: false,     // world info section expanded in the editor?
         form: {
             key: '',
             name: '',
@@ -118,6 +124,7 @@ function characterManager() {
             post_history: '',
             category: '',
             tags: '',      // comma-separated string in the form
+            world_info: [],  // [{id, keyword, info}] rows
         },
 
         async init() {
@@ -146,6 +153,7 @@ function characterManager() {
             this.error = '';
             this.confirming = null;
             this.mode = 'add';
+            this.wiOpen = false;
             this.form = {
                 key: '',
                 name: '',
@@ -155,8 +163,41 @@ function characterManager() {
                 post_history: '',
                 category: '',
                 tags: '',
+                world_info: [],
             };
             this.view = 'editor';
+        },
+
+        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+           world info is stored as a {keyword: info} object but edited as
+           rows; these helpers bridge the two shapes. non-string values
+           (e.g. a raw imported character_book entry) are kept round-trip
+           safe by displaying them as JSON. */
+        _worldInfoToRows(obj) {
+            if (!obj || typeof obj !== 'object') { return []; }
+            return Object.entries(obj).map(([keyword, info]) => ({
+                id: ++_wi_uid,
+                keyword: keyword,
+                info: typeof info === 'string' ? info : JSON.stringify(info),
+            }));
+        },
+
+        _rowsToWorldInfo(rows) {
+            const out = {};
+            for (const row of rows) {
+                const keyword = (row.keyword || '').trim();
+                if (!keyword) { continue; }
+                out[keyword] = row.info || '';
+            }
+            return out;
+        },
+
+        addWorldInfo() {
+            this.form.world_info.push({ id: ++_wi_uid, keyword: '', info: '' });
+        },
+
+        removeWorldInfo(idx) {
+            this.form.world_info.splice(idx, 1);
         },
 
         async edit(key) {
@@ -172,6 +213,11 @@ function characterManager() {
             if (!char) { return; }
 
             this.mode = 'edit';
+            const wiRows = this._worldInfoToRows(char.world_info);
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+            // always start collapsed; the count pill on the header shows
+            // whether there are entries to expand into.
+            this.wiOpen = false;
             this.form = {
                 key: key,
                 name: char.name || key,
@@ -181,6 +227,7 @@ function characterManager() {
                 post_history: char.post_history || '',
                 category: char.category || '',
                 tags: (char.tags || []).join(', '),
+                world_info: wiRows,
             };
             this.view = 'editor';
         },
@@ -207,6 +254,7 @@ function characterManager() {
                 post_history: this.form.post_history,
                 category: this.form.category.trim(),
                 tags: this.form.tags,
+                world_info: this._rowsToWorldInfo(this.form.world_info),
             };
 
             this.busy = true;

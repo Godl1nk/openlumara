@@ -23,16 +23,10 @@ class Characters(core.module.Module):
             "description": "Whether a character's first message gets sent automatically when switching to that character in an empty chat",
             "default": True
         },
-        "use_post_history_instructions": {
-            "description": "Whether a character's post-history instructions (usually imported from character cards) get appended to the end of the prompt",
-            "default": True
-        },
         "use_writing_style": {
             "description": "Whether to use the writing style defined by the `writing style` module for characters. This will add that module's prompt to the character prompt even if agent prompts are disabled, making all your characters use your preferred writing style setup",
             "default": True
         },
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-04)
-        # Category that chats created from the characters sidebar land in.
         "category": {
             "description": "Category that new chats created from the characters sidebar get placed in",
             "default": "general"
@@ -128,12 +122,10 @@ class Characters(core.module.Module):
             # already internal format; just make sure every field exists
             return {
                 "name": char.get("name") or stored_key,
-                "profile": char.get("profile", ""),
-                "scenario": char.get("scenario", ""),
-                "first_message": char.get("first_message", ""),
-                "post_history": char.get("post_history", ""),
                 "category": char.get("category"),
-                "tags": char.get("tags", [])
+                "profile": char.get("profile", ""),
+                "first_message": char.get("first_message", ""),
+                "world_info": char.get("world_info", "")
             }
 
         # character card V2 wraps everything in a data field, V1 is flat
@@ -158,17 +150,17 @@ class Characters(core.module.Module):
             extras.append(f"Personality: {card['personality']}")
         if card.get("mes_example"):
             extras.append(f"Example conversation:\n{card['mes_example']}")
+        if card.get("scenario"):
+            extras.append(f"Scenario:\n{card['scenario']}")
         if extras:
             profile = profile + "\n\n" + "\n\n".join(extras)
 
         return {
             "name": name,
-            "profile": profile,
-            "scenario": card.get("scenario", ""),
-            "first_message": card.get("first_mes", char.get("first_message", "")),
-            "post_history": card.get("post_history_instructions", ""),
             "category": char.get("category"),
-            "tags": card.get("tags", char.get("tags", []))
+            "profile": profile,
+            "first_message": card.get("first_mes", char.get("first_message", "")),
+            "world_info": card.get("world_info") or card.get("character_book") or {}
         }
 
     # -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-03)
@@ -402,19 +394,16 @@ class Characters(core.module.Module):
 
         return char_text
 
-    async def on_end_prompt(self):
-        if not self.config.get("use_post_history_instructions"):
-            return None
+    async def on_message_inject(self, user_message: str):
+        curr_char_name = self.channel.context.chat.get("metadata").get("character")
+        char = self._find_character(curr_char_name)
 
-        curr_char = self.channel.context.chat.get("metadata").get("character")
-        if not curr_char:
-            return None
+        output = ""
+        for keyword, info in char.get("world_info").items():
+            if keyword.lower().strip() in user_message.lower().strip():
+                output += f"{keyword}: {info}\n"
 
-        char = self._find_character(curr_char)
-        if not char:
-            return None
-
-        return char.get("post_history") or None
+        return output or None
 
     async def switch(self, name: str):
         """Switches you to a different character. This will change your personality! Use this if user requests it."""
@@ -511,7 +500,7 @@ class Characters(core.module.Module):
 
         return character
 
-    async def add(self, name: str, profile: str, scenario: str = "", category: str = "", tags: list = None):
+    async def add(self, name: str, profile: str, category: str = ""):
         """
         Adds a new character to your character storage.
 
@@ -521,9 +510,7 @@ class Characters(core.module.Module):
         Args:
             name: The character's name
             profile: The main description of the character. Within it, use {{char}} to refer to the character and {{user}} to refer to the user.
-            scenario: The scenario/scene in which the conversation will take place. Optional.
             category: Category to organize the character under. Optional.
-            tags: Any tags that could be used to organize the character profile. Optional.
         """
         if not name.strip():
             return self.result("character name cannot be empty", False)
@@ -540,28 +527,23 @@ class Characters(core.module.Module):
 
         self.characters[name] = {
             "name": name,
-            "profile": profile,
-            "scenario": scenario,
-            "first_message": "",
-            "post_history": "",
             "category": category or None,
-            "tags": tags
+            "profile": profile,
+            "first_message": "",
+            "world_info": {}
         }
         self.characters.save()
         return self.result("character added")
 
-    async def edit(self, name: str, profile: str = None, scenario: str = None, category: str = None, tags: list = None, first_message: str = None, post_history: str = None):
+    async def edit(self, name: str, profile: str = None, category: str = None, first_message: str = None):
         """
         Edits an existing character. All fields except name are optional.
 
         Args:
             name: The character's name
             profile: The main description of the character. Within it, use {{char}} to refer to the character and {{user}} to refer to the user.
-            scenario: The scenario/scene in which the conversation will take place
             category: Category to organize the character under
-            tags: Any tags that could be used to organize the character profile
             first_message: The first message the character will send when starting a new chat.
-            post_history: Prompt to append at the end of chat history.
         """
         if not name.strip():
             return self.result("character name cannot be empty", False)
@@ -578,12 +560,10 @@ class Characters(core.module.Module):
         # to set stuff to blank strings
         self.characters[canonical_name] = {
             "name": canonical_name,
-            "profile": profile if profile is not None else char.get("profile", ""),
-            "scenario": scenario if scenario is not None else char.get("scenario", ""),
-            "first_message": first_message if first_message is not None else char.get("first_message", ""),
-            "post_history": post_history if post_history is not None else char.get("post_history", ""),
             "category": category if category is not None else char.get("category"),
-            "tags": tags if tags is not None else char.get("tags", [])
+            "profile": profile if profile is not None else char.get("profile", ""),
+            "first_message": first_message if first_message is not None else char.get("first_message", ""),
+            "world_info": char.get("world_info", {})
         }
         self.characters.save()
         return self.result("character edited")
@@ -732,12 +712,10 @@ class Characters(core.module.Module):
             chars.append({
                 "key": key,
                 "name": char.get("name") or key,
-                "profile": char.get("profile", ""),
-                "scenario": char.get("scenario", ""),
-                "first_message": char.get("first_message", ""),
-                "post_history": char.get("post_history", ""),
                 "category": char.get("category") or "",
-                "tags": char.get("tags") or [],
+                "profile": char.get("profile", ""),
+                "first_message": char.get("first_message", ""),
+                "world_info": char.get("world_info")
             })
         chars.sort(key=lambda c: c["name"].lower())
         return chars
@@ -767,12 +745,10 @@ class Characters(core.module.Module):
 
         self.characters[name] = {
             "name": name,
-            "profile": profile,
-            "scenario": str(body.get("scenario", "")),
-            "first_message": str(body.get("first_message", "")),
-            "post_history": str(body.get("post_history", "")),
             "category": str(body.get("category", "")).strip() or None,
-            "tags": self._clean_tags(body.get("tags"))
+            "profile": profile,
+            "first_message": str(body.get("first_message", "")),
+            "world_info": body.get("world_info", {})
         }
         self.characters.save()
         return self.result(f"character {name} added")
@@ -801,13 +777,13 @@ class Characters(core.module.Module):
 
         self.characters[key] = {
             "name": new_name,
-            "profile": profile,
-            "scenario": str(body.get("scenario", "")),
-            "first_message": str(body.get("first_message", "")),
-            "post_history": str(body.get("post_history", "")),
             "category": str(body.get("category", "")).strip() or None,
-            "tags": self._clean_tags(body.get("tags"))
+            "profile": profile,
+            "first_message": str(body.get("first_message", "")),
+            "world_info": body.get("world_info", {})
         }
+
+        print(self.characters[key])
 
         # rename: re-key the storage entry. save() prunes the old key's
         # json file itself, so no manual file cleanup is needed here.
