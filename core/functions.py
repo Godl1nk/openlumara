@@ -1,6 +1,7 @@
 import core
 import os
 import sys
+import errno
 import time
 import traceback
 import urllib.parse
@@ -178,3 +179,146 @@ def sandbox_path(base_path: str, requested_path: str = None) -> str:
         return real_path
     else:
         raise ValueError("Access denied: target path is outside sandbox")
+
+# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
+# ROSE22: based on a report submitted to me by @wishieshard. i've vetted and tested this.
+def sandbox_open(base_path: str, requested_path: str, flags: int, mode: int = 0o666):
+    """
+    Atomic, symlink-proof open inside a sandbox. Fixes TOCTOU across the harness.
+
+    Returns an open file descriptor; the caller owns it (wrap in os.fdopen or
+    close it)
+    """
+    sep = os.path.sep
+    base_path = base_path.replace("\\", sep).replace("/", sep).rstrip(sep)
+
+    path = requested_path.replace("\\", sep).replace("/", sep)
+
+    # in case the caller included the sandbox folder name itself in the path
+    base_name = os.path.basename(base_path)
+    if path == base_name:
+        path = ""
+    elif path.startswith(base_name + sep):
+        path = path[len(base_name) + 1:]
+
+    # rejects traversal (..), null bytes, url-encoded variants
+    decoded = validate_path_string(path)
+
+    no_dirfd = not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY")
+
+    if no_dirfd:
+        # best effort on exotic platforms: old string validation + final-component guard
+        target = sandbox_path(base_path, decoded)
+        return os.open(target, flags | getattr(os, "O_NOFOLLOW", 0), mode)
+
+    try:
+        # opening the base follows symlinks on purpose (operator-configured root)
+        fd = os.open(base_path, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError as e:
+        raise ValueError(f"Invalid sandbox base: {base_path} ({e.strerror})")
+
+    try:
+        if not decoded:
+            # the generic except below closes fd for us
+            raise ValueError("A file path is required, the sandbox base itself cannot be opened")
+
+        parts = [p for p in decoded.split(sep) if p not in ("", ".")]
+        if not parts:
+            # decoded was something empty-ish like "." after normalization
+            os.close(fd)
+            raise ValueError("A file path is required, the sandbox base itself cannot be opened")
+        for part in parts[:-1]:
+            # descend one real directory at a time: O_NOFOLLOW means a symlink
+            # component fails here instead of redirecting the rest of the walk
+            try:
+                sub = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            except OSError as e:
+                if e.errno == errno.ELOOP:
+                    raise ValueError(f"Symlinks are not allowed in the path: {part}")
+                raise
+            os.close(fd)
+            fd = sub
+
+        try:
+            result = os.open(parts[-1], flags | os.O_NOFOLLOW, mode, dir_fd=fd)
+        except OSError as e:
+            if e.errno == errno.ELOOP:
+                raise ValueError("Symlinks are not allowed in the requested path")
+            raise
+    except NotImplementedError:
+        # platform claims the attrs but not openat(): fall back like above
+        os.close(fd)
+        target = sandbox_path(base_path, decoded)
+        return os.open(target, flags | getattr(os, "O_NOFOLLOW", 0), mode)
+    except Exception:
+        os.close(fd)
+        raise
+
+    os.close(fd)
+    return result
+
+# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
+# ROSE22: based on a report submitted to me by @wishieshard. i've vetted and tested this.
+def sandbox_listdir(base_path: str, requested_path: str = "") -> list:
+    """
+    Symlink-proof os.listdir. Fixes TOCTOU vulns just like sandbox_open
+    """
+    sep = os.path.sep
+    base_path = base_path.replace("\\", sep).replace("/", sep).rstrip(sep)
+
+    path = requested_path.replace("\\", sep).replace("/", sep)
+
+    # in case the caller included the sandbox folder name itself in the path
+    base_name = os.path.basename(base_path)
+    if path == base_name:
+        path = ""
+    elif path.startswith(base_name + sep):
+        path = path[len(base_name) + 1:]
+
+    # rejects traversal (..), null bytes, url-encoded variants
+    decoded = validate_path_string(path)
+
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
+        return os.listdir(sandbox_path(base_path, decoded))
+
+    try:
+        # opening the base follows symlinks on purpose (operator-configured root)
+        fd = os.open(base_path, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError as e:
+        raise ValueError(f"Invalid sandbox base: {base_path} ({e.strerror})")
+
+    try:
+        parts = [p for p in decoded.split(sep) if p not in ("", ".")] if decoded else []
+        if parts:
+            for part in parts[:-1]:
+                # descend one real directory at a time (same trick as sandbox_open)
+                try:
+                    sub = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                except OSError as e:
+                    if e.errno == errno.ELOOP:
+                        raise ValueError(f"Symlinks are not allowed in the path: {part}")
+                    raise
+                os.close(fd)
+                fd = sub
+
+            # final component must also be a real directory, not a symlink
+            try:
+                sub = os.open(parts[-1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            except OSError as e:
+                if e.errno == errno.ELOOP:
+                    raise ValueError("Symlinks are not allowed in the requested path")
+                raise
+            os.close(fd)
+            fd = sub
+
+        entries = os.listdir(fd)
+    except NotImplementedError:
+        # platform claims the attrs but not openat(): fall back like above
+        os.close(fd)
+        return os.listdir(sandbox_path(base_path, decoded))
+    except Exception:
+        os.close(fd)
+        raise
+
+    os.close(fd)
+    return entries

@@ -66,9 +66,9 @@ class Docs(core.module.Module):
                 subfolder = subfolder[len(folder):]
 
             base_path = core.sandbox_path(folder_path, subfolder or "")
-            
-            contents = os.listdir(base_path)
-            
+
+            contents = core.sandbox_listdir(folder_path, subfolder or "")
+
             prefix = f"{subfolder}/" if subfolder else ""
             dirs = sorted([f"{prefix}{d}" for d in contents if os.path.isdir(os.path.join(base_path, d))])
             files = sorted([f"{prefix}{f}" for f in contents if os.path.isfile(os.path.join(base_path, f))])
@@ -91,10 +91,9 @@ class Docs(core.module.Module):
         if not folder_path:
             return self.result(f"Folder '{folder}' does not exist within the docs module configuration.", success=False)
         
-        target_path = core.sandbox_path(folder_path, path)
-
         try:
-            with open(target_path, 'r', encoding="utf-8") as f:
+            fd = core.sandbox_open(folder_path, path, os.O_RDONLY)
+            with os.fdopen(fd, "r", encoding="utf-8") as f:
                 return self.result(f.read())
         except Exception as e:
             return self.result(str(e), success=False)
@@ -127,7 +126,7 @@ class Docs(core.module.Module):
 
         try:
             base_path = core.sandbox_path(folder_path, subfolder or "")
-            contents = os.listdir(base_path)
+            contents = core.sandbox_listdir(folder_path, subfolder or "")
         except Exception as e:
             return self.result(str(e), success=False)
 
@@ -154,8 +153,8 @@ class Docs(core.module.Module):
             path = path[len(folder):]
 
         try:
-            target_path = core.sandbox_path(folder_path, path)
-            with open(target_path, 'r', encoding="utf-8") as f:
+            fd = core.sandbox_open(folder_path, path, os.O_RDONLY)
+            with os.fdopen(fd, "r", encoding="utf-8") as f:
                 return {"path": path, "content": f.read()}
         except Exception as e:
             return self.result(str(e), success=False)

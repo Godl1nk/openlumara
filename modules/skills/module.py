@@ -71,7 +71,7 @@ class Skills(core.module.Module):
 
         root = self._root_path()
         if os.path.isdir(root):
-            for entry in sorted(os.listdir(root)):
+            for entry in sorted(core.sandbox_listdir(root)):
                 skill_path = os.path.join(root, entry)
                 if not os.path.isdir(skill_path):
                     continue
@@ -84,7 +84,8 @@ class Skills(core.module.Module):
                 # the frontmatter if present, otherwise the folder name is used.
                 name = entry
                 try:
-                    with open(skill_file, "r", encoding="utf-8") as f:
+                    fd = core.sandbox_open(root, entry + os.path.sep + "SKILL.md", os.O_RDONLY)
+                    with os.fdopen(fd, "r", encoding="utf-8") as f:
                         meta, _ = self._parse_frontmatter(f.read())
                     if meta and meta.get("name"):
                         name = str(meta["name"])
@@ -103,7 +104,11 @@ class Skills(core.module.Module):
         if skill_path is None:
             return None, "not found"
         try:
-            with open(os.path.join(skill_path, "SKILL.md"), "r", encoding="utf-8") as f:
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara :: F-4: open relative to the current skills root (relpaths outside it get rejected)
+            root = self._root_path()
+            rel = os.path.relpath(skill_path, root)
+            fd = core.sandbox_open(root, rel + os.path.sep + "SKILL.md", os.O_RDONLY)
+            with os.fdopen(fd, "r", encoding="utf-8") as f:
                 _, body = self._parse_frontmatter(f.read())
             return body.strip(), None
         except Exception as e:
