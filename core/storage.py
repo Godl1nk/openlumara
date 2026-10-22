@@ -7,6 +7,25 @@ import regex as re
 
 TEMPORARY = False
 
+def _storage_open(path: str = None, mode: str = "r", base: str = None, rel: str = None):
+    """open() replacement that fixes TOCTOU using core.sandbox_open"""
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
+
+    if base is None or rel is None:
+        base = os.path.dirname(path)
+        rel = os.path.basename(path)
+
+    if "w" in mode or "x" in mode:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    else:
+        flags = os.O_RDONLY
+
+    fd = core.sandbox_open(base, rel, flags)
+    fdopen_mode = mode.replace("x", "w")
+    if "b" in mode:
+        return os.fdopen(fd, fdopen_mode)
+    return os.fdopen(fd, fdopen_mode, encoding="utf-8")
+
 class StorageList(list):
     """subclassed list that handles storage of data. supports a variety of storage formats."""
     def __init__(self, name: str, type: str, manager=None, path=None, autoload=True, *args):
@@ -61,9 +80,8 @@ class StorageList(list):
     def _write(self, content):
         try:
             write_mode = "wb" if self.binary else "w"
-            encoding = "utf-8" if not self.binary else None
 
-            with open(self.path, write_mode, encoding=encoding) as f:
+            with _storage_open(self.path, write_mode) as f:
                 f.write(content)
         except Exception as e:
             core.log("error", f"error writing {self.name}: {e}")
@@ -74,8 +92,7 @@ class StorageList(list):
         try:
             result = None
             read_mode = "rb" if self.binary else "r"
-            encoding = "utf-8" if not self.binary else None
-            with open(self.path, read_mode, encoding=encoding) as f:
+            with _storage_open(self.path, read_mode) as f:
                 result = f.read()
             return result
         except Exception as e:
@@ -222,8 +239,7 @@ class StorageDict(dict):
     def _write(self, content):
         try:
             write_mode = "wb" if self.binary else "w"
-            encoding = "utf-8" if not self.binary else None
-            with open(self.path, write_mode, encoding=encoding) as f:
+            with _storage_open(self.path, write_mode) as f:
                 f.write(content)
         except Exception as e:
             core.log("error", f"error writing {self.name}: {e}")
@@ -235,8 +251,7 @@ class StorageDict(dict):
         try:
             result = None
             read_mode = "rb" if self.binary else "r"
-            encoding = "utf-8" if not self.binary else None
-            with open(self.path, read_mode, encoding=encoding) as f:
+            with _storage_open(self.path, read_mode) as f:
                 result = f.read()
             return result
         except Exception as e:
@@ -359,7 +374,7 @@ class StorageDict(dict):
                     if not os.path.exists(file_dir):
                         os.makedirs(file_dir, exist_ok=True)
 
-                    with open(name, "w", encoding="utf-8") as f:
+                    with _storage_open(base=self.path, rel=f"{key}.md", mode="w") as f:
                         f.write(content)
 
                 # Raise an error if any keys were skipped due to validation failure
@@ -401,7 +416,7 @@ class StorageDict(dict):
                 for key, value in dict(self).items():
                     filename = self._folder_filename(key)
                     written.add(filename)
-                    with open(os.path.join(self.path, filename), "w", encoding="utf-8") as f:
+                    with _storage_open(base=self.path, rel=filename, mode="w") as f:
                         json.dump(value, f, indent=2)
 
                 # remove files whose keys no longer exist
@@ -435,8 +450,8 @@ class StorageDict(dict):
                     if not filename.endswith(".json"):
                         continue
                     try:
-                        with open(os.path.join(self.path, filename), "r", encoding="utf-8") as f:
-                            value = json.load(f)
+                            with _storage_open(base=self.path, rel=filename, mode="r") as f:
+                                value = json.load(f)
                     except Exception as e:
                         core.log("error", f"error reading {self.name}/{filename}: {e}")
                         continue
@@ -473,7 +488,7 @@ class StorageDict(dict):
                             normalized_path = os.path.normpath(path_without_ext)
                             key = "/".join(normalized_path.split(os.sep))
 
-                            with open(full_path, "r", encoding="utf-8") as f:
+                            with _storage_open(base=self.path, rel=rel_path, mode="r") as f:
                                 flat_dict[key] = str(f.read())
 
                 # convert flat path keys to nested dict structure
@@ -553,7 +568,7 @@ class StorageText:
             return self
 
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
+            with _storage_open(self.path, "r") as f:
                 self._data = f.read()
         except Exception as e:
             core.log("error", f"error while loading text storage: {e}")
@@ -566,7 +581,7 @@ class StorageText:
         if TEMPORARY:
             return self
 
-        with open(self.path, "w", encoding="utf-8") as f:
+        with _storage_open(self.path, "w") as f:
             f.write(self._data)
 
         # update mtime after saving so we know our cache is fresh

@@ -181,7 +181,8 @@ class Characters(core.module.Module):
         import zlib
 
         try:
-            with open(png_path, "rb") as f:
+            fd = core.sandbox_open(os.path.dirname(png_path), os.path.basename(png_path), os.O_RDONLY)
+            with os.fdopen(fd, "rb") as f:
                 if f.read(8) != b"\x89PNG\r\n\x1a\n":
                     return None
 
@@ -228,7 +229,7 @@ class Characters(core.module.Module):
             return
 
         changed = False
-        for filename in os.listdir(folder):
+        for filename in core.sandbox_listdir(folder):
             if not filename.lower().endswith(".png"):
                 continue
 

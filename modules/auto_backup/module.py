@@ -132,6 +132,9 @@ class AutoBackup(core.module.Module):
                 for root, dirs, files in os.walk(data_folder):
                     for file in files:
                         file_path = os.path.join(root, file)
+                        # never pull symlinked files (potential escape from the data folder) into backups
+                        if os.path.islink(file_path):
+                            continue
                         # Calculate the archive name (relative to data folder)
                         arcname = os.path.relpath(file_path, data_folder)
                         zipf.write(file_path, arcname)

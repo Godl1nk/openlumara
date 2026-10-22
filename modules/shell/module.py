@@ -38,7 +38,7 @@ class Shell(core.module.Module):
 
     settings = {
         "internet_access": {
-            "default": True,
+            "default": False,
             "description": "Whether the sandbox container has access to the internet"
         },
         "persistent_data": {
