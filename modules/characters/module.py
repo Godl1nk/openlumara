@@ -783,8 +783,6 @@ class Characters(core.module.Module):
             "world_info": body.get("world_info", {})
         }
 
-        print(self.characters[key])
-
         # rename: re-key the storage entry. save() prunes the old key's
         # json file itself, so no manual file cleanup is needed here.
         if new_name != key:
