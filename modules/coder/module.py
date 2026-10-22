@@ -259,8 +259,10 @@ class Coder(core.module.Module):
         and if so, returns it
         """
         # remove the sandbox path itself from the string in case the AI decided to add it
-        if requested_path.startswith(sandbox):
-            requested_path = requested_path[len(sandbox):]
+        if requested_path == sandbox:
+            requested_path = ""
+        elif requested_path.startswith(sandbox + os.path.sep):
+            requested_path = requested_path[len(sandbox) + 1:]
 
         sandbox_path = await self._get_full_sandbox_path(sandbox)
         return core.sandbox_path(sandbox_path, requested_path)
@@ -391,8 +393,10 @@ class Coder(core.module.Module):
 
         try:
             # remove the sandbox path itself from the string in case the AI decided to add it
-            if pattern.startswith(sandbox):
-                pattern = pattern[len(sandbox):]
+            if pattern == sandbox:
+                pattern = ""
+            elif pattern.startswith(sandbox + os.path.sep):
+                pattern = pattern[len(sandbox) + 1:]
 
             matches = sorted(glob.glob(
                 os.path.join(target_path, pattern),

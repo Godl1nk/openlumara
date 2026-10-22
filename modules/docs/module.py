@@ -62,8 +62,10 @@ class Docs(core.module.Module):
                 return self.result(f"Folder '{folder}' does not exist within the docs module configuration.", success=False)
             
             # remove the folder from the requested path in case the AI decided to double-add it
-            if subfolder and subfolder.startswith(folder):
-                subfolder = subfolder[len(folder):]
+            if subfolder == folder:
+                subfolder = ""
+            elif subfolder and subfolder.startswith(folder + os.path.sep):
+                subfolder = subfolder[len(folder) + 1:]
 
             base_path = core.sandbox_path(folder_path, subfolder or "")
 
@@ -85,8 +87,10 @@ class Docs(core.module.Module):
     async def read(self, folder: str, path: str):
         folder_path = await self._get_folder_path(folder)
         # remove the folder from the requested path in case the AI decided to double-add it
-        if path.startswith(folder):
-            path = path[len(folder):]
+        if path == folder:
+            path = ""
+        elif path.startswith(folder + os.path.sep):
+            path = path[len(folder) + 1:]
 
         if not folder_path:
             return self.result(f"Folder '{folder}' does not exist within the docs module configuration.", success=False)
@@ -121,8 +125,10 @@ class Docs(core.module.Module):
         if not folder_path:
             return self.result(f"folder '{folder}' does not exist", success=False)
 
-        if subfolder and subfolder.startswith(folder):
-            subfolder = subfolder[len(folder):]
+        if subfolder == folder:
+            subfolder = ""
+        elif subfolder and subfolder.startswith(folder + os.path.sep):
+            subfolder = subfolder[len(folder) + 1:]
 
         try:
             base_path = core.sandbox_path(folder_path, subfolder or "")
@@ -149,8 +155,10 @@ class Docs(core.module.Module):
         if not folder_path:
             return self.result(f"folder '{folder}' does not exist", success=False)
 
-        if path.startswith(folder):
-            path = path[len(folder):]
+        if path == folder:
+            path = ""
+        elif path.startswith(folder + os.path.sep):
+            path = path[len(folder) + 1:]
 
         try:
             fd = core.sandbox_open(folder_path, path, os.O_RDONLY)
