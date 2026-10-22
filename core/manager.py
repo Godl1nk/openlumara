@@ -38,24 +38,14 @@ class Manager:
         self.log_buffer = []
         self.started = False
 
-    # --- tools properties ---
+    # --- tools properties (read-only views of the channel's active set) ---
     @property
     def tools(self):
         return self.channel.tool_loader.active_tools if self.channel else []
 
-    @tools.setter
-    def tools(self, value):
-        if self.channel:
-            self.channel.tool_loader.active_tools = value
-
     @property
     def tool_names(self):
         return self.channel.tool_loader.active_names if self.channel else []
-
-    @tool_names.setter
-    def tool_names(self, value):
-        if self.channel:
-            self.channel.tool_loader.active_names = value
 
     def _remove_async_task(self, task):
         self._async_tasks.discard(task)
@@ -269,24 +259,13 @@ class Manager:
             self.log("core", "Loading user modules..")
             await self._load_modules(self.modules, user_modules, enabled_user_modules, is_user_modules=True)
 
-        # If dynamic tool loading is disabled, load all tools at startup
+        # Build each channel's active tools array now that the catalogs are
+        # complete: dynamic loading on -> meta tools + preloaded modules;
+        # off -> every loadable tool natively.
         if not core.config.get("model", "dynamic_tool_loading", default=True):
             self.log("core", "Dynamic tool loading is disabled. Loading all tools at startup.")
-            for channel in self.channels.values():
-                channel.tool_loader.load_all_tools()
-        else:
-            # Dynamic loading is on: preload the hardcoded default tools on top
-            # of the meta tools so a few frequently-used tools are always ready.
-            for channel in self.channels.values():
-                # all modules are loaded now: sync the tools_load description
-                # with the final list of enabled modules
-                channel.tool_loader.refresh_meta_tool_descriptions()
-                channel.tool_loader.load_default_tools()
-                # Now that the catalog is populated, restore any tools that were
-                # persisted in the auto-resumed chat's metadata. During autoload()
-                # the catalog was still empty so the initial restore_chat_tools()
-                # call in _set_current() couldn't load anything.
-                channel.tool_loader.restore_chat_tools()
+        for channel in self.channels.values():
+            channel.tool_loader.refresh()
 
         if not self.args.disable_auto_installer:
             # uninstall dependencies for disabled modules (only if deps are still installed)
@@ -512,12 +491,6 @@ class Manager:
         module = self.modules[module_name]
         self.log("core", f"Reloading module: {module_name}")
 
-        prefix = f"{module.name}_"
-        was_active = {
-            ch_name: any(n.startswith(prefix) for n in ch.tool_loader.active_names)
-            for ch_name, ch in self.channels.items()
-        }
-
         # remove old tools for this module
         await self.unregister_module_tools(module)
 
@@ -537,17 +510,6 @@ class Manager:
         # re-add the module tools based on the new state (after on_ready's modifications)
         await self.register_module_tools(module)
 
-        # re-activate the module's tools in all channels
-        for ch_name, ch in self.channels.items():
-            chat = ch.context.chat
-            persisted = chat is not None and module.name in chat.get_loaded_modules()
-            if was_active.get(ch_name) or persisted:
-                ch.tool_loader.activate_module_tools(module.name)
-
-        # make sure any hardcoded default tools belonging to this module get re-preloaded
-        for channel in self.channels.values():
-            channel.tool_loader.load_default_tools()
-
         return True
 
 
@@ -566,14 +528,14 @@ class Manager:
         """Register a module's tools in the catalog"""
         for channel in self.channels.values():
             channel.tool_loader.register_module(module)
-            # keep the dynamic tools_load description in sync with enabled modules
-            channel.tool_loader.refresh_meta_tool_descriptions()
+            # rebuild meta descriptions + active array with the new catalog
+            channel.tool_loader.refresh()
 
     async def unregister_module_tools(self, module):
-        """Unregister a module's tools from the catalog and active set."""
+        """Unregister a module's tools from the catalog and rebuild active."""
         for channel in self.channels.values():
             channel.tool_loader.unregister_module(module)
-            channel.tool_loader.refresh_meta_tool_descriptions()
+            channel.tool_loader.refresh()
         return True
 
     async def add_module_class(self, module, is_user_module=False):

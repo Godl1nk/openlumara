@@ -158,17 +158,10 @@ class ToolLoader:
             }
 
     def unregister_module(self, module):
-        """Remove all catalog entries and active tools for a module."""
+        """Remove all catalog entries for a module (the caller refreshes)."""
         prefix = f"{module.name}_"
-        removed = [k for k in self.catalog if k.startswith(prefix)]
-        for k in removed:
+        for k in [k for k in self.catalog if k.startswith(prefix)]:
             del self.catalog[k]
-
-        self.active_tools = [
-            t for t in self.active_tools
-            if not t["function"]["name"].startswith(prefix)
-        ]
-        self.active_names = [n for n in self.active_names if not n.startswith(prefix)]
 
     # ------------------------------------------------------------------
     # Meta tool
@@ -226,10 +219,11 @@ class ToolLoader:
     # model invokes them through the generic tools_call bridge. The model
     # only ever needs module names (listed in the tools_load description);
     # no per-tool catalog is embedded anywhere. The active array holds
-    # exactly: the meta tools, the preloaded modules' tools, and (legacy)
-    # tools restored from the chat's persisted modules. With
-    # dynamic_tool_loading off the whole system is bypassed and every tool
-    # registers natively.
+    # exactly: the meta tools and the preloaded modules' tools; a chat that
+    # needs more simply calls tools_load (and can re-read its own previous
+    # tools_load results from history - there is no per-chat tool restore).
+    # With dynamic_tool_loading off the whole system is bypassed and every
+    # tool registers natively.
     # ------------------------------------------------------------------
 
     def _build_bridge_defs(self):
@@ -273,35 +267,43 @@ class ToolLoader:
         }
         return [call]
 
-    def _replace_def_in_active(self, tool_def):
-        """Swap a tool def into the active list in place (order-preserving)."""
-        for i, tool in enumerate(self.active_tools):
-            if tool["function"]["name"] == tool_def["function"]["name"]:
-                self.active_tools[i] = tool_def
-                return
-        self.active_tools.append(tool_def)
+
 
     def register_meta_tools(self):
-        """Register the tools_load meta tool and the tool bridge."""
+        """Build the meta tool + bridge defs when dynamic loading is enabled."""
         if not core.config.get("model", "dynamic_tool_loading", default=True):
             return
         if self._meta_def:
             return
-
         self._meta_def = self._build_meta_def()
         self._bridge_defs = self._build_bridge_defs()
-        self.active_tools = [self._meta_def] + self._bridge_defs
-        self.active_names = ["tools_load", "tools_call"]
+        self.refresh()
 
-    def refresh_meta_tool_descriptions(self):
-        """Rebuild the dynamic meta tool and bridge descriptions with the current catalog."""
-        if not self._meta_def:
-            return
-        self._meta_def = self._build_meta_def()
-        self._bridge_defs = self._build_bridge_defs()
-        self._replace_def_in_active(self._meta_def)
-        for tool_def in self._bridge_defs:
-            self._replace_def_in_active(tool_def)
+    def refresh(self):
+        """Rebuild meta tool/bridge descriptions and the active tools array
+        from the current catalog state.
+
+        Called on module-lifecycle events only (startup, module
+        register/unregister) - the active array NEVER changes mid-chat:
+        dynamic loading delivers schemas via tools_load results and runs
+        everything through the tools_call bridge, so the request prefix and
+        the provider prompt cache stay intact for the whole conversation.
+        """
+        if self._meta_def:
+            # dynamic loading on: meta tools + preloaded modules' tools
+            self._meta_def = self._build_meta_def()
+            self._bridge_defs = self._build_bridge_defs()
+            defs = [self._meta_def] + self._bridge_defs
+            source = self._default_tools()
+        else:
+            # dynamic loading off: every loadable tool registers natively
+            defs = []
+            source = self.catalog
+        for name, entry in source.items():
+            if self._loadable_entry(name) is not None:
+                defs.append(entry["tool"])
+        self.active_tools = defs
+        self.active_names = [t["function"]["name"] for t in defs]
 
     def get_meta_callable(self, tool_name):
         """Return the bound method for a meta tool name."""
@@ -312,137 +314,8 @@ class ToolLoader:
         return None
 
     # ------------------------------------------------------------------
-    # Active set management
-    # ------------------------------------------------------------------
-
-    def _baseline_tools(self):
-        """(tools, names) for the baseline: meta tool + bridge + loadable default-module tools."""
-        tools, names = [], []
-        if self._meta_def:
-            tools.append(self._meta_def)
-            names.append("tools_load")
-            for tool_def in self._bridge_defs:
-                tools.append(tool_def)
-                names.append(tool_def["function"]["name"])
-        for name, entry in self._default_tools().items():
-            if name in names or self._loadable_entry(name) is None:
-                continue
-            tools.append(entry["tool"])
-            names.append(name)
-        return tools, names
-
-    def load_default_tools(self):
-        """Preload all tools of the preloaded modules"""
-        if not core.config.get("model", "dynamic_tool_loading", default=True):
-            return
-        if not self._meta_def:
-            return
-
-        loaded = []
-        for name, entry in self._default_tools().items():
-            if name in self.active_names or self._loadable_entry(name) is None:
-                continue
-            self.active_tools.append(entry["tool"])
-            self.active_names.append(name)
-            loaded.append(name)
-
-        if loaded:
-            # keep the meta tool descriptions in sync with the active set
-            self.refresh_meta_tool_descriptions()
-
-    def reset_for_new_chat(self):
-        """Reset active tools to the baseline (meta tool + bridge + default tools)."""
-        if core.config.get("model", "dynamic_tool_loading", default=True):
-            self.active_tools, self.active_names = self._baseline_tools()
-            # refresh meta tool descriptions to reflect the reset active set
-            self.refresh_meta_tool_descriptions()
-        else:
-            self.active_tools = []
-            self.active_names = []
-            self.load_all_tools()
-
-    def load_all_tools(self):
-        """Load every loadable tool from the catalog into the active set."""
-        for name in self.catalog:
-            entry = self._loadable_entry(name)
-            if entry is None or name in self.active_names:
-                continue
-            self.active_tools.append(entry["tool"])
-            self.active_names.append(name)
-
-    # ------------------------------------------------------------------
-    # Per-chat tool persistence
-    # ------------------------------------------------------------------
-
-    def get_active_non_baseline_modules(self):
-        """Modules whose tools are active but that are NOT part of the baseline.
-
-        This is the set of modules the AI explicitly loaded for this chat; it
-        gets persisted per-chat so it can be restored on load.
-        """
-        baseline_modules = self._preloaded_modules()
-        modules = set()
-        for name in self.active_names:
-            entry = self.catalog.get(name)
-            if entry is None or entry["module"] in baseline_modules:
-                continue
-            modules.add(entry["module"])
-        return sorted(modules)
-
-    def persist_active_tools(self):
-        """Persist active non-baseline modules to the chat's metadata (no-op if no chat)."""
-        chat = self.channel.context.chat
-        if chat is None or chat.current is None:
-            return
-        chat.set_loaded_modules(self.get_active_non_baseline_modules())
-
-    def restore_chat_tools(self):
-        """Load the modules persisted in the chat's metadata (call after reset_for_new_chat)."""
-        chat = self.channel.context.chat
-        if chat is None or chat.current is None:
-            return
-        for module_name in chat.get_loaded_modules():
-            self.activate_module_tools(module_name)
-
-    # ------------------------------------------------------------------
     # Meta tool implementation
     # ------------------------------------------------------------------
-
-    def activate_module_tools(self, module_name):
-        """Load all cataloged tools of an enabled module (legacy: kept only to
-        restore chats persisted under the pre-2026-10-21 native-loading design;
-        tools_load itself now returns schemas instead of activating)"""
-        module_name = str(module_name).lower().strip()
-        module = self.channel.manager.modules.get(module_name)
-        if module is None:
-            return {
-                "status": "error",
-                "unknown_module": module_name,
-                "enabled_modules": self._enabled_module_names(),
-            }
-
-        loaded = []
-        already_loaded = []
-        disabled = []
-        for name, entry in self.catalog.items():
-            if entry["module"] != module_name:
-                continue
-            if entry["method"] in module.disabled_tools:
-                disabled.append(name)
-            elif name in self.active_names:
-                already_loaded.append(name)
-            else:
-                self.active_tools.append(entry["tool"])
-                self.active_names.append(name)
-                loaded.append(name)
-
-        result = {"loaded": loaded, "already_loaded": already_loaded}
-        if disabled:
-            result["disabled"] = disabled
-        if loaded:
-            # the active array changed; keep the meta tool descriptions in sync
-            self.refresh_meta_tool_descriptions()
-        return result
 
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
     # tools_load no longer mutates the active tools array (a prefix change that
