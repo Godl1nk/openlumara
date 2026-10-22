@@ -207,8 +207,12 @@ class Coder(core.module.Module):
 
                     final_output.append(output_str)
 
-        if "shell" in self.manager.modules:
-            final_output.append("NOTE: coder sandbox is NOT shell sandbox. they are seperate.")
+        if (
+            "shell" in self.manager.modules
+            and
+            self.manager.modules["shell"].config.get("sandbox_path") not in self.config.get("sandbox_paths")
+        ):
+            final_output.append("NEVER run shell commands against coder sandboxes. coder sandboxes and shell sandbox are seperate.")
 
         if self.config.get("use_coding_prompt") and self.config.get("coding_prompt"):
             final_output.append(f"## Coding Guidelines\nYOU MUST ALWAYS follow these guidelines while using the coder:\n{self.config.get('coding_prompt')}")
