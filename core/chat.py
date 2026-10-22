@@ -173,13 +173,6 @@ class Chat:
         
     async def _set_current(self, index: int):
         """load a chat and its messages by index"""
-        # guard against a stale current index (e.g. after the chat it pointed
-        # to was deleted, so the index may now be out of range)
-        old_id = None
-        if self.current is not None and 0 <= self.current < len(self.data):
-            old_id = self.data[self.current]["id"]
-        new_id = self.data[index]["id"]
-
         self.current = index
 
         # store current index into a simple file, for chat autoloading later
@@ -189,12 +182,6 @@ class Chat:
         # load this chat's Messages object
         self.messages = core.messages.Messages(self.channel, self)
 
-        # reset active tools when switching to a different chat, then restore
-        # the tools this chat had loaded before, so it picks up where it left off
-        if old_id != new_id:
-            self.channel.tool_loader.reset_for_new_chat()
-            self.channel.tool_loader.restore_chat_tools()
-            
         # let the system prompt be generated anew
         self._cached_system_prompt = None
 
@@ -205,30 +192,6 @@ class Chat:
                 return index
 
         return None
-
-    def get_loaded_modules(self):
-        """return the list of modules whose tools must be persisted in this chat"""
-        if self.current is None:
-            return []
-
-        metadata = self.data[self.current].get("metadata")
-
-        modules = metadata.get("loaded_modules", [])
-        return modules
-
-    def set_loaded_modules(self, names):
-        """persist a list of module names into this chat's metadata"""
-        if self.current is None:
-            return
-
-        chat = self.data[self.current]
-        metadata = chat.get("metadata")
-
-        if metadata.get("loaded_modules", []) == names:
-            return  # no change, skip the disk write
-
-        metadata["loaded_modules"] = names
-        self.data.save()
 
     def _migrate_if_needed(self):
         """Automatically migrate old format chat files if detected."""
@@ -373,10 +336,6 @@ class Chat:
         if self.current is None:
             raise Exception("No chat is currently loaded!")
 
-        # reset active tools on clear
-        self.channel.tool_loader.reset_for_new_chat()
-        self.set_loaded_modules([])
-
         await self.messages.clear()
         
         # reset stored token usage data
@@ -385,9 +344,6 @@ class Chat:
             self.data[self.current]["token_usage_mark"] = 0
 
         await self.save()
-
-        # start a system prompt warmup so that the response is instant (if the user types slowly... lol)
-        #await self.channel.manager.API.start_prompt_warmup(notify=core.debug)
 
         return True
 
@@ -427,12 +383,6 @@ class Chat:
                 # Current was after deleted item, shift down
                 await self._set_current(self.current-1)
 
-        # start a prompt warmup using this chat's data
-        # try:
-        #     await self.channel.manager.API.start_prompt_warmup(context=await self.channel.context.get(), notify=core.debug)
-        # except Exception as e:
-        #     self.channel.log("core", f"failure while sending prompt warmup to API: {core.detail_error(e)}")
-
         return self.current
 
     async def save(self):
@@ -452,12 +402,6 @@ class Chat:
             return False
 
         await self._set_current(index)
-
-        # start a prompt warmup using this chat's data
-        # try:
-        #     await self.channel.manager.API.start_prompt_warmup(context=await self.channel.context.get(), notify=core.debug)
-        # except Exception as e:
-        #     self.channel.log("core", f"failure while sending prompt warmup to API: {core.detail_error(e)}")
 
         return True
 

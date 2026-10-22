@@ -2,25 +2,7 @@ import asyncio
 import hashlib
 import json
 import json_repair
-import os
 import re
-
-# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-# TEMPORARY bridge-stream debug logging: the running stream is the one
-# layer I cannot observe from my sandbox, so _stamp_args appends one line
-# per tools_call stamp to <repo>/.bridge_debug.log for post-mortem reading.
-# REMOVE AFTER THE BRIDGE STREAMING BUG IS FIXED.
-DEBUG_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".bridge_debug.log")
-
-
-def _bridge_debug(line):
-    try:
-        if os.path.exists(DEBUG_LOG) and os.path.getsize(DEBUG_LOG) > 300000:
-            os.remove(DEBUG_LOG)
-        with open(DEBUG_LOG, "a") as fh:
-            fh.write(line + "\n")
-    except Exception:
-        pass
 
 import partial_json_parser
 
@@ -649,9 +631,8 @@ class TurnCollector:
             # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
             # unwrap tools_call proxies order-agnostically so bridged calls
             # render as the real call while streaming too (mirrors history)
-            fn = (tool.get("function") or {}).get("name")
             bridge_name, bridge_args = self._bridge_from_args(
-                fn, parsed, raw
+                (tool.get("function") or {}).get("name"), parsed, raw
             )
             if bridge_name is None and bridge_args is None:
                 meta["args_parsed"] = parsed
@@ -666,17 +647,6 @@ class TurnCollector:
                 if bridge_name:
                     meta["display_name"] = bridge_name
                 meta["args_parsed"] = bridge_args if bridge_args is not None else {}
-            # TEMP DEBUG (remove with _bridge_debug after fix): one line per
-            # bridge stamp: wrapper keys, resolved name/inner, raw shape.
-            if fn == "tools_call" and isinstance(raw, str):
-                _head = raw[:60]
-                _tail = raw[-30:] if len(raw) > 100 else ""
-                _bridge_debug("id=%s len=%d wkeys=%s name=%r ikeys=%s head=%r tail=%r" % (
-                    tool_id, len(raw), sorted(parsed.keys()),
-                    bridge_name,
-                    sorted(bridge_args.keys()) if isinstance(bridge_args, dict) else bridge_args,
-                    _head, _tail,
-                ))
 
         async for raw_token in stream_generator:
             # copy the token so we don't mutate it
