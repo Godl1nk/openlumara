@@ -93,6 +93,18 @@ function thoughtSnippet(text, max) {
     return (sp > 20 ? win.slice(0, sp) : win.slice(0, limit - 1)).replace(/\s+$/, '') + '…';
 }
 
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
+// is a step's reasoning the live tail of the stream right now? used by the
+// combined block's initial collapse state so the "collapse thinking by
+// default" setting only affects steps that are actively thinking when they
+// mount (a step that mounts on its tool calls is not "thinking"). mirrors
+// the thinkingActive getter the template uses for the header label.
+function stepIsThinkingLive(stepMsg) {
+    const msgs = (Alpine.store('stream').turn?.messages) ?? [];
+    const last = msgs[msgs.length - 1];
+    return !!last && last.step === stepMsg.step && last.type === 'reasoning';
+}
+
 // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
 // the backend's build_steps() makes exactly ONE message final: the last
 // content-without-toolcalls one. that's wrong for pushed announcements: a
