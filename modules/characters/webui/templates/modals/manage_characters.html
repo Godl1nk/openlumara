@@ -100,21 +100,10 @@
                         </div>
 
                         <div class="char-mgr-field">
-                            <label for="char-mgr-tags">Tags <span class="char-mgr-sublabel">(comma separated)</span></label>
-                            <input id="char-mgr-tags" type="text" x-model="form.tags" placeholder="tag1, tag2">
-                        </div>
-
-                        <div class="char-mgr-field">
                             <label for="char-mgr-profile">Profile</label>
                             <textarea id="char-mgr-profile" x-model="form.profile" rows="6"
                                 placeholder="Who this character is. Use {{ '{{char}}' }} to refer to the character and {{ '{{user}}' }} to refer to the user."
                                 x-autosize></textarea>
-                        </div>
-
-                        <div class="char-mgr-field">
-                            <label for="char-mgr-scenario">Scenario</label>
-                            <textarea id="char-mgr-scenario" x-model="form.scenario" rows="3"
-                                placeholder="optional" x-autosize></textarea>
                         </div>
 
                         <div class="char-mgr-field">
@@ -124,11 +113,50 @@
                                 x-autosize></textarea>
                         </div>
 
-                        <div class="char-mgr-field">
-                            <label for="char-mgr-post">Post-history instructions</label>
-                            <textarea id="char-mgr-post" x-model="form.post_history" rows="3"
-                                placeholder="optional - appended to the end of the prompt"
-                                x-autosize></textarea>
+                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+                             world info: keyword -> info pairs. entries whose
+                             keyword appears in the user's message get injected
+                             into the prompt (see on_message_inject in module.py).
+                             collapsed behind a header toggle (wiOpen). -->
+                        <div class="char-mgr-field char-mgr-worldinfo">
+                            <button type="button" class="char-wi-toggle" :aria-expanded="wiOpen"
+                                @click="wiOpen = !wiOpen">
+                                <svg class="char-wi-chevron" viewBox="0 0 16 16" aria-hidden="true">
+                                    <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor"
+                                        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span class="char-mgr-field-title">World info</span>
+                                <span class="char-mgr-sublabel">injected on keyword match</span>
+                                <span class="char-wi-count" x-show="form.world_info.length > 0"
+                                    x-text="form.world_info.length"></span>
+                            </button>
+
+                            <template x-if="wiOpen">
+                            <div class="char-wi-body">
+                            <template x-if="form.world_info.length === 0">
+                                <div class="char-wi-hint">no entries yet - add one below</div>
+                            </template>
+
+                            <template x-for="(entry, idx) in form.world_info" :key="entry.id">
+                                <div class="char-wi-row">
+                                    <input type="text" x-model="entry.keyword"
+                                        placeholder="keyword" aria-label="world info keyword">
+                                    <textarea x-model="entry.info" rows="2"
+                                        placeholder="info to inject when the keyword matches"
+                                        aria-label="world info text" x-autosize></textarea>
+                                    <button type="button" class="char-wi-remove" @click="removeWorldInfo(idx)"
+                                        title="Remove entry">
+                                        {% include 'svg/cross.svg' %}
+                                    </button>
+                                </div>
+                            </template>
+
+                            <button type="button" class="char-wi-add" @click="addWorldInfo()">
+                                {% include 'svg/add.svg' %}
+                                <span>Add entry</span>
+                            </button>
+                            </div>
+                            </template>
                         </div>
 
                         <template x-if="error">
