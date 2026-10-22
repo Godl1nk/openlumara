@@ -92,7 +92,7 @@ core_settings_schema = {
             "description": "Enable tool/function calling for the model. Turn this off if you just wanna talk to the AI and don't care for all this agentic stuff! Essentially turns it into a chatbot that can't actually do anything, but it can still answer your questions."
         },
         "dynamic_tool_loading": {
-            "default": True,
+            "default": False,
             "description": "When enabled, only a small selection of tools is loaded at first, but the AI can load them dynamically from enabled openlumara modules. When disabled, all available tools are loaded at startup for immediate use.",
             "depends": "use_tools"
         },
