@@ -2264,9 +2264,13 @@ async def create_fastapi(channel):
 
         version = generate_cache_version()
 
-        file_list = ',\n    '.join(f'"{f}"' for f in files_to_cache)
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # inject the precache list as a JSON string (sw.js wraps
+        # {{FILE_LIST}} in quotes and JSON.parses it): keeps the template
+        # itself valid JS. json.dumps escapes double/single quotes, so the
+        # surrounding single-quoted literal can never be broken out of.
         sw_code = sw_code.replace('{{VERSION}}', version)
-        sw_code = sw_code.replace('{{FILE_LIST}}', f'{file_list}\n')
+        sw_code = sw_code.replace('{{FILE_LIST}}', json.dumps(files_to_cache).replace("'", "\\'"))
 
         return fastapi.Response(
             content=sw_code,

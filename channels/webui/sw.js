@@ -1,18 +1,30 @@
 const CACHE_NAME = 'openlumara-{{VERSION}}';
 
-// Assets to precache (these get versioned by the backend)
-const ASSETS_TO_CACHE = [
-    {{FILE_LIST}},
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+// the backend replaces {{FILE_LIST}} with a JSON array of the webui asset
+// urls. it used to be injected as raw array entries, which made this file
+// unparseable as JS until rendered (and uneditable by tooling); embedded
+// as a JSON *string* instead, so the template itself stays valid JS.
+const ASSETS_TO_CACHE = JSON.parse('{{FILE_LIST}}').concat([
     '/manifest.json',
     '/icon-192.png',
     '/icon-512.png',
     '/sw.js?v={{VERSION}}', // Self-reference with version
-];
+]);
 
 console.log('Service Worker loaded: {{VERSION}}');
 
 self.addEventListener('install', (event) => {
   console.log('Installing Service Worker...');
+
+  // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+  // activate as soon as install finishes instead of waiting for every tab
+  // of the app to close. without this, a new webui build parks in the
+  // "waiting" state indefinitely while the old worker keeps serving its
+  // old cache-first assets - the "only a force refresh picks up updates"
+  // bug. (init.js reloads the page once when the new worker takes over.)
+  self.skipWaiting();
+
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -55,8 +67,13 @@ self.addEventListener('activate', (event) => {
         cachesToDelete.map((name) => caches.delete(name))
       );
     })
+    .then(() => self.clients.claim())
     .then(() => {
-      console.log('Service Worker activated');
+      // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+      // claim() takes control of already-open pages right after the old
+      // caches are deleted, so the fresh cache serves them immediately
+      // (this is what fires controllerchange in init.js).
+      console.log('Service Worker activated and clients claimed');
     })
     .catch((err) => {
       console.error('Activation failed:', err);
