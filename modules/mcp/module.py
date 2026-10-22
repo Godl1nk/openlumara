@@ -285,8 +285,7 @@ class Mcp(core.module.Module):
 
         for loader in self._loaders():
             loader.catalog = {n: entry for n, entry in loader.catalog.items() if n not in names}
-            loader.active_tools = [t for t in loader.active_tools if t["function"]["name"] not in names]
-            loader.active_names = [n for n in loader.active_names if n not in names]
+            loader.refresh()
 
     async def _resync_tools(self, name):
         """Fetch a server's current tool list and (re)inject all of it."""
@@ -299,19 +298,17 @@ class Mcp(core.module.Module):
             self.manager.log(self.name, f"could not list tools for '{name}': {_flatten_error(e)}")
             return
 
-        # remember which tools chats currently have loaded, to restore that
-        was_active = {n for loader in self._loaders() for n in loader.active_names}
         self._purge_server(name)
 
         for tool in listing.tools:
-            self._inject_tool(name, tool, was_active, srv)
+            self._inject_tool(name, tool, srv)
         srv["tools"] = sorted(srv["tools"])
 
-        # keep the tools_load meta tool's module description in sync
+        # rebuild meta descriptions + active arrays with the new catalog
         for loader in self._loaders():
-            loader.refresh_meta_tool_descriptions()
+            loader.refresh()
 
-    def _inject_tool(self, server, tool, was_active, srv):
+    def _inject_tool(self, server, tool, srv):
         """Register one MCP tool: an OpenAI-format definition built from the
         server's own JSON Schema, plus a dispatcher closure attached to this
         instance (the core executor calls getattr(module, entry["method")])."""
@@ -361,10 +358,8 @@ class Mcp(core.module.Module):
 
         for loader in self._loaders():
             loader.catalog[tool_name] = {"tool": definition, "module": self.name, "method": tool_name, "description": description}
-            # if a chat had this tool loaded before the resync, load it again
-            if tool_name in was_active and tool_name not in loader.active_names:
-                loader.active_tools.append(definition)
-                loader.active_names.append(tool_name)
+            # no active-array touch: MCP tools reach the model via tools_load
+            # schemas + the tools_call bridge like any other cataloged tool.
         srv["tools"].append(tool_name)
 
     # -------------------------
