@@ -175,6 +175,19 @@ async function handleWebSocketMessage(data) {
             const segment = data.turn;
 
             if (stream.turn.length <= 0) {
+                // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+                // mid-stream reload: the fetched history can already contain
+                // a persisted assistant turn after the last user turn (tool
+                // rounds get saved to chat storage before the answer is
+                // final). The live turn - rebuilt in full from the backend's
+                // segment replay - is that snapshot's superset, so drop the
+                // trailing assistant turns instead of rendering them twice.
+                while (chat.turnHistory.length > 0 &&
+                       chat.turnHistory[chat.turnHistory.length - 1].role === 'assistant' &&
+                       chat.turnHistory[chat.turnHistory.length - 1].live !== true) {
+                    chat.turnHistory.pop();
+                }
+
                 // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
                 // the live turn joins turnHistory the moment its first
                 // segment arrives, flagged live. the streaming templates
@@ -444,7 +457,13 @@ async function handleWebSocketMessage(data) {
             const userAlreadyShown = lastTurn && lastTurn.role === 'user' &&
                 stream.userMsg && lastTurn.messages?.[0]?.index === stream.userMsg.index;
 
-            if (!userAlreadyShown) {
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+            // stream.userMsg is null after a mid-stream reload (the
+            // user_message_added broadcast went to the old page instance) -
+            // pushing it then rendered a phantom turn of [null]. the user
+            // message is in the backend history either way, so only push
+            // when we actually have it.
+            if (!userAlreadyShown && stream.userMsg) {
                 const userTurn = {"role": "user", "messages": [stream.userMsg]};
                 if (hasLiveTail) hist.splice(hist.length - 1, 0, userTurn);
                 else hist.push(userTurn);

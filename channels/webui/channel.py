@@ -572,6 +572,13 @@ class Webui(core.channel.Channel):
                 elif segment_type == "content":
                     await self.websocket_manager.set_stream_state("streaming")
 
+                # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+                # buffer the snapshot for mid-stream reconnect replay.
+                # payload is a fresh serialize_for_json copy every pass, so
+                # the buffered object is a true point-in-time snapshot and
+                # never aliases the collector's mutating live segment.
+                self.websocket_manager.record_turn_segment(payload.get("content"))
+
                 await self.websocket_manager.broadcast({
                     "type": "turn_stream",
                     "turn": payload.get("content")
@@ -2464,12 +2471,42 @@ class WebSocketManager:
         # processing, thinking, streaming, calling_tools, processing_tools
         self.stream_state = "idle"
 
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # live-turn segment buffer: the latest snapshot of every segment the
+        # turncollector has emitted for the in-progress stream, in order.
+        # a websocket that connects mid-stream (page reload) gets a replay,
+        # so the frontend can rebuild the entire live turn instead of only
+        # seeing segments streamed from now on. entries are serialized
+        # snapshots (fresh objects per broadcast), replaced in place while
+        # the same segment keeps growing.
+        self.turn_segments = []
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+    def record_turn_segment(self, segment: dict):
+        """track the newest snapshot of the streaming turn's segments.
+        mirrors the frontend's segment-identity rule: same type and same
+        tool_call_id = the same segment growing, otherwise a new one."""
+        if self.turn_segments:
+            last = self.turn_segments[-1]
+            if (last.get("type") == segment.get("type")
+                    and last.get("tool_call_id") == segment.get("tool_call_id")):
+                self.turn_segments[-1] = segment
+                return
+        self.turn_segments.append(segment)
+
     async def set_stream_state(self, state: str):
         """update the authoritative stream state and notify all clients.
         deduped, so high-frequency token paths can set it every token for free."""
         if state == self.stream_state:
             return
         self.stream_state = state
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # the segment buffer only ever belongs to the in-progress stream:
+        # wipe it when a new stream starts and when one finishes.
+        if state in ("message_sending", "idle"):
+            self.turn_segments = []
+
         await self.broadcast({"type": "stream_state", "state": state})
 
     async def connect(self, websocket: fastapi.WebSocket):
@@ -2491,6 +2528,20 @@ class WebSocketManager:
             "type": "stream_state",
             "state": self.stream_state
         })
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # mid-stream reconnect: replay the segments the in-progress stream
+        # has emitted so far, so a page reload resumes the live turn where
+        # it left off (all of it, not just whatever streams in next). the
+        # frontend's turn_stream handler rebuilds the turn from these exactly
+        # like it would have watched them live, because each snapshot is
+        # fully accumulated for its segment.
+        if self.stream_state != "idle" and self.turn_segments:
+            for segment in self.turn_segments:
+                await websocket.send_json({
+                    "type": "turn_stream",
+                    "turn": segment
+                })
 
         asyncio.create_task(self.queue_ready_signal())
 
