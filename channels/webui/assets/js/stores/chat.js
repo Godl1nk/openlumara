@@ -20,18 +20,28 @@ function mergeTurnHistory(existing, incoming) {
             : incoming[i];
     }
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-    // keep a live streaming turn across reloads: the backend history does
-    // not contain the in-progress assistant turn yet, so a plain merge
-    // would drop it (and the streaming DOM with it) whenever anything
-    // reloads the chat mid-stream. only an incoming history that reaches
-    // past the live turn's slot AND ends on an assistant turn counts as
-    // its finalized form - otherwise the live object stays at the tail.
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+    // keep a live streaming turn across reloads. the old rule dropped the
+    // live tail whenever the incoming history merely *ended* on an
+    // assistant turn - but mid-stream, tool rounds are already persisted
+    // to chat storage, so the fetched history DOES end on an assistant
+    // turn while the stream is still running: the live turn got orphaned on
+    // every reload during a tool call and no further tokens rendered.
+    // the reliable marker is the last USER turn: every assistant turn after
+    // it in the incoming history is the backend-persisted (partial) snapshot
+    // of the response that is still streaming - a subset of the live turn,
+    // which is the fresh superset. replace that trailing run with the live
+    // tail instead of dropping it.
     const tail = existing[existing.length - 1];
-    const inTail = incoming[incoming.length - 1];
-    if (tail && tail.live === true &&
-        (incoming.length < existing.length || !inTail || inTail.role !== 'assistant')) {
-        merged.push(tail);
+    if (tail && tail.live === true) {
+        let lastUser = -1;
+        for (let i = incoming.length - 1; i >= 0; i--) {
+            if (incoming[i].role === 'user') { lastUser = i; break; }
+        }
+
+        const kept = lastUser === -1 ? merged : merged.slice(0, lastUser + 1);
+        kept.push(tail);
+        return kept;
     }
 
     return merged;
@@ -157,7 +167,15 @@ CHAT_STORE = {
         // resplit trailing content runs (pushed announcements) into separate
         // assistant bubbles, same as reloadChat()
         (result.turn_history || []).forEach(resplitHistoryTurn);
-        this.turnHistory = result.turn_history;
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        // merge, never blanket-assign: init connects the websocket BEFORE
+        // this fetch runs, so a mid-stream reload can already have a live
+        // turn in turnHistory (rebuilt from the backend's segment replay)
+        // by the time this resolves. a direct assignment orphaned it and
+        // every token after that updated a detached object - the original
+        // "reload during a stream shows nothing" regression.
+        this.turnHistory = mergeTurnHistory(this.turnHistory, result.turn_history);
         this.currentTokenUsage = result.token_usage;
 
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
