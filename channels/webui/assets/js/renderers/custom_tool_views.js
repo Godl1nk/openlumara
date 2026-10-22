@@ -533,13 +533,42 @@ function schedulerInfo(args) {
     return { when, tags, action: args.action ?? '' };
 }
 
-// -- tools_load: module chips ---------------------------------------------------
+// -- tools_load: module chips + schema summary ---------------------------------
 
-// meta tool that loads other tools; the args' module_names list is the
-// whole story, the response is boilerplate. error responses (unknown
-// module) are shown as plain text instead.
+// meta tool that fetches tool schemas. the args' module_names list is the
+// live preview while streaming; the response carries {tools: [{name,
+// description, parameters}], not_found, disabled}. the full parameters are
+// way too big for a card, so the view summarises: one line per tool
+// (name + dimmed description), grouped per requested module.
 function toolLoadModules(args) {
     return Array.isArray(args.module_names) ? args.module_names : [];
+}
+
+function toolLoadGroups(tool, cacheKey) {
+    const resp = toolResponse(tool);
+    const tools = Array.isArray(resp?.tools) ? resp.tools : [];
+    const groups = [];
+    const claimed = new Set();
+    // group by the REQUESTED module names (module names may contain
+    // underscores, so prefix-matching on the request beats name.split):
+    // a tool belongs to the module whose name it starts with + '_'.
+    for (const mod of toolLoadModules(toolArgs(tool, cacheKey))) {
+        const prefix = String(mod).toLowerCase() + '_';
+        const own = tools.filter(t =>
+            typeof t?.name === 'string' &&
+            t.name.toLowerCase().startsWith(prefix) && !claimed.has(t.name));
+        own.forEach(t => claimed.add(t.name));
+        if (own.length) groups.push({module: String(mod), tools: own});
+    }
+    const rest = tools.filter(t => !claimed.has(t?.name));
+    if (rest.length) groups.push({module: 'tools', tools: rest});
+    return {
+        running: !resp,
+        groups,
+        notFound: Array.isArray(resp?.not_found) ? resp.not_found : [],
+        enabled: Array.isArray(resp?.enabled_modules) ? resp.enabled_modules : [],
+        disabled: Array.isArray(resp?.disabled) ? resp.disabled : [],
+    };
 }
 
 // -- shared: error text below any custom view ----------------------------------

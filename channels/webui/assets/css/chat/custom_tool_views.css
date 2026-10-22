@@ -384,6 +384,82 @@
         }
     }
 
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+       tools_load result: per-module sections, one row per fetched tool
+       (accent code name + dimmed description, ellipsised). rows form one
+       soft table via row borders; hover tint mirrors the grep box rows. */
+    .tool-load-group {
+        /* the (hidden) running-chips div stays a sibling, so separate on the
+           group itself instead of relying on :first-child */
+        & + .tool-load-group {
+            margin-top: 10px;
+        }
+
+        .tool-load-module {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 5px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            opacity: 0.85;
+
+            svg {
+                width: 0.95em;
+                height: 0.95em;
+                flex-shrink: 0;
+                color: var(--accent);
+            }
+
+            .tool-load-count {
+                font-weight: 400;
+                font-size: 0.72rem;
+                color: var(--text-secondary);
+                opacity: 0.7;
+            }
+        }
+
+        .tool-load-rows {
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+
+            .tool-load-row {
+                display: flex;
+                align-items: baseline;
+                gap: 10px;
+                padding: 5px 10px;
+
+                & + .tool-load-row {
+                    border-top: 1px solid var(--border-color);
+                }
+
+                &:hover {
+                    background: color-mix(in srgb, var(--accent) 6%, transparent);
+                }
+
+                .tool-load-name {
+                    font-family: var(--code-font);
+                    font-size: 0.78rem;
+                    color: var(--accent);
+                    white-space: nowrap;
+                }
+
+                .tool-load-desc {
+                    flex: 1;
+                    min-width: 0;
+                    font-size: 0.75rem;
+                    color: var(--text-secondary);
+                    opacity: 0.75;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+            }
+        }
+    }
+
     /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
        scheduler job card: clock + when + tags, action text below */
     .job-card {
