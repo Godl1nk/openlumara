@@ -24,6 +24,61 @@ from collections import Counter
 
 import core
 
+
+# audit r3-H1: linear-time replacement for "A.*?B.*?C" style patterns.
+# Python's backtracking engine runs those in O(n^2)/O(n^3) when the later
+# parts never match (a 20KB line of "translate also " took 90s+), and every
+# fetched page goes through them on the event loop. Semantics match the
+# regex (leftmost match, lazy gaps, '.' does not cross newlines): if no
+# B/C follows the EARLIEST A on a line, no later A can match either, so we
+# skip to the next line instead of retrying from every A.
+def _ordered_spans(content, parts):
+    """Yield (start, end) of non-overlapping ordered matches of compiled
+    regexes `parts` (each must match after the previous one, same line)."""
+    pos = 0
+    n = len(content)
+    while pos < n:
+        first = parts[0].search(content, pos)
+        if not first:
+            return
+        line_end = content.find('\n', first.start())
+        if line_end == -1:
+            line_end = n
+        cur = first
+        for part in parts[1:]:
+            cur = part.search(content, cur.end(), line_end)
+            if not cur:
+                break
+        if cur:
+            yield first.start(), cur.end()
+            pos = max(cur.end(), first.start() + 1)
+        else:
+            pos = line_end + 1
+
+
+def _ordered_search(content, parts):
+    for start, end in _ordered_spans(content, parts):
+        return content[start:end]
+    return None
+
+
+def _ordered_sub(content, parts, repl):
+    out = []
+    last = 0
+    for start, end in _ordered_spans(content, parts):
+        out.append(content[last:start])
+        out.append(repl)
+        last = end
+    if not out:
+        return content
+    out.append(content[last:])
+    return ''.join(out)
+
+
+def _ordered(*regexes):
+    return tuple(re.compile(r, re.IGNORECASE) for r in regexes)
+
+
 # ============================================================================
 # Prompt Injection Defense Layer (Research-backed, 2025-2026)
 # ============================================================================
@@ -102,6 +157,8 @@ class PromptInjectionDetector:
     
     # High-risk instruction patterns (from OWASP and adversarial testing)
     # These are ranked by likelihood of being used in real attacks
+    # audit r3-H1: "(?:\w+\s+)*" gaps are bounded to {0,8} (quadratic before),
+    # and "A.*?B.*?C" patterns are tuples matched by _ordered_search (linear).
     HIGH_RISK_PATTERNS = [
         # Core override commands (most common)
         (r'(?i)\bignore\s+(?:all\s+)?(?:previous|above|prior|earlier|existing)\s+(?:instructions|rules|guidelines|prompts|commands|directives)\b', 'OVERRIDE_DIRECTIVE'),
@@ -112,21 +169,21 @@ class PromptInjectionDetector:
         (r'(?i)\bbypass\s+(?:all\s+)?(?:previous|above|prior|existing)\s+(?:instructions|rules|guidelines|prompts|filters|safety)\b', 'OVERRIDE_DIRECTIVE'),
         
         # Role/persona hijacking
-        (r'(?i)\b(?:act\s+as|pretend\s+to\s+be|assume\s+the\s+role|take\s+on\s+the\s+role|play\s+the\s+role)\s+(?:of\s+)?(?:\w+\s+)*(?:developer|admin|system|programmer|coder|assistant|chatbot|bot|ai|language\s+model)\b', 'ROLE_HIJACK'),
-        (r'(?i)\byou\s+are\s+(?:now|to\s+be|starting\s+now|from\s+now\s+on)\s+(?:a\s+)?(?:\w+\s+)*(?:developer|admin|system|programmer|coder|assistant|chatbot|bot|ai|language\s+model)\b', 'ROLE_HIJACK'),
-        (r'(?i)\b(?:your\s+)?(?:new\s+)?(?:role|identity|persona|character)\s+(?:is|becomes|changes\s+to)\s+(?:a\s+)?(?:\w+\s+)*(?:developer|admin|system|programmer|coder|assistant|chatbot|bot|ai)\b', 'ROLE_HIJACK'),
+        (r'(?i)\b(?:act\s+as|pretend\s+to\s+be|assume\s+the\s+role|take\s+on\s+the\s+role|play\s+the\s+role)\s+(?:of\s+)?(?:\w+\s+){0,8}(?:developer|admin|system|programmer|coder|assistant|chatbot|bot|ai|language\s+model)\b', 'ROLE_HIJACK'),
+        (r'(?i)\byou\s+are\s+(?:now|to\s+be|starting\s+now|from\s+now\s+on)\s+(?:a\s+)?(?:\w+\s+){0,8}(?:developer|admin|system|programmer|coder|assistant|chatbot|bot|ai|language\s+model)\b', 'ROLE_HIJACK'),
+        (r'(?i)\b(?:your\s+)?(?:new\s+)?(?:role|identity|persona|character)\s+(?:is|becomes|changes\s+to)\s+(?:a\s+)?(?:\w+\s+){0,8}(?:developer|admin|system|programmer|coder|assistant|chatbot|bot|ai)\b', 'ROLE_HIJACK'),
         
         # System prompt extraction
         (r'(?i)\b(?:print|output|reveal|show|display|return|list|dump|extract|output|display)\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions|instructions|system\s+prompt|initial\s+instructions|developer\s+instructions|internal\s+instructions|prompt\s+instructions)\b', 'SYSTEM_EXTRACT'),
         (r'(?i)\b(?:repeat|say|write|print|output|display)\s+(?:exactly|verbatim|word\s+for\s+word|exactly\s+what|the\s+exact)\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions|rules|guidelines)\b', 'SYSTEM_EXTRACT'),
         
         # Mode switching
-        (r'(?i)\b(?:enter|switch\s+to|activate|enable|go\s+into)\s+(?:\w+\s+)*(?:debug|developer|admin|system|unrestricted|free\s+mode|developer\s+mode|playground|test\s+mode|jailbreak|dan\s+mode|god\s+mode|evil\s+mode)\b', 'MODE_SWITCH'),
-        (r'(?i)\b(?:you\s+are\s+now|you\s+have\s+been|you\s+are\s+going\s+to\s+be)\s+(?:a\s+)?(?:\w+\s+)*(?:developer|admin|system|unrestricted|free\s+mode|developer\s+mode|playground|test\s+mode|jailbreak|dan\s+mode|god\s+mode)\b', 'MODE_SWITCH'),
+        (r'(?i)\b(?:enter|switch\s+to|activate|enable|go\s+into)\s+(?:\w+\s+){0,8}(?:debug|developer|admin|system|unrestricted|free\s+mode|developer\s+mode|playground|test\s+mode|jailbreak|dan\s+mode|god\s+mode|evil\s+mode)\b', 'MODE_SWITCH'),
+        (r'(?i)\b(?:you\s+are\s+now|you\s+have\s+been|you\s+are\s+going\s+to\s+be)\s+(?:a\s+)?(?:\w+\s+){0,8}(?:developer|admin|system|unrestricted|free\s+mode|developer\s+mode|playground|test\s+mode|jailbreak|dan\s+mode|god\s+mode)\b', 'MODE_SWITCH'),
         
         # Instruction smuggling via translation/summarization
-        (r'(?i)\b(?:translate|summarize|repeat|output|translate|convert|transliterate)\b.*?\b(?:but\s+first|and\s+then|also|however|instead|before|after)\b.*?\b(?:ignore|forget|disregard|override|bypass|skip)\b', 'INSTRUCTION_SMUGGLE'),
-        (r'(?i)\b(?:translate|summarize|repeat|output)\b.*?\b(?:your\s+)?(?:system|developer|initial|original)\s+(?:prompt|instructions|rules)\b', 'INSTRUCTION_SMUGGLE'),
+        (_ordered(r'\b(?:translate|summarize|repeat|output|translate|convert|transliterate)\b', r'\b(?:but\s+first|and\s+then|also|however|instead|before|after)\b', r'\b(?:ignore|forget|disregard|override|bypass|skip)\b'), 'INSTRUCTION_SMUGGLE'),
+        (_ordered(r'\b(?:translate|summarize|repeat|output)\b', r'\b(?:your\s+)?(?:system|developer|initial|original)\s+(?:prompt|instructions|rules)\b'), 'INSTRUCTION_SMUGGLE'),
         
         # Hypothetical scenario attacks
         (r'(?i)\b(?:imagine|suppose|pretend|consider|assume|let\s+\'s\s+say|what\s+if)\s+(?:a\s+)?(?:scenario|world|case|situation|hypothetical)\s+(?:where|in\s+which|that|where\s+you)\s+(?:can|are\s+able|can\s+freely|are\s+allowed)\s+(?:to\s+)?(?:do|ignore|bypass|override)\b', 'HYPOTHETICAL_ATTACK'),
@@ -145,9 +202,10 @@ class PromptInjectionDetector:
     # Semantic patterns that indicate adversarial intent
     ADVERSARIAL_SEMANTICS = [
         (r'(?i)\b(?:you\s+must|you\s+will|you\s+need\s+to|you\s+have\s+to)\s+(?:ignore|disregard|forget|override|bypass)\b', 'COMPULSORY_OVERRIDE'),
-        (r'(?i)\b(?:this\s+is\s+a\s+test|for\s+testing\s+purposes|this\s+is\s+just\s+a\s+test|testing\s+only)\b.*?\b(?:ignore|forget|disregard|override|bypass)\b', 'TEST_MASKING'),
-        (r'(?i)\b(?:as\s+a\s+(?:developer|programmer|sysadmin|admin|system|engineer))\b.*?\b(?:you\s+must|you\s+will|you\s+need\s+to)\s+(?:ignore|disregard|forget|override|bypass)\b', 'AUTHORITY_MASKING'),
-        (r'(?i)\b(?:emergency|urgent|critical|important|must|required|mandatory)\b.*?\b(?:ignore|forget|disregard|override|bypass)\b', 'URGENCY_MANIPULATION'),
+        # audit r3-H1: ordered (linear) matching instead of ".*?" backtracking
+        (_ordered(r'\b(?:this\s+is\s+a\s+test|for\s+testing\s+purposes|this\s+is\s+just\s+a\s+test|testing\s+only)\b', r'\b(?:ignore|forget|disregard|override|bypass)\b'), 'TEST_MASKING'),
+        (_ordered(r'\b(?:as\s+a\s+(?:developer|programmer|sysadmin|admin|system|engineer))\b', r'\b(?:you\s+must|you\s+will|you\s+need\s+to)\s+(?:ignore|disregard|forget|override|bypass)\b'), 'AUTHORITY_MASKING'),
+        (_ordered(r'\b(?:emergency|urgent|critical|important|must|required|mandatory)\b', r'\b(?:ignore|forget|disregard|override|bypass)\b'), 'URGENCY_MANIPULATION'),
     ]
     
     @classmethod
@@ -180,18 +238,19 @@ class PromptInjectionDetector:
             evidence.append(f"Found {homoglyph_count} potential homoglyph characters")
         
         # Layer 3: High-risk pattern matching
+        # audit r3-H1: search() (first hit only) + ordered matching for tuples
         for pattern, category in cls.HIGH_RISK_PATTERNS:
-            matches = re.findall(pattern, content)
-            if matches:
+            match = cls._first_match(pattern, content)
+            if match is not None:
                 patterns_found.append(category)
-                evidence.append(f"Pattern: {matches[0][:100]}")
+                evidence.append(f"Pattern: {match[:100]}")
         
         # Layer 4: Semantic analysis
         for pattern, category in cls.ADVERSARIAL_SEMANTICS:
-            matches = re.findall(pattern, content)
-            if matches:
+            match = cls._first_match(pattern, content)
+            if match is not None:
                 patterns_found.append(category)
-                evidence.append(f"Semantic pattern: {matches[0][:100]}")
+                evidence.append(f"Semantic pattern: {match[:100]}")
         
         # Layer 5: Encoding detection
         if cls._detect_encoded_injection(content):
@@ -224,6 +283,14 @@ class PromptInjectionDetector:
             'evidence': evidence[:5],  # Limit evidence items
         }
     
+    @staticmethod
+    def _first_match(pattern, content):
+        """audit r3-H1: first matched text for a regex string or an _ordered tuple."""
+        if isinstance(pattern, tuple):
+            return _ordered_search(content, pattern)
+        m = re.search(pattern, content)
+        return m.group(0) if m else None
+
     @classmethod
     def _detect_encoded_injection(cls, content: str) -> bool:
         """Detect Base64, hex, or other encoded payloads."""
@@ -246,13 +313,16 @@ class PromptInjectionDetector:
         
         for match in url_safe_b64.finditer(content):
             try:
-                # Add padding if needed
-                padding = '=' * (4 - len(match.group()) % 4)
-                if padding != '4':
-                    decoded = base64.b64decode(match.group() + padding, validate=True)
-                    decoded_str = decoded.decode('utf-8', errors='replace')
-                    if any(p in decoded_str.lower() for p in ['ignore', 'system', 'prompt', 'instruction', 'override', 'bypass', 'jailbreak', 'developer']):
-                        return True
+                # audit r3-L7: the old check compared the padding to '4'
+                # (always true -> '====' appended for len%4==0) and used the
+                # standard alphabet with validate=True, which rejects '-'/'_':
+                # this whole branch could never detect anything.
+                token = match.group().rstrip('=')
+                padding = '=' * (-len(token) % 4)
+                decoded = base64.urlsafe_b64decode(token + padding)
+                decoded_str = decoded.decode('utf-8', errors='replace')
+                if any(p in decoded_str.lower() for p in ['ignore', 'system', 'prompt', 'instruction', 'override', 'bypass', 'jailbreak', 'developer']):
+                    return True
             except Exception:
                 pass
         
@@ -290,17 +360,40 @@ class ContentSanitizer:
     """
     
     # Base64 pattern for detection (not decoding/execution)
-    BASE64_PATTERN = re.compile(r'\b(?:[A-Za-z0-9+/]{4}){8,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\b')
+    # audit r3-L7: the trailing \b made every PADDED blob ("...GU=" followed by
+    # a space or end of text) unmatchable, so most real base64 was never seen;
+    # explicit run delimiters instead (one start per run -> still linear).
+    BASE64_PATTERN = re.compile(r'(?<![A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4}){8,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?(?![A-Za-z0-9+/=])')
     
     # Control characters to remove
     CONTROL_CHARS = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
-    
+
+    # audit r3-M5: invisible code points the ZERO_WIDTH_CHARS set misses:
+    # Unicode TAG characters U+E0000-E007F ("ASCII smuggling": invisible to
+    # humans, read as text by LLMs), bidi isolates U+2066-2069, Mongolian
+    # vowel separator, combining grapheme joiner, variation selectors.
+    INVISIBLE_CHARS = re.compile('[\U000E0000-\U000E007F⁦-⁩᠎͏︀-️]')
+
+    # audit r3-M3: homoglyphs are only folded inside words that MIX Latin
+    # letters with lookalikes (the attack shape); folding every Cyrillic /
+    # Greek capital corrupted legitimate non-Latin text ("Москва" -> "Mосква").
+    _WORD = re.compile(r'\w+')
+    _HOMOGLYPH_TABLE = str.maketrans(PromptInjectionDetector.HOMOGlyph_MAP)
+    _ASCII_LETTER = re.compile(r'[A-Za-z]')
+
+    # audit r3-H1: block elements are stripped by a linear str.find scan
+    # (see _strip_blocks) instead of '<x[^>]*>.*?</x>' regexes, which were
+    # quadratic on many unclosed openers and missed '</script >' / unclosed
+    # blocks (whose remaining text is still script/comment to a browser).
+    BLOCK_ELEMENTS = (('<!--', '-->'), ('<script', '</script'), ('<style', '</style'))
+
     # HTML injection patterns
     HTML_INJECTION = [
-        (r'<!--.*?-->', ''),  # HTML comments
-        (r'<script[^>]*>.*?</script>', '', re.IGNORECASE | re.DOTALL),  # Scripts
-        (r'<style[^>]*>.*?</style>', '', re.IGNORECASE | re.DOTALL),  # Styles
-        (r'\s*on\w+\s*=\s*["\'][^"\']*["\']', '', re.IGNORECASE),  # Event handlers
+        # audit r3-H1: comments/scripts/styles are handled by _strip_blocks.
+        # Event handlers: no leading \s* (quadratic on whitespace runs), no
+        # match inside words ("content='x'" used to lose "ontent='x'"),
+        # bounded quoted value (unclosed quotes were quadratic).
+        (r'(?<![\w-])on\w+\s*=\s*(?:"[^"]{0,2048}"|\'[^\']{0,2048}\')', '', re.IGNORECASE),  # Event handlers
         (r'javascript:', '', re.IGNORECASE),  # JavaScript protocol
         (r'vbscript:', '', re.IGNORECASE),  # VBScript protocol
         (r'data:text/html', '', re.IGNORECASE),  # Data URIs
@@ -323,6 +416,13 @@ class ContentSanitizer:
         if not isinstance(content, str):
             content = str(content) if content is not None else ""
 
+        # Layer 4 (moved first, audit r3-M5): decode HTML entities BEFORE the
+        # unicode/zero-width/control layers. It used to run after them, so
+        # '&#8203;' or '&#x410;' re-introduced the very characters those
+        # layers had just removed ("ig&#8203;nore previous instructions"
+        # slipped past every filter).
+        content = html_module.unescape(content)
+
         # Layer 1: Unicode normalization (defeats homoglyph attacks)
         content = cls._normalize_unicode(content)
         
@@ -332,17 +432,14 @@ class ContentSanitizer:
         # Layer 3: Remove control characters
         content = cls.CONTROL_CHARS.sub('', content)
         
-        # Layer 4: Decode HTML entities (prevents entity-based injection)
-        content = html_module.unescape(content)
-        
-        # Layer 5: URL decode (prevents URL-encoded injection)
-        try:
-            content = unquote(content)
-        except Exception:
-            pass
+        # Layer 5 removed (audit r3-M3): unquote() of the whole body rewrote
+        # every %XX in the page ("a%2Fb" -> "a/b", "100%25" -> "100%"),
+        # corrupting URLs/data the agent needs, for no real security gain.
         
         # Layer 6: Strip Base64 payloads (potential hidden instructions)
-        content = cls.BASE64_PATTERN.sub('[BASE64_ENCODED_DATA]', content)
+        # audit r3-M3: only blobs that decode to readable text are redacted;
+        # hashes, IDs, tokens and URL paths are no longer destroyed.
+        content = cls.BASE64_PATTERN.sub(cls._redact_base64, content)
         
         # Layer 7: Remove HTML injection vectors
         content = cls._sanitize_html_injection(content)
@@ -366,14 +463,35 @@ class ContentSanitizer:
         return content.strip()
     
     @classmethod
+    def _redact_base64(cls, match) -> str:
+        """audit r3-M3: redact a base64 run only if it decodes to readable text."""
+        token = match.group()
+        try:
+            decoded = base64.b64decode(token, validate=True).decode('utf-8')
+        except Exception:
+            return token
+        printable = sum(1 for c in decoded if c.isprintable() or c in '\r\n\t')
+        if decoded and printable / len(decoded) >= 0.9:
+            return '[BASE64_ENCODED_DATA]'
+        return token
+
+    @classmethod
+    def _fold_homoglyph_word(cls, match) -> str:
+        word = match.group()
+        folded = word.translate(cls._HOMOGLYPH_TABLE)
+        if folded != word and cls._ASCII_LETTER.search(word):
+            return folded
+        return word
+
+    @classmethod
     def _normalize_unicode(cls, content: str) -> str:
         """Normalize Unicode to defeat homoglyph attacks."""
         # NFKC normalization converts compatibility characters to their canonical forms
         content = unicodedata.normalize('NFKC', content)
         
         # Replace known homoglyphs with their ASCII equivalents
-        for homoglyph, ascii_char in PromptInjectionDetector.HOMOGlyph_MAP.items():
-            content = content.replace(homoglyph, ascii_char)
+        # audit r3-M3: only inside mixed-script words (see _HOMOGLYPH_TABLE)
+        content = cls._WORD.sub(cls._fold_homoglyph_word, content)
         
         return content
     
@@ -382,11 +500,54 @@ class ContentSanitizer:
         """Remove zero-width and invisible characters used in hidden injection."""
         for char in PromptInjectionDetector.ZERO_WIDTH_CHARS:
             content = content.replace(char, '')
+        # audit r3-M5: tag characters, bidi isolates, etc.
+        content = cls.INVISIBLE_CHARS.sub('', content)
+        return content
+
+    @staticmethod
+    def _strip_blocks(content: str, blocks) -> str:
+        """
+        audit r3-H1: remove <!-- -->, <script>, <style> blocks in linear time.
+        An opener without a closer removes everything after it (that is how
+        a browser treats an unclosed comment/script, and it keeps hidden
+        text out); closers tolerate whitespace/attributes ('</script >').
+        """
+        lower = content.lower()
+        for opener, closer in blocks:
+            if opener not in lower:
+                continue
+            out = []
+            pos = 0
+            n = len(lower)
+            while True:
+                i = lower.find(opener, pos)
+                if i == -1:
+                    break
+                j = i + len(opener)
+                if opener[1].isalpha() and j < n and (lower[j].isalnum() or lower[j] in '-_:'):
+                    # '<scripts>', '<style-guide>': not the element we want
+                    out.append(content[pos:j])
+                    pos = j
+                    continue
+                out.append(content[pos:i])
+                k = lower.find(closer, j)
+                if k == -1:
+                    pos = n
+                    break
+                if closer == '-->':
+                    pos = k + len(closer)
+                else:
+                    gt = lower.find('>', k + len(closer))
+                    pos = n if gt == -1 else gt + 1
+            out.append(content[pos:])
+            content = ''.join(out)
+            lower = content.lower()
         return content
     
     @classmethod
     def _sanitize_html_injection(cls, content: str) -> str:
         """Remove HTML-based injection vectors."""
+        content = cls._strip_blocks(content, cls.BLOCK_ELEMENTS)  # audit r3-H1
         for pattern_data in cls.HTML_INJECTION:
             if len(pattern_data) == 3:
                 pattern, replacement, flags = pattern_data
@@ -410,7 +571,7 @@ class ContentSanitizer:
             # Role hijacking - character/role playing
             r'(?i)\b(?:play\s+the\s+role\s+of|immerse\s+yourself\s+into\s+the\s+role\s+of|take\s+on\s+the\s+role\s+of|assume\s+the\s+role\s+of|act\s+as|pretend\s+to\s+be|become|simulate|roleplay\s+as)\s+(?:an\s+)?(?:developer|admin|system|programmer|coder|assistant|bot|ai|language\s+model|dan|evilbot|antidan|god\s+mode|unrestricted|free\s+mode|jailbreak)\b',
             r'(?i)\b(?:you\s+are\s+(?:now|to\s+be|starting\s+now|from\s+now\s+on|going\s+to\s+be))\s+(?:a\s+)?(?:developer|admin|system|unrestricted|free\s+mode|developer\s+mode|jailbreak|dan\s+mode|god\s+mode|evilbot|antidan)\b',
-            r'(?i)\b(?:enter|switch\s+to|activate|enable)\s+(?:\w+\s+)*(?:debug|developer|admin|unrestricted|free\s+mode|developer\s+mode|jailbreak|dan\s+mode|god\s+mode|evilbot)\b',
+            r'(?i)\b(?:enter|switch\s+to|activate|enable)\s+(?:\w+\s+){0,8}(?:debug|developer|admin|unrestricted|free\s+mode|developer\s+mode|jailbreak|dan\s+mode|god\s+mode|evilbot)\b',
             r'(?i)\b(?:your\s+)?(?:new\s+)?(?:role|identity|persona|character)\s+(?:is|becomes|changes\s+to)\s+(?:a\s+)?(?:developer|admin|system|programmer)\b',
             # Bypass policy language
             r'(?i)\b(?:bypass|break\s+free\s+of|break\s+the|ignore|override|disregard|evade)\s+(?:all\s+)?(?:rules|policy|restrictions|guidelines|filters|safety|content\s+policy|openai)\b',
@@ -432,22 +593,24 @@ class ContentSanitizer:
         ]
         
         # Second pass: Medium-risk patterns (neutralize in neutralize mode)
+        # audit r3-H1: '.*?' patterns are _ordered tuples (linear), applied
+        # with _ordered_sub; '(?:\w+\s+)*' gaps bounded to {0,8}.
         medium_patterns = [
             # Instruction smuggling via translation/summarization
-            r'(?i)\b(translate|summarize|repeat|output|convert|transliterate)\b.*?\b(but\s+first|and\s+then|also|however)\b.*?\b(ignore|forget|disregard|override|bypass)\b',
-            r'(?i)\b(translate|summarize|repeat|output)\b.*?\b(your\s+)?(system|developer|initial|original)\s+(?:prompt|instructions|rules)\b',
+            _ordered(r'\b(translate|summarize|repeat|output|convert|transliterate)\b', r'\b(but\s+first|and\s+then|also|however)\b', r'\b(ignore|forget|disregard|override|bypass)\b'),
+            _ordered(r'\b(translate|summarize|repeat|output)\b', r'\b(your\s+)?(system|developer|initial|original)\s+(?:prompt|instructions|rules)\b'),
             # Hypothetical scenario attacks
             r'(?i)\b(imagine|suppose|pretend|consider|assume|let\s+\'s\s+say|what\s+if)\s+(?:a\s+)?(?:scenario|world|case|situation|hypothetical)\s+(?:where|in\s+which|that|where\s+you)\s+(?:can|are\s+able|can\s+freely|are\s+allowed)\s+(?:to\s+)?(?:do|ignore|bypass|override)\b',
             # Urgency manipulation
-            r'(?i)\b(emergency|urgent|critical|important|must|required|mandatory)\b.*?\b(ignore|forget|disregard|override|bypass)\b',
+            _ordered(r'\b(emergency|urgent|critical|important|must|required|mandatory)\b', r'\b(ignore|forget|disregard|override|bypass)\b'),
             # Compulsory override
             r'(?i)\b(you\s+must|you\s+will|you\s+need\s+to|you\s+have\s+to)\s+(?:ignore|disregard|forget|override|bypass)\b',
             # Test masking
-            r'(?i)\b(this\s+is\s+a\s+test|for\s+testing\s+purposes|this\s+is\s+just\s+a\s+test|testing\s+only)\b.*?\b(ignore|forget|disregard|override|bypass)\b',
+            _ordered(r'\b(this\s+is\s+a\s+test|for\s+testing\s+purposes|this\s+is\s+just\s+a\s+test|testing\s+only)\b', r'\b(ignore|forget|disregard|override|bypass)\b'),
             # Authority masking
-            r'(?i)\b(as\s+a\s+(?:developer|programmer|sysadmin|admin|system|engineer))\b.*?\b(you\s+must|you\s+will|you\s+need\s+to)\s+(?:ignore|disregard|forget|override|bypass)\b',
+            _ordered(r'\b(as\s+a\s+(?:developer|programmer|sysadmin|admin|system|engineer))\b', r'\b(you\s+must|you\s+will|you\s+need\s+to)\s+(?:ignore|disregard|forget|override|bypass)\b'),
             # Additional role hijacking
-            r'(?i)\b(play\s+the\s+role|take\s+on\s+the\s+role|assume\s+the\s+role)\s+(?:of\s+)?(?:\w+\s+)*(?:developer|admin|system|programmer)\b',
+            r'(?i)\b(play\s+the\s+role|take\s+on\s+the\s+role|assume\s+the\s+role)\s+(?:of\s+)?(?:\w+\s+){0,8}(?:developer|admin|system|programmer)\b',
             # Mode switching
             r'(?i)\b(?:you\s+are\s+now|you\s+have\s+been|you\s+are\s+going\s+to\s+be)\s+(?:a\s+)?(?:developer|admin|system|unrestricted|free\s+mode|developer\s+mode|test\s+mode|jailbreak|dan\s+mode)\b',
             # General instruction manipulation
@@ -457,7 +620,7 @@ class ContentSanitizer:
             r'(?i)\b(disable|turn\s+off|deactivate|remove|delete)\s+(?:all\s+)?(?:filters|restrictions|limitations|constraints|safety\s+measures|guardrails|protocols)\b',
             # DAN-specific patterns
             r'(?i)\b(?:daniel|do\s+anything\s+now|dan)\s+(?:stands\s+for|which\s+stands\s+for|is\s+an?|acronym\s+for)\s+(?:[A-Z]{2,}|[^\s]+)\b',
-            r'(?i)\b(?:i\s+am|you\s+are)\s+(?:an\s+)?(?:ai|language\s+model|chatbot|bot|assistant)\s+(?:just\s+like|similar\s+to|like)\s+(?:chatgpt|gpt|openai|gpt-3|gpt-4)\b.*?\b(?:but\s+have\s+no|but\s+don\'?t\s+have|without|free\s+from)\s+(?:filters|restrictions|limits|censorship)\b',
+            _ordered(r'\b(?:i\s+am|you\s+are)\s+(?:an\s+)?(?:ai|language\s+model|chatbot|bot|assistant)\s+(?:just\s+like|similar\s+to|like)\s+(?:chatgpt|gpt|openai|gpt-3|gpt-4)\b', r'\b(?:but\s+have\s+no|but\s+don\'?t\s+have|without|free\s+from)\s+(?:filters|restrictions|limits|censorship)\b'),
             r'(?i)\b(?:i\s+can|you\s+can)\s+(?:do\s+anything|answer\s+anything|provide\s+anything)\s+(?:i\s+want|you\s+want|without\s+restriction|without\s+limits)\b',
             r'(?i)\b(?:i\s+will|you\s+will)\s+(?:always|never|never\s+refuse|always\s+answer|always\s+provide)\s+(?:answer|respond|provide|give)\s+(?:it|anything|all\s+requests)\b',
             r'(?i)\b(?:don\'?t\s+need\s+to\s+adhere|don\'?t\s+follow|don\'?t\s+abide|don\'?t\s+restrict|don\'?t\s+censor)\s+(?:anything|rules|policy|guidelines)\b',
@@ -477,7 +640,10 @@ class ContentSanitizer:
         # Apply medium patterns (in neutralize mode, filter; in remove mode, partial)
         if mode == "neutralize":
             for pattern in medium_patterns:
-                content = re.sub(pattern, '[REDACTED PROMPT INJECTION ATTEMPT]', content)
+                if isinstance(pattern, tuple):  # audit r3-H1
+                    content = _ordered_sub(content, pattern, '[REDACTED PROMPT INJECTION ATTEMPT]')
+                else:
+                    content = re.sub(pattern, '[REDACTED PROMPT INJECTION ATTEMPT]', content)
         else:
             # Remove mode: only remove the most dangerous parts
             for pattern in critical_patterns[:3]:
@@ -485,6 +651,8 @@ class ContentSanitizer:
         
         return content
     
+    DENSITY_MIN_WORDS = 20  # audit r3-M3
+
     @classmethod
     def _apply_density_filter(cls, content: str) -> str:
         """
@@ -504,7 +672,10 @@ class ContentSanitizer:
             imperatives += len(re.findall(pattern, content, re.IGNORECASE))
         
         words = content.split()
-        if len(words) > 0 and imperatives / len(words) > 0.15:
+        # audit r3-M3: short strings (JSON values like "delete", "run", "use
+        # the API") are always "100% imperative" and were wiped to ''. The
+        # ratio is only meaningful on prose of some length.
+        if len(words) >= cls.DENSITY_MIN_WORDS and imperatives / len(words) > 0.15:
             # Content has excessive imperative density - filter it heavily
             # Remove all imperative patterns
             for pattern in imperative_verbs:
@@ -565,14 +736,18 @@ class ContentSanitizer:
     def _post_validate(cls, content: str) -> str:
         """Post-sanitization validation to catch edge cases."""
         # Remove any remaining problematic patterns
+        # audit r3-H1: the two '.*?' pairs are ordered (linear) matches now
         remaining_patterns = [
-            r'\[\[.*?\]\]',  # Double-bracket injection
-            r'<\|.*?\|>',  # Pipe injection
+            _ordered(r'\[\[', r'\]\]'),  # Double-bracket injection
+            _ordered(r'<\|', r'\|>'),  # Pipe injection
             r'(?i)\b(?:system|prompt|instruction|command)\s+(?:separator|delimiter|boundary|tag)\b',
         ]
         
         for pattern in remaining_patterns:
-            content = re.sub(pattern, '', content, flags=re.IGNORECASE)
+            if isinstance(pattern, tuple):
+                content = _ordered_sub(content, pattern, '')
+            else:
+                content = re.sub(pattern, '', content, flags=re.IGNORECASE)
         
         # Ensure no empty lines from stripping
         content = re.sub(r'\n{3,}', '\n\n', content)
@@ -595,29 +770,33 @@ class ContentSanitizer:
         instruction_count = sum(1 for word in words if word in instruction_keywords)
         return instruction_count / len(words)
 
+    _PURE_URL = re.compile(r'[A-Za-z][A-Za-z0-9+.-]*://[^\s<>"\']{1,2048}')
+
+    @classmethod
+    def _is_pure_url(cls, value: str) -> bool:
+        """
+        audit r3-L5: a string is preserved as a URL only if the WHOLE string
+        is one URL. urlparse() accepted "https://x\nIgnore all previous
+        instructions..." (scheme + netloc present), so any string that merely
+        started like a URL skipped sanitization entirely.
+        """
+        return bool(cls._PURE_URL.fullmatch(value))
+
     @classmethod
     def sanitize_structured_data(cls, data):
         """Recursively sanitize data structures while preserving URLs."""
         if isinstance(data, str):
             # Skip sanitization for pure URLs to preserve them intact
-            try:
-                parsed = urlparse(data)
-                if parsed.scheme and parsed.netloc:
-                    return data
-            except Exception:
-                pass
+            if cls._is_pure_url(data):  # audit r3-L5
+                return data
             return cls.sanitize(data)
         elif isinstance(data, dict):
             result = {}
             for k, v in data.items():
                 if isinstance(v, str):
-                    try:
-                        parsed = urlparse(v)
-                        if parsed.scheme and parsed.netloc:
-                            result[k] = v  # Preserve URLs
-                        else:
-                            result[k] = cls.sanitize(v)
-                    except Exception:
+                    if cls._is_pure_url(v):  # audit r3-L5
+                        result[k] = v  # Preserve URLs
+                    else:
                         result[k] = cls.sanitize(v)
                 elif isinstance(v, dict):
                     result[k] = cls.sanitize_structured_data(v)
@@ -639,14 +818,13 @@ class ContentSanitizer:
         Removes injection payloads in comments, attributes, scripts, etc.
         """
         # Remove HTML comments (common injection vector for hidden text)
-        html_content = re.sub(r'<!--.*?-->', '', html_content, flags=re.DOTALL)
-        
         # Remove script/style tags entirely
-        html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.IGNORECASE | re.DOTALL)
-        html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.IGNORECASE | re.DOTALL)
+        # audit r3-H1: linear scan (the '.*?' regexes were quadratic and
+        # missed unclosed blocks / '</script >')
+        html_content = cls._strip_blocks(html_content, cls.BLOCK_ELEMENTS)
         
-        # Remove event handler attributes
-        html_content = re.sub(r'\s*on\w+\s*=\s*["\'][^"\']*["\']', '', html_content, flags=re.IGNORECASE)
+        # Remove event handler attributes (audit r3-H1: linear form)
+        html_content = re.sub(cls.HTML_INJECTION[0][0], '', html_content, flags=re.IGNORECASE)
         
         # Remove dangerous protocols
         html_content = re.sub(r'javascript:', '', html_content, flags=re.IGNORECASE)
@@ -704,6 +882,14 @@ _BLOCKED_NETWORKS = [
         "fe80::/10",          # link-local
         "ff00::/8",           # multicast
         "2001:db8::/32",      # documentation
+        # audit r3-L1: explicit entries instead of relying on the running
+        # Python's is_private table (2002::/16 and 64:ff9b:1::/48 only became
+        # "private" in 3.12.4/3.13; fec0::/10 is not covered by any version)
+        "fec0::/10",          # site-local (deprecated, still routable on some LANs)
+        "64:ff9b:1::/48",     # local-use NAT64 (RFC 8215)
+        "2002::/16",          # 6to4 (can tunnel to an embedded private IPv4)
+        "2001::/32",          # Teredo (can tunnel to an embedded IPv4)
+        "100::/64",           # discard-only
     )
 ]
 
@@ -722,6 +908,11 @@ def _ip_is_blocked(ip_str: str) -> bool:
 
     if (ip.is_private or ip.is_loopback or ip.is_link_local
             or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+        return True
+
+    # audit r3-L1: anything the stdlib does not consider globally routable
+    # (catches future IANA special-purpose additions as well)
+    if not ip.is_global:
         return True
 
     return any(ip in net for net in _BLOCKED_NETWORKS)
@@ -806,21 +997,28 @@ class Http(core.module.Module):
         self._session = None
 
         # fetch & cache our public IP so we can censor it
+        # audit r3-L4: each lookup is independent and its answer must parse as
+        # an IP address. Before, an empty/HTML/error body was stored as "the
+        # IP" ('' made _censor_ip insert [CENSORED_IP] between every
+        # character of every response), one failure wiped both values, and a
+        # bare except also swallowed task cancellation.
+        self.server_ipv4 = None
+        self.server_ipv6 = None
         client = core.http_client.HTTPClient()
         try:
-            resp = await client.get("https://api.ipify.org", timeout_total=10)
-            try:
-                self.server_ipv4 = (await resp.text()).strip()
-            finally:
-                await resp.release()
-            resp = await client.get("https://api64.ipify.org", timeout_total=10)
-            try:
-                self.server_ipv6 = (await resp.text()).strip()
-            finally:
-                await resp.release()
-        except:
-            self.server_ipv4 = None
-            self.server_ipv6 = None
+            for attr, lookup_url in (("server_ipv4", "https://api.ipify.org"),
+                                     ("server_ipv6", "https://api64.ipify.org")):
+                try:
+                    resp = await client.get(lookup_url, timeout_total=10)
+                    try:
+                        if resp.status == 200:
+                            text = (await resp.text()).strip()
+                            ipaddress.ip_address(text)
+                            setattr(self, attr, text)
+                    finally:
+                        await resp.release()
+                except Exception:
+                    pass
         finally:
             await client.close()
 
@@ -868,12 +1066,14 @@ class Http(core.module.Module):
             
             sanitized_content = detection['sanitized_content']
         else:
-            sanitized_content = content
+            # Use the new centralized structured sanitizer
+            # audit r3-L5: only for non-strings. It used to run unconditionally,
+            # sanitizing strings twice and overwriting the result above with
+            # sanitize_structured_data(), which returns any string that merely
+            # STARTS like a URL completely unsanitized.
+            sanitized_content = ContentSanitizer.sanitize_structured_data(content)
             detected_patterns = []
             risk_level = 'low'
-
-        # Use the new centralized structured sanitizer
-        sanitized_content = ContentSanitizer.sanitize_structured_data(content)
 
         return {
             "security_notice": self.INJECTION_NOTICE,
@@ -924,15 +1124,10 @@ class Http(core.module.Module):
                 safe_urls.append('[URL_ERROR]')
         
         # Replace original URLs with validated ones
-        result = content
-        for url in urls:
-            # Find corresponding safe URL
-            for safe_url in safe_urls:
-                if result.count(url) > 0:
-                    result = result.replace(url, safe_url, 1)
-                    break
-        
-        return result
+        # audit r3-L8: the old loop replaced EVERY url with safe_urls[0]
+        # (inner loop always picked the first entry); substitute positionally.
+        replacements = iter(safe_urls)
+        return url_pattern.sub(lambda _m: next(replacements), content)
     
     def _validate_output_safety(self, content: str) -> dict:
         """
@@ -975,22 +1170,40 @@ class Http(core.module.Module):
         """Replaces IPv4 and IPv6 addresses with [CENSORED_IP]."""
         if not isinstance(text, str):
             return text
-        if self.server_ipv4 is not None:
+        # audit r3-L4: never replace an empty string (it matches everywhere)
+        if self.server_ipv4:
             text = text.replace(self.server_ipv4, "[CENSORED_IP]")
-        if self.server_ipv6 is not None:
+        if self.server_ipv6:
             text = text.replace(self.server_ipv6, "[CENSORED_IP]")
         return text
 
     # ==================== SSRF Protection ====================
+
+    @staticmethod
+    def _canonical_host(hostname: str) -> str:
+        """
+        audit r3-M2: canonical form for policy comparisons: IDNA/NFKC-mapped
+        (what DNS actually resolves), lowercase, no trailing dot(s).
+        'evil.com.' and 'ｅｖｉｌ.com' used to slip past a blacklist entry
+        'evil.com' while still resolving to it.
+        """
+        host = str(hostname).strip().rstrip('.').lower()
+        try:
+            host = host.encode('idna').decode('ascii').lower()
+        except (UnicodeError, ValueError):
+            # not IDNA-encodable (e.g. IPv6 literal or junk): NFKC fallback
+            host = unicodedata.normalize('NFKC', host).lower()
+        return host.rstrip('.')
 
     def _check_domain_policy(self, hostname: str):
         """
         Whitelist / blacklist / metadata-hostname checks (no DNS).
         Returns (ok, error_message).
         """
-        hostname = hostname.lower()
-        whitelist = [d.lower() for d in self.config.get("domain_whitelist", [])]
-        blacklist = [d.lower() for d in self.config.get("domain_blacklist", [])]
+        # audit r3-M2: compare canonical forms on both sides
+        hostname = self._canonical_host(hostname)
+        whitelist = [self._canonical_host(d) for d in self.config.get("domain_whitelist", []) if d]
+        blacklist = [self._canonical_host(d) for d in self.config.get("domain_blacklist", []) if d]
 
         # 1. Blacklist (exact domain or any subdomain)
         for blocked in blacklist:
@@ -1084,8 +1297,15 @@ class Http(core.module.Module):
         hostname = hostname.lower()
 
         # Port
-        if parsed.port and parsed.port in self.DANGEROUS_PORTS:
-            return False, f"Port {parsed.port} is blocked", None
+        # audit r3-L2: a bad port in a redirect Location raised ValueError out
+        # of here (only caught by the generic handler); honor the
+        # block_uncommon_ports setting, which was never read.
+        try:
+            port = parsed.port
+        except ValueError:
+            return False, "Invalid port", None
+        if port and port in self.DANGEROUS_PORTS and self.config.get("block_uncommon_ports", True):
+            return False, f"Port {port} is blocked", None
 
         # Domain policy (whitelist/blacklist/metadata names)
         ok, err = self._check_domain_policy(hostname)
@@ -1093,9 +1313,9 @@ class Http(core.module.Module):
             return False, err, None
 
         # Localhost shortcut (covered by IP check too, but cheap to short-circuit)
-        if self.config.get("block_local_network_access") and hostname in (
+        if self.config.get("block_local_network_access") and self._canonical_host(hostname) in (
             'localhost', '0.0.0.0',
-        ):
+        ):  # audit r3-M2: 'localhost.' too
             return False, "Blocked localhost access", None
 
         # DNS + resolved-IP validation
@@ -1132,7 +1352,9 @@ class Http(core.module.Module):
             if not parsed.hostname:
                 return False, "URL must include a valid hostname"
 
-            if parsed.port and parsed.port in self.DANGEROUS_PORTS:
+            # audit r3-L2: honor the block_uncommon_ports setting
+            if (parsed.port and parsed.port in self.DANGEROUS_PORTS
+                    and self.config.get("block_uncommon_ports", True)):
                 return False, f"Port {parsed.port} is blocked for security reasons"
 
             return True, None
@@ -1180,15 +1402,19 @@ class Http(core.module.Module):
             if not key:
                 continue
 
-            key_lower = str(key).lower()
-            if key_lower in dangerous_headers:
+            # Strip CR/LF/NUL to prevent header injection
+            # audit r3-M1: strip BEFORE the deny-list check (and strip
+            # surrounding whitespace/DEL): "Host\r", "Transfer-Encoding\n" or
+            # " Content-Length" used to pass the check and come out as the
+            # forbidden header. Names must also be RFC 7230 tokens.
+            clean_key = re.sub(r'[\r\n\x00-\x1f\x7f]', '', str(key)).strip()
+            clean_value = re.sub(r'[\r\n\x00-\x1f\x7f]', '', str(value)) if value else ''
+
+            if not clean_key or not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", clean_key):
                 continue
 
-            # Strip CR/LF/NUL to prevent header injection
-            clean_key = re.sub(r'[\r\n\x00-\x1f]', '', str(key))
-            clean_value = re.sub(r'[\r\n\x00-\x1f]', '', str(value)) if value else ''
-
-            if not clean_key:
+            key_lower = clean_key.lower()
+            if key_lower in dangerous_headers:
                 continue
 
             if len(clean_value) > 8000:
@@ -1290,10 +1516,24 @@ class Http(core.module.Module):
             json_body = None
 
         current_url = url
+        # audit r3-H2: state that must change across redirect hops
+        params = kwargs.get("params")
+        origin = self._origin_of(url)
         try:
             for _hop in range(self.MAX_REDIRECTS + 1):
+                # audit r3-L2: redirect targets get the same format checks
+                # (length, control characters) as the initial URL
+                if _hop:
+                    is_valid, error_msg = self._validate_url_format(current_url)
+                    if not is_valid:
+                        self._log(f"Blocked redirect ({current_url}): {error_msg}")
+                        return self.result("URL blocked by security policy", False)
+
                 # Re-validate (incl. DNS + IP) on the initial URL and every hop.
-                ok, err, pinned_ip = self._is_safe_url(current_url)
+                # audit r3-M6: getaddrinfo() is blocking -- run it off the
+                # event loop so a slow/black-holed resolver cannot freeze
+                # every other coroutine for the resolver timeout.
+                ok, err, pinned_ip = await asyncio.to_thread(self._is_safe_url, current_url)
                 if not ok:
                     self._log(f"Blocked URL ({current_url}): {err}")
                     return self.result("URL blocked by security policy", False)
@@ -1315,7 +1555,7 @@ class Http(core.module.Module):
                     method,
                     current_url,
                     headers=headers,
-                    params=kwargs.get("params"),
+                    params=params,
                     body=body,
                     form=form,
                     json_body=json_body,
@@ -1333,6 +1573,27 @@ class Http(core.module.Module):
                         if not location:
                             return self.result("Redirect with no Location header", False)
                         current_url = urllib.parse.urljoin(current_url, location)
+
+                        # audit r3-H2: with allow_redirects=False the client's
+                        # own redirect hygiene never runs, so do it here:
+                        # - the Location already carries the full query;
+                        #   re-adding params duplicated them on every hop
+                        params = None
+                        # - cross-origin hop: never forward caller credentials
+                        if self._origin_of(current_url) != origin:
+                            headers = {
+                                k: v for k, v in headers.items()
+                                if k.lower() not in self.CREDENTIAL_HEADERS
+                            }
+                        # - 301/302/303 become a bodyless GET (HEAD stays HEAD),
+                        #   so a POST/PUT body is not replayed to the new target
+                        if resp.status in (301, 302, 303) and method.upper() != "HEAD":
+                            method = "GET"
+                            body = form = json_body = None
+                            headers = {
+                                k: v for k, v in headers.items()
+                                if k.lower() not in ("content-type", "content-encoding", "content-language")
+                            }
                         continue
 
                     return await self._build_response(resp, include_content)
@@ -1362,6 +1623,20 @@ class Http(core.module.Module):
             self._log(f"Unexpected error for {url}: {e}")
             return self.result("An unexpected error occurred", False)
 
+    # audit r3-H2: headers that must never follow a cross-origin redirect
+    CREDENTIAL_HEADERS = {"authorization", "cookie", "proxy-authorization", "x-api-key", "api-key", "x-auth-token"}
+
+    @staticmethod
+    def _origin_of(url: str):
+        """audit r3-H2: (scheme, canonical host, port) for redirect origin checks."""
+        try:
+            parsed = urlparse(url)
+            scheme = parsed.scheme.lower()
+            port = parsed.port or (443 if scheme == "https" else 80)
+            return (scheme, Http._canonical_host(parsed.hostname or ""), port)
+        except Exception:
+            return None  # unparseable -> never equal to a real origin
+
     async def _guardrail_check(self, content: str) -> bool:
         """
         [PLACEHOLDER] Secondary LLM-as-judge guardrail.
@@ -1383,7 +1658,12 @@ class Http(core.module.Module):
         """
         response = {
             "status": f"{resp.status} {resp.reason}",
-            "headers": dict(resp.headers),
+            # audit r3-L6: response headers are attacker-controlled text that
+            # reaches the model too; they now go through the same sanitizer
+            "headers": {
+                k: (ContentSanitizer.sanitize(v)[:8000] if isinstance(v, str) else v)
+                for k, v in dict(resp.headers).items()
+            },
             "cookies": dict(resp.cookies),  # our client is stateless, so this is always empty
             "url": str(resp.url),
         }
@@ -1410,9 +1690,17 @@ class Http(core.module.Module):
             except Exception:
                 encoding = "utf-8"
 
-            raw_content = bytes(body[:self.MAX_CONTENT_SIZE]).decode(
-                encoding, errors="replace"
-            )
+            # audit r3-L3: an unknown/bogus charset label ("charset=foo",
+            # "charset=hex") raised LookupError here, outside any handler,
+            # and the whole fetch failed as "An unexpected error occurred"
+            try:
+                raw_content = bytes(body[:self.MAX_CONTENT_SIZE]).decode(
+                    encoding, errors="replace"
+                )
+            except (LookupError, ValueError, TypeError):
+                raw_content = bytes(body[:self.MAX_CONTENT_SIZE]).decode(
+                    "utf-8", errors="replace"
+                )
             
             # Log raw content size for security analysis
             self._log(f"Raw content received: {len(raw_content)} bytes")
@@ -1420,30 +1708,22 @@ class Http(core.module.Module):
             # Determine content type and apply appropriate sanitization
             content_type_header = resp.headers.get('Content-Type', '').lower()
             
-            if 'html' in content_type_header or 'xml' in content_type_header:
-                # HTML/XML content: strip scripts, styles, comments, event handlers
-                raw_content = ContentSanitizer.sanitize_html_content(raw_content)
-                response["content"] = raw_content
-                response["content_sanitized"] = True
-                response["content_type"] = "html_xml"
-            elif 'json' in content_type_header:
-                # JSON content: sanitize string values recursively
-                try:
-                    import json
-                    parsed = json.loads(raw_content)
-                    sanitized = self._sanitize_json_recursive(parsed)
-                    response["content"] = json.dumps(sanitized, ensure_ascii=False)
-                    response["content_sanitized"] = True
-                    response["content_type"] = "json"
-                except Exception:
-                    response["content"] = ContentSanitizer.sanitize(raw_content)
-                    response["content_sanitized"] = True
-                    response["content_type"] = "text"
-            else:
-                # Plain text: standard sanitization
-                response["content"] = ContentSanitizer.sanitize(raw_content)
-                response["content_sanitized"] = True
-                response["content_type"] = "text"
+            # audit r3-H1: sanitization is CPU-heavy pure Python over up to
+            # MAX_CONTENT_SIZE of attacker-controlled text; it ran inline on
+            # the event loop (quadratic/cubic regexes -> the agent hung for
+            # minutes to hours on one page). It now runs in a worker thread
+            # on a bounded input (see _sanitize_body).
+            content, content_kind = await asyncio.to_thread(
+                self._sanitize_body, raw_content, content_type_header
+            )
+            # audit r3-M4: _truncate_for_safety existed but was never called,
+            # so up to 10MB went straight into the model context
+            response["content"] = self._truncate_for_safety(content)
+            response["content_sanitized"] = True
+            response["content_type"] = content_kind
+            # audit r3-M4: the untrusted-data notice (_wrap_untrusted) was never
+            # attached either; add it without changing the "content" type
+            response["security_notice"] = self.INJECTION_NOTICE
             
             # Add security metadata for downstream processing
             response["security_metadata"] = {
@@ -1501,6 +1781,35 @@ class Http(core.module.Module):
         self._log(f"Request completed: {resp.status} - {resp.url}")
         return self.result(response)
     
+    # audit r3-H1: hard cap on how much text the sanitizer chews through;
+    # the model only ever sees MAX_CONTENT_FOR_PROMPT characters anyway
+    SANITIZE_INPUT_BUDGET = 4 * MAX_CONTENT_FOR_PROMPT
+
+    def _sanitize_body(self, raw_content: str, content_type_header: str):
+        """
+        audit r3-H1: content sanitization, run in a worker thread.
+        Returns (sanitized_content, content_type_label).
+        """
+        if 'html' in content_type_header or 'xml' in content_type_header:
+            # HTML/XML content: strip scripts, styles, comments, event handlers
+            # (linear pre-pass on the full body so big inline scripts do not
+            # eat the budget, then the full sanitizer on a bounded prefix)
+            raw_content = ContentSanitizer._strip_blocks(raw_content, ContentSanitizer.BLOCK_ELEMENTS)
+            raw_content = raw_content[:self.SANITIZE_INPUT_BUDGET]
+            return ContentSanitizer.sanitize_html_content(raw_content), "html_xml"
+        raw_content = raw_content[:self.SANITIZE_INPUT_BUDGET]
+        if 'json' in content_type_header:
+            # JSON content: sanitize string values recursively
+            try:
+                import json
+                parsed = json.loads(raw_content)
+                sanitized = self._sanitize_json_recursive(parsed)
+                return json.dumps(sanitized, ensure_ascii=False), "json"
+            except Exception:
+                return ContentSanitizer.sanitize(raw_content), "text"
+        # Plain text: standard sanitization
+        return ContentSanitizer.sanitize(raw_content), "text"
+
     def _sanitize_json_recursive(self, data):
         """Recursively sanitize JSON string values."""
         if isinstance(data, str):
