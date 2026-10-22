@@ -46,7 +46,7 @@ class Shell(core.module.Module):
             "description": "When on, the home folder inside the sandbox is persistent and mapped to the folder you specify. When off, it's a temporary folder in RAM (tmpfs)"
         },
         "sandbox_path": {
-            "default": "~/sandbox",
+            "default": "sandbox/shell_sandbox",
             "description": "The path to the folder your shell will be limited to. It can't access anything outside this folder!",
             "depends": {"persistent_data": True}
         },
@@ -178,7 +178,10 @@ class Shell(core.module.Module):
         return bytes(stdout_buf), bytes(stderr_buf), return_code, timed_out
 
     async def on_system_prompt(self):
-        return "".join(self._get_setup())
+        prompt = "".join(self._get_setup())
+
+        if "coder" in self.manager.modules:
+            prompt += "\nNOTE: shell sandbox is NOT coder sandbox. they are seperate."
 
     def _resolve_dockerfile_path(self, dockerfile_path):
         if not dockerfile_path:
