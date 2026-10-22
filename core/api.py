@@ -80,9 +80,16 @@ class APIClient():
 
     def _make_session(self, ssl_ctx=None):
         """create the shared http client"""
-        # infinite read timeout (long generations and model loads must not be cut off),
-        # connect timeout of 5 seconds
-        return core.http_client.HTTPClient(ssl_ctx=ssl_ctx, connect_timeout=5.0)
+        # infinite read timeout (long generations and model loads must not be cut off):
+        # total_timeout=None explicitly opts out of the client's 60s default
+        # introduced by audit fix r2-M2 in core/http_client.py.
+        # _http_get's explicit timeout_total=None keeps the same infinite
+        # semantics. connect timeout stays 5 seconds.
+        # audit r4-M1: idle_timeout=900 keeps generations uncut (they produce
+        # bytes far more often than that) while a socket that goes totally
+        # silent -- stalled or slowloris endpoint -- is severed after 15
+        # minutes of dead air instead of being held forever.
+        return core.http_client.HTTPClient(ssl_ctx=ssl_ctx, connect_timeout=5.0, total_timeout=None, idle_timeout=900.0)
 
     async def _http_get(self, url, timeout_total=None):
         """GET a url and return (status, body_text)"""
