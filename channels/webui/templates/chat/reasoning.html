@@ -19,10 +19,14 @@
      Auto-collapse reasoning once it's done thinking: a reasoning block is
      finished when it's no longer the last segment of the live stream (a
      content/tool_calls segment followed it) or the stream went idle.
-     autoCollapsed guards against re-collapsing if the user expands it again. -->
+     autoCollapsed guards against re-collapsing if the user expands it again.
+     -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
+     the Appearance setting collapseThinkingDefault makes a live thinking
+     block start collapsed (header only, "Thinking.."); with it off the
+     block streams expanded and auto-collapses once done, as before. -->
 <div :class="{'reasoning-wrapper': true, 'collapsed': collapsed, 'expanded': !collapsed, 'is-reasoning-active': !done}"
-     x-data="{collapsed: $store.stream.state === 'idle', autoCollapsed: false, done: $store.stream.state === 'idle'}"
-     x-effect="const msgs = $store.stream.turn?.messages ?? []; const isLast = msgs[msgs.length - 1] === message; done = $store.stream.state === 'idle' || !isLast; if (done && !autoCollapsed) { autoCollapsed = true; collapsed = true }"
+     x-data="{collapsed: $store.stream.state === 'idle' || localStorage.getItem('collapseThinkingDefault') === 'true', autoCollapsed: false, done: $store.stream.state === 'idle'}"
+     x-effect="const msgs = $store.stream.turn?.messages ?? []; const isLast = msgs[msgs.length - 1] === message; done = $store.stream.state === 'idle' || !isLast; if (done && !autoCollapsed) { autoCollapsed = true; if (localStorage.getItem('collapseThinkingDefault') !== 'true') collapsed = true }"
      @click="collapsed = !collapsed">
     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
          timeline node: circle + chevron on the spine, mirrors collapsed state -->

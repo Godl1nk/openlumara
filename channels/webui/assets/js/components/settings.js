@@ -106,6 +106,9 @@ function settingsModal() {
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         // steps start collapsed and stay collapsed unless toggled manually
         collapseStepsDefault: localStorage.getItem('collapseStepsDefault') === 'true',
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
+        // thinking blocks start collapsed (localStorage; default off)
+        collapseThinkingDefault: localStorage.getItem('collapseThinkingDefault') === 'true',
         collapseToolcallsDefault: localStorage.getItem('collapseToolcallsDefault') === 'true',
         tokenFadeMs: localStorage.getItem('tokenFadeMs') || '350',
 
@@ -405,6 +408,12 @@ function settingsModal() {
         handleCollapseStepsToggle() {
             this.collapseStepsDefault = !this.collapseStepsDefault;
             localStorage.setItem('collapseStepsDefault', this.collapseStepsDefault);
+        },
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
+        handleCollapseThinkingToggle() {
+            this.collapseThinkingDefault = !this.collapseThinkingDefault;
+            localStorage.setItem('collapseThinkingDefault', this.collapseThinkingDefault);
         },
 
         handleCollapseToolcallsToggle() {

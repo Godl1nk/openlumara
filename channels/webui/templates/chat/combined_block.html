@@ -9,7 +9,7 @@
      segment, auto-collapse once done (mirrors reasoning.html). -->
 <div class="combined-block" :class="{collapsed: collapsed, expanded: !collapsed}"
     {% if combined_stream %}
-     x-data="{ collapsed: $store.stream.state === 'idle' || localStorage.getItem('collapseStepsDefault') === 'true', autoCollapsed: false, done: $store.stream.state === 'idle',
+     x-data="{ collapsed: $store.stream.state === 'idle' || localStorage.getItem('collapseStepsDefault') === 'true' || (localStorage.getItem('collapseThinkingDefault') === 'true' && stepIsThinkingLive(message)), autoCollapsed: false, done: $store.stream.state === 'idle',
                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                // reasoning is live only while the newest stream segment is
                // this step's reasoning: once content/tools arrive the
@@ -51,18 +51,19 @@
                  tool-names header in the branch below. -->
             <template x-if="(message.reasoning_content || '').trim() !== ''">
                 <span class="thought-header">
-                    <!-- expanded: the body already shows the full thought,
-                         so the header only labels it - Thinking.. while
-                         this step's reasoning is the live stream segment,
-                         Thoughts for anything finished -->
-                    <span class="tool-names" x-show="!collapsed"
-                          {% if combined_stream %}
-                          x-text="thinkingActive ? 'Thinking..' : 'Thoughts and actions'"></span>
-                          {% else %}
-                          x-text="'Thoughts and actions'"></span>
-                          {% endif %}
-                    <!-- collapsed: last sentence (clean cut) as the preview -->
-                    <span class="step-thought" x-show="collapsed" x-text="thoughtSnippet(message.reasoning_content)"></span>
+                    <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
+                         thought-header policy: the last-sentence snippet IS
+                         the header for finished thoughts, collapsed or not -
+                         the old "Thoughts and actions" label is gone. only
+                         while a thought is actively STREAMING does the header
+                         stay anonymous (its final line churns with every
+                         token): plain "Thinking.." until the thought lands. -->
+                    {% if combined_stream %}
+                    <span class="step-thought" x-show="!thinkingActive" x-text="thoughtSnippet(message.reasoning_content)"></span>
+                    <span class="tool-names thinking-label" x-show="thinkingActive">Thinking..</span>
+                    {% else %}
+                    <span class="step-thought" x-text="thoughtSnippet(message.reasoning_content)"></span>
+                    {% endif %}
                     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
                          full provenance list instead of "Module ×N":
                          "Coder: file read, file edit x2 · Web: search".
