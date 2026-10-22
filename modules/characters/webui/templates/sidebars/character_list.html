@@ -28,6 +28,48 @@
         </div>
     </div>
 
+    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+         category picker: filters which characters the picker below offers.
+         same custom-dropdown pattern as the character picker. -->
+    <div class="char-select" x-data="{ open: false, top: 0, left: 0, width: 0 }"
+        x-show="names.length > 0">
+        <button type="button" class="category-trigger"
+            :class="{ 'open': open }"
+            title="Filter characters by category"
+            @click="
+                const r = $el.getBoundingClientRect();
+                top = r.bottom - 1;
+                left = r.left;
+                width = r.width;
+                open = !open;
+            ">
+            <span class="cat-icon">{% include 'svg/folder.svg' %}</span>
+            <span class="cat-label" x-text="categoryLabel()"></span>
+            <svg class="cat-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12" width="12" height="12"><path fill="currentColor" d="M6 8L1 3h10z"/></svg>
+        </button>
+        <template x-teleport="body">
+            <div class="category-menu" x-show="open" x-transition.opacity.duration.120ms
+                :style="`top: ${top}px; left: ${left}px; width: ${width}px`"
+                @click.stop @click.away="open = false"
+                @keydown.escape.window="open = false">
+                <button type="button" class="category-option"
+                    :class="{ 'active': category === '' }"
+                    @click="selectCategory(''); open = false">
+                    <span class="cat-icon">{% include 'svg/layers.svg' %}</span>
+                    <span>all categories</span>
+                </button>
+                <template x-for="cat in categories()" :key="cat">
+                    <button type="button" class="category-option"
+                        :class="{ 'active': category === cat }"
+                        @click="selectCategory(cat); open = false">
+                        <span class="cat-icon">{% include 'svg/folder.svg' %}</span>
+                        <span x-text="cat === '__none__' ? 'uncategorized' : cat"></span>
+                    </button>
+                </template>
+            </div>
+        </template>
+    </div>
+
     <!-- character picker: custom dropdown mirroring the category one -->
     <div class="char-select" x-data="{ open: false, top: 0, left: 0, width: 0 }">
         <button type="button" class="category-trigger"
@@ -58,7 +100,10 @@
                     <span class="cat-icon">{% include 'svg/user.svg' %}</span>
                     <span>select a character</span>
                 </button>
-                <template x-for="entry in names" :key="entry.key">
+                <template x-if="visibleNames().length === 0">
+                    <div class="category-option disabled-hint">no characters in this category</div>
+                </template>
+                <template x-for="entry in visibleNames()" :key="entry.key">
                     <button type="button" class="category-option"
                         @click="select(entry.key); open = false">
                         <span class="cat-icon">{% include 'svg/user.svg' %}</span>

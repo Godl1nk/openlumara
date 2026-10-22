@@ -4,12 +4,55 @@
    scripts load before alpine, same as the core stores). talks to the
    module's own routes under /api/ext/characters/. */
 const CHARACTERS_PANEL = {
-    names: [],      // [{key, name}]
+    names: [],      // [{key, name, category}]
     counts: {},     // {character key: chat count}
     selected: "",   // character key, "" = none picked yet (shows no chats)
     chats: [],      // [{id, title, updated}]
     loading: false,
     loaded: false,
+
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+    // category filter for the character dropdown. "" = all categories,
+    // "__none__" = the uncategorized bucket, anything else = exact match.
+    category: "",
+
+    categories() {
+        // distinct non-empty categories, sorted, with the uncategorized
+        // bucket appended only when at least one character lacks one
+        const cats = new Set();
+        let hasNone = false;
+        for (const entry of this.names) {
+            if (entry.category) { cats.add(entry.category); }
+            else { hasNone = true; }
+        }
+        const list = [...cats].sort((a, b) => a.localeCompare(b));
+        if (hasNone) { list.push("__none__"); }
+        return list;
+    },
+
+    categoryLabel() {
+        if (!this.category) { return "all categories"; }
+        if (this.category === "__none__") { return "uncategorized"; }
+        return this.category;
+    },
+
+    visibleNames() {
+        if (!this.category) { return this.names; }
+        return this.names.filter(n =>
+            this.category === "__none__" ? !n.category : n.category === this.category
+        );
+    },
+
+    selectCategory(cat) {
+        this.category = cat;
+        // -- the filter may hide the currently-selected character; keep the
+        // selection (its chats stay listed) unless it's no longer visible,
+        // in which case drop back to the neutral prompt.
+        if (this.selected && !this.visibleNames().some(n => n.key === this.selected)) {
+            this.selected = "";
+            this.chats = [];
+        }
+    },
 
     // driven by x-intersect on the panel root: fires every time the tab
     // switch makes the panel visible (first time = full load)
@@ -115,6 +158,33 @@ function characterManager() {
         confirming: null,  // storage key awaiting delete confirmation
         error: '',
         wiOpen: false,     // world info section expanded in the editor?
+        categoryFilter: '',  // list view: '' = all, '__none__' = uncategorized
+
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+        categories() {
+            const cats = new Set();
+            let hasNone = false;
+            for (const c of this.characters) {
+                if (c.category) { cats.add(c.category); }
+                else { hasNone = true; }
+            }
+            const list = [...cats].sort((a, b) => a.localeCompare(b));
+            if (hasNone) { list.push("__none__"); }
+            return list;
+        },
+
+        categoryFilterLabel() {
+            if (!this.categoryFilter) { return "all categories"; }
+            if (this.categoryFilter === "__none__") { return "uncategorized"; }
+            return this.categoryFilter;
+        },
+
+        filteredCharacters() {
+            if (!this.categoryFilter) { return this.characters; }
+            return this.characters.filter(c =>
+                this.categoryFilter === "__none__" ? !c.category : c.category === this.categoryFilter
+            );
+        },
         form: {
             key: '',
             name: '',

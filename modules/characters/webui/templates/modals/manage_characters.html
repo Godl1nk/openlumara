@@ -24,8 +24,57 @@
                             <div class="char-mgr-hint">no characters yet - add one below or import a card</div>
                         </template>
 
+                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+                             category filter for the list, same custom-dropdown
+                             pattern as the sidebar pickers -->
+                        <div class="char-mgr-filter" x-show="categories().length > 0"
+                            x-data="{ open: false, top: 0, left: 0, width: 0 }">
+                            <button type="button" class="category-trigger"
+                                :class="{ 'open': open }"
+                                title="Filter by category"
+                                @click="
+                                    const r = $el.getBoundingClientRect();
+                                    top = r.bottom - 1;
+                                    left = r.left;
+                                    width = r.width;
+                                    open = !open;
+                                ">
+                                <span class="cat-icon">{% include 'svg/folder.svg' %}</span>
+                                <span class="cat-label" x-text="categoryFilterLabel()"></span>
+                                <svg class="cat-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12" width="12" height="12"><path fill="currentColor" d="M6 8L1 3h10z"/></svg>
+                            </button>
+                            <template x-teleport="body">
+                                <!-- char-modal-menu: lifts this menu above the
+                                     modal itself (core .category-menu is 1000,
+                                     the modal box is 1001) -->
+                                <div class="category-menu char-modal-menu" x-show="open" x-transition.opacity.duration.120ms
+                                    :style="`top: ${top}px; left: ${left}px; width: ${width}px`"
+                                    @click.stop @click.away="open = false"
+                                    @keydown.escape.window="open = false">
+                                    <button type="button" class="category-option"
+                                        :class="{ 'active': categoryFilter === '' }"
+                                        @click="categoryFilter = ''; open = false">
+                                        <span class="cat-icon">{% include 'svg/layers.svg' %}</span>
+                                        <span>all categories</span>
+                                    </button>
+                                    <template x-for="cat in categories()" :key="cat">
+                                        <button type="button" class="category-option"
+                                            :class="{ 'active': categoryFilter === cat }"
+                                            @click="categoryFilter = cat; open = false">
+                                            <span class="cat-icon">{% include 'svg/folder.svg' %}</span>
+                                            <span x-text="cat === '__none__' ? 'uncategorized' : cat"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+
+                        <template x-if="!loading && characters.length > 0 && filteredCharacters().length === 0">
+                            <div class="char-mgr-hint">no characters in this category</div>
+                        </template>
+
                         <div class="char-mgr-rows">
-                            <template x-for="char in characters" :key="char.key">
+                            <template x-for="char in filteredCharacters()" :key="char.key">
                                 <div class="char-mgr-row">
                                     <div class="char-mgr-info">
                                         <span class="char-mgr-name" x-text="char.name"></span>
