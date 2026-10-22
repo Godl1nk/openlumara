@@ -277,6 +277,28 @@ class TurnCollector:
         # match during the last ~1% of the stream.
         name = wrapper_args.get("name")
         name = name.strip() if isinstance(name, str) and name.strip() else None
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # partial_json_parser can choke on wrapper payloads dominated by one
+        # huge escaped string (the string-typed params transport): the lenient
+        # parse degrades to {_raw: ...} and the name - even though it completed
+        # long ago - never surfaces, so _bridge_from_args returns (None, None)
+        # and the card stays the raw tools_call wrapper for the whole live turn
+        # (custom views match the UNWRAPPED name only; it fixes itself on the
+        # next history reload, which is why this looked intermittent).
+        # json_repair reads those payloads fine, so retry with it whenever the
+        # lenient wrapper parse yielded no usable name. The termination check
+        # below still gates still-growing values, so headers never flicker.
+        if name is None and raw:
+            try:
+                repaired_wrapper = json_repair.loads(raw)
+            except Exception:
+                repaired_wrapper = None
+            if isinstance(repaired_wrapper, dict) and repaired_wrapper:
+                wrapper_args = repaired_wrapper
+                name = wrapper_args.get("name")
+                name = name.strip() if isinstance(name, str) and name.strip() else None
+
         if name is not None:
             complete = False
             if raw:
@@ -334,9 +356,25 @@ class TurnCollector:
             # native (unbridged) tool args stream.
             started = re.search(r'"(?:arguments|params)"\s*:\s*[{"\[]', raw)
             if started:
-                sliced = parse_lenient_json(raw[started.end() - 1:])
+                chunk = raw[started.end() - 1:]
+                sliced = parse_lenient_json(chunk)
                 if isinstance(sliced, dict) and "_raw" not in sliced:
                     inner = sliced
+                else:
+                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+                    # string-typed params transport: the slice starts at a QUOTE,
+                    # so it parses to a plain str (or {_raw}) and used to be
+                    # dropped here - raw wrapper card again. two-step it instead:
+                    # decode the (partial) string literal, then json_repair the
+                    # embedded json it holds into a growing dict.
+                    try:
+                        cand = json_repair.loads(chunk)
+                        if isinstance(cand, str):
+                            cand = json_repair.loads(cand)
+                        if isinstance(cand, dict) and cand:
+                            inner = cand
+                    except Exception:
+                        pass
         if name is None and inner is None:
             return None, None
         return name, inner
@@ -623,6 +661,11 @@ class TurnCollector:
         # same idea for unwrapped bridge calls: the inner arguments object
         # resolved from the raw wrapper stream (see _bridge_from_args).
         inner_cache = {}
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # once a bridge call's real name resolved mid-stream, keep it: a later
+        # token whose parse hiccups (or drops the name) must never regress the
+        # card from the unwrapped view back to the raw tools_call wrapper.
+        name_cache = {}
 
         def _stamp_args(tool):
             tool_id = tool.get("id")
@@ -643,7 +686,15 @@ class TurnCollector:
                 (tool.get("function") or {}).get("name"), parsed, raw
             )
             if bridge_name is None and bridge_args is None:
-                meta["args_parsed"] = parsed
+                if tool_id in name_cache:
+                    # name resolved on an earlier token: keep the card fully
+                    # unwrapped (inner args from the cache when we have them)
+                    meta["bridge"] = True
+                    meta["display_name"] = name_cache[tool_id]
+                    cached_inner = inner_cache.get(tool_id)
+                    meta["args_parsed"] = cached_inner if cached_inner is not None else parsed
+                else:
+                    meta["args_parsed"] = parsed
             else:
                 meta["bridge"] = True
                 if bridge_args is None:
@@ -653,7 +704,10 @@ class TurnCollector:
                 if bridge_args is not None:
                     inner_cache[tool_id] = bridge_args
                 if bridge_name:
+                    name_cache[tool_id] = bridge_name
                     meta["display_name"] = bridge_name
+                elif tool_id in name_cache:
+                    meta["display_name"] = name_cache[tool_id]
                 meta["args_parsed"] = bridge_args if bridge_args is not None else {}
 
         async for raw_token in stream_generator:
