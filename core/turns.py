@@ -247,7 +247,7 @@ class TurnCollector:
         return str(value)
 
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    # tools_call (and friends) proxy the real call as {name, arguments}.
+    # tools_call (and friends) proxy the real call as {name, params}.
     # display-wise we unwrap that: the card shows the proxied call's name
     # and arguments, never the wrapper. unwrap results live under the call's
     # _metadata (display_name + swapped args_parsed), so requests and stored
@@ -293,11 +293,19 @@ class TurnCollector:
             else:
                 # no raw to check (shouldn't happen via turns): fall back to
                 # the old sibling heuristic so history still unwraps.
-                complete = "arguments" in wrapper_args or len(wrapper_args) >= 2
+                complete = (
+                    "params" in wrapper_args or "arguments" in wrapper_args
+                    or len(wrapper_args) >= 2
+                )
             if not complete:
                 name = None
 
-        inner = wrapper_args.get("arguments")
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # the bridge args key is 'params' now (sorts after 'name' so models emit
+        # the name first); 'arguments' stays supported for old chat history.
+        inner = wrapper_args.get("params")
+        if inner is None:
+            inner = wrapper_args.get("arguments")
         if isinstance(inner, str):
             # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
             # transport format: arguments rides as a JSON-encoded string so the
@@ -324,7 +332,7 @@ class TurnCollector:
             # inner value out of the raw text and parse it ON ITS OWN: a
             # top-level partial object hits the same lenient path that makes
             # native (unbridged) tool args stream.
-            started = re.search(r'"arguments"\s*:\s*[{"\[]', raw)
+            started = re.search(r'"(?:arguments|params)"\s*:\s*[{"\[]', raw)
             if started:
                 sliced = parse_lenient_json(raw[started.end() - 1:])
                 if isinstance(sliced, dict) and "_raw" not in sliced:

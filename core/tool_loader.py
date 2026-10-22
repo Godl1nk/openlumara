@@ -235,31 +235,40 @@ class ToolLoader:
                 "description": (
                     "Calls tool directly by name. If do not know tool's "
                     "params, call tools_load with module name first to get "
-                    "schemas. Arguments are validated against tool's schema before it "
+                    "schemas. When writing the call, ALWAYS emit the 'name' key "
+                    "FIRST, then 'params'. Arguments are validated against tool's schema before it "
                     "runs; invalid calls are rejected with valid parameter "
                     "list."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "Exact tool name to call"},
-                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-                        # arguments is TRANSPORTED as a JSON-encoded string on purpose:
+                        "name": {"type": "string", "description": "Exact tool name to call. Always output this key first"},
+                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+                        # the args key is named 'params' instead of 'arguments' on purpose:
+                        # several grammar/guided-decoding backends emit object keys in
+                        # ALPHABETICAL order, so 'arguments' reliably came BEFORE 'name'
+                        # and the model streamed a whole payload before revealing which
+                        # tool it was calling. 'params' sorts after 'name', so both
+                        # schema-order and alphabetical-order emitters put the name first.
+                        # tools_call() still accepts 'arguments' as a legacy alias.
+                        # params is TRANSPORTED as a JSON-encoded string on purpose:
                         # string-typed fields stream token by token, while object-typed
                         # nested values arrive as one atomic chunk from the model server
                         # (verified in the bridge debug log) - which made long bridged
                         # args pop in all at once instead of streaming. execution-side
                         # coercion of str -> dict already exists in tools_call(), and a
                         # model that emits a raw object anyway keeps working.
-                        "arguments": {
+                        "params": {
                             "type": "string",
                             "description": (
                                 "JSON-encoded arguments object for the tool, matching "
-                                "its schema. Example: {\"path\": \"foo.py\", \"content\": \"...\"}"
+                                "its schema. Output AFTER name. Example: "
+                                "{\"path\": \"foo.py\", \"content\": \"...\"}"
                             ),
                         },
                     },
-                    "required": ["name", "arguments"],
+                    "required": ["name", "params"],
                     "additionalProperties": False,
                 },
                 "strict": False,
@@ -375,7 +384,7 @@ class ToolLoader:
         result = {
             "status": "success",
             "tools": tools,
-            "note": "These tools are not in your tool list; call them with tools_call(name, arguments).",
+            "note": "These tools are not in your tool list; call them with tools_call(name, params) - name first.",
         }
         if unknown:
             result["not_found"] = unknown
@@ -485,23 +494,29 @@ class ToolLoader:
             )
         return coerced, None
 
-    async def tools_call(self, name: str, arguments=None):
+    async def tools_call(self, name: str, params=None, arguments=None):
         """Calls a cataloged tool directly by name without loading it into your toolset.
 
         Args:
         name (str): Exact name of the tool to call
-        arguments (str): JSON-encoded arguments object for the tool, matching its schema (a raw object is accepted too)
+        params (str): JSON-encoded arguments object for the tool, matching its schema (a raw object is accepted too)
         """
-        if isinstance(arguments, str):
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        # 'params' is the schema key now (it sorts after 'name', 'arguments' did not);
+        # 'arguments' stays accepted as a legacy alias so models biased by old chat
+        # history keep working.
+        if params is None:
+            params = arguments
+        if isinstance(params, str):
             # transport format: JSON-encoded string (streams token by token)
             try:
-                arguments = json_repair.loads(arguments)
+                params = json_repair.loads(params)
             except Exception:
-                return {"status": "error", "content": "arguments is not valid JSON"}
-        if arguments is None:
-            arguments = {}
-        if not isinstance(arguments, dict):
-            return {"status": "error", "content": "arguments must be an object"}
+                return {"status": "error", "content": "params is not valid JSON"}
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            return {"status": "error", "content": "params must be an object"}
 
         name = str(name).strip()
         if name in META_TOOL_NAMES:
@@ -524,12 +539,12 @@ class ToolLoader:
             return {"status": "error", "content": f"Module '{entry['module']}' is not enabled."}
 
         func = getattr(module, entry["method"])
-        arguments, preflight_error = self._preflight_args(func, name, arguments)
+        params, preflight_error = self._preflight_args(func, name, params)
         if preflight_error:
             self.channel.log("toolcall", f"bridge rejected '{name}': {preflight_error}")
             return {"status": "error", "content": preflight_error}
 
-        result = func(**arguments)
+        result = func(**params)
         if inspect.isawaitable(result):
             result = await result
         return result
