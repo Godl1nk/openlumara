@@ -46,7 +46,29 @@ document.addEventListener('alpine:init', async () => {
 
     // register the service worker
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js');
+        // updateViaCache 'none': always revalidate sw.js itself, so an
+        // update check can never be answered from the HTTP cache
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+        // the service worker now skipWaits + claims, so a new webui build
+        // activates on its own within seconds of the update. when it takes
+        // over (controllerchange) reload ONCE: the new worker swaps the
+        // caches, but the already-loaded JS in this tab is still the old
+        // code - reloading lands the page on the fresh assets without any
+        // force refresh.
+        // - guarded by a flag so the reload can never loop
+        // - skipped when this page loaded WITHOUT a controller (first-ever
+        //   visit: the initial claim is not an update, no reload needed)
+        if (navigator.serviceWorker.controller) {
+            let swReloadDone = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (swReloadDone) { return; }
+                swReloadDone = true;
+                console.log('Service worker updated: reloading for fresh assets..');
+                window.location.reload();
+            });
+        }
     }
 
     // check if we're on a phone
