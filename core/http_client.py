@@ -37,7 +37,7 @@ on top of h11 this adds:
 
 deliberately NOT implemented: cookies, proxies, brotli/zstd, HTTP/2, expect-continue.
 
-security audit (2026-10-22) -- fixes applied, search "audit fix":
+security audit (2026-10-22 Qwen3.8 Flash Next Local) -- fixes applied, search "audit fix":
 #1 credential headers stripped on cross-origin redirects; body descriptor
    headers dropped when 301/302/303 rewrite the request into a GET
 #2 _return_conn no longer pools a socket after the client was closed
@@ -52,7 +52,7 @@ security audit (2026-10-22) -- fixes applied, search "audit fix":
 +   Response is now an async context manager
 +   _request_once closes its socket when cancelled
 
-security audit round 2 (2026-10-22) -- fixes applied, search "r2-":
+security audit round 2 (2026-10-22 GLM-5.3 openrouter) -- fixes applied, search "r2-":
 H1   the connection pool includes the pinned connect endpoint in its key
      (_pool_key): a request with server_address= can never be served an
      idle socket that was established without (or with a different) pin,
@@ -76,7 +76,7 @@ L2   text() also catches ValueError -- a hostile charset label can select a
 L3   abandoning iter_any() mid-stream (break -> GeneratorExit) severs the
      socket instead of leaking it until GC
 
-security audit round 3 (2026-10-22) -- fixes applied, search "r3-":
+security audit round 3 (2026-10-22 Claude Opus 5.5) -- fixes applied, search "r3-":
 H1   a pinned request (server_address=) no longer follows a redirect to
      another origin with plain, unvalidated DNS (the pin used to be dropped
      and the hop followed anyway); same-origin hops keep the pin, other
@@ -100,6 +100,18 @@ L5   request targets are percent-encoded where h11 would reject them; IDN
      hosts go into the Host header as IDNA
 L6   a stale pooled connection is retried on a FRESH socket
 L7   idle sockets are capped across all pool keys (MAX_IDLE_TOTAL)
+
+security audit round 4 (2026-10-22 Qwen3.8 Flash Next local) -- fixes applied, search "r4-":
+M1   the response-header phase is capped (MAX_HEADER_SIZE): h11 enforces
+     no resource limits of its own, so a server streaming never-completing
+     header bytes (or huge 1xx blocks) grew RAM without bound during the
+     header wait; only a total timeout stopped it, and core/api.py's client
+     has none. additionally HTTPClient(idle_timeout=) now bounds a SINGLE
+     transport operation even when the total timeout is None, so a stalled
+     or slowloris server can no longer pin a connection forever;
+     core/api.py opts into a 900s idle timeout (long generations keep
+     working, dead sockets die). also fixes L6: an abandoned coroutine is
+     closed instead of emitting a RuntimeWarning.
 """
 import asyncio
 import base64
@@ -127,6 +139,13 @@ DEFAULT_TOTAL_TIMEOUT = 60.0
 # of gzip input can expand into gigabytes and OOM the process; count the
 # bytes that actually land in RAM. None disables the cap.
 MAX_BODY_SIZE = 32 * 1024 * 1024
+
+# audit fix r4-M1: h11 enforces no resource limits of its own, so the bytes
+# fed to it during the response-header phase are counted here. a server
+# streaming never-completing header data (or huge 1xx blocks) used to grow
+# RAM without bound, stopped only by a total timeout -- which the api client
+# deliberately does not have. 128 KiB is generous for legitimate headers.
+MAX_HEADER_SIZE = 128 * 1024
 
 # sentinel distinguishing "caller did not pass a timeout" (use the client
 # default) from an explicit None (= infinite). None cannot be the sentinel
@@ -220,19 +239,32 @@ def _inflate(decompressor, data):
     return decompressor.decompress(data)
 
 
-async def _deadline_await(deadline, coro):
-    """await a coroutine while respecting an absolute monotonic deadline (None = forever)"""
-    if deadline is None:
+async def _deadline_await(deadline, coro, idle=None):
+    """await a coroutine under an absolute monotonic deadline (None = forever)
+    and an optional per-operation idle timeout.
+
+    audit fix r4-M1: with timeout_total=None a stalled server could hold a
+    single read forever; idle bounds ONE transport operation, so long-lived
+    but ACTIVE streams keep working while dead air times out."""
+    timeout = None
+    reason = "Request timed out"
+    if deadline is not None:
+        timeout = deadline - asyncio.get_running_loop().time()
+        if timeout <= 0:
+            # audit r4-L6: close the abandoned coroutine so asyncio does not
+            # emit a "coroutine was never awaited" RuntimeWarning
+            coro.close()
+            raise HTTPTimeout(reason)
+    if idle is not None and (timeout is None or idle < timeout):
+        timeout = idle
+        reason = f"Connection produced no data for {idle:.0f}s"
+    if timeout is None:
         return await coro
 
-    remaining = deadline - asyncio.get_running_loop().time()
-    if remaining <= 0:
-        raise HTTPTimeout("Request timed out")
-
     try:
-        return await asyncio.wait_for(coro, timeout=remaining)
+        return await asyncio.wait_for(coro, timeout=timeout)
     except asyncio.TimeoutError:
-        raise HTTPTimeout("Request timed out")
+        raise HTTPTimeout(reason)
 
 
 class Headers(dict):
@@ -283,7 +315,7 @@ class Response:
     and pooled on clean exit, the connection severed on error.
     """
 
-    def __init__(self, client, key, reader, writer, conn, status, reason, headers, deadline, max_body_size=None):
+    def __init__(self, client, key, reader, writer, conn, status, reason, headers, deadline, max_body_size=None, idle_timeout=None):
         self.status = status
         self.reason = reason
         self.headers = headers
@@ -296,6 +328,9 @@ class Response:
         self._writer = writer
         self._conn = conn  # the h11.Connection owning this exchange
         self._deadline = deadline
+        # audit fix r4-M1: per-operation idle timeout for body reads, even
+        # when the total deadline is None
+        self._idle_timeout = idle_timeout
         # audit fix r2-M1: decompressed body byte budget (None = unlimited)
         self._max_body_size = max_body_size
         self._body_bytes = 0
@@ -384,7 +419,7 @@ class Response:
                 event = self._conn.next_event()
 
                 if type(event) is h11.NEED_DATA:
-                    raw = await _deadline_await(self._deadline, self._reader.read(READ_CHUNK_SIZE))
+                    raw = await _deadline_await(self._deadline, self._reader.read(READ_CHUNK_SIZE), idle=self._idle_timeout)
                     # an empty read signals EOF of the transport to h11;
                     # the next next_event() either completes the body (EOF-framed)
                     # or raises RemoteProtocolError (truncated)
@@ -539,7 +574,8 @@ class HTTPClient:
     """
 
     def __init__(self, ssl_ctx=None, connect_timeout=5.0, user_agent=DEFAULT_USER_AGENT,
-                 total_timeout=DEFAULT_TOTAL_TIMEOUT, max_body_size=MAX_BODY_SIZE):
+                 total_timeout=DEFAULT_TOTAL_TIMEOUT, max_body_size=MAX_BODY_SIZE,
+                 idle_timeout=None):
         # ssl_ctx: pass a relaxed context (verify_mode=CERT_NONE) to disable verification,
         # None to use the system default context for https
         # total_timeout: total timeout used for requests that omit timeout_total
@@ -547,11 +583,17 @@ class HTTPClient:
         #   so long generations and model loads are never cut off)
         # max_body_size: decompressed body cap for requests that do not pass
         #   their own (None = unlimited)
+        # idle_timeout: audit fix r4-M1: max time a SINGLE transport operation
+        #   (one read or drain) may wait, even when the total timeout is None.
+        #   bounds stalled/slowloris servers for infinite-timeout clients;
+        #   None disables it. core/api.py sets a generous value so long
+        #   generations keep working while dead sockets die.
         self._ssl_ctx = ssl_ctx
         self._connect_timeout = connect_timeout
         self._user_agent = user_agent
         self._total_timeout = total_timeout
         self._max_body_size = max_body_size
+        self._idle_timeout = idle_timeout
         # pooled sockets are reusable once an exchange completed cleanly;
         # h11 state machines are per-request, so we only pool the streams.
         # (scheme, host, port), or (scheme, host, port, connect_host,
@@ -922,7 +964,7 @@ class HTTPClient:
 
         try:
             writer.write(payload)
-            await _deadline_await(deadline, writer.drain())
+            await _deadline_await(deadline, writer.drain(), idle=self._idle_timeout)
         except HTTPTimeout:
             raise
         except (ConnectionError, OSError) as e:
@@ -931,6 +973,7 @@ class HTTPClient:
         # ---- wait for the real response headers (h11 surfaces 1xx separately) ----
         got_bytes = False
         interim_1xx = 0
+        header_bytes = 0  # audit fix r4-M1
         while True:
             try:
                 event = conn.next_event()
@@ -938,14 +981,28 @@ class HTTPClient:
                 _raise_conn_error(e, pooled=pooled, got_bytes=got_bytes)
 
             if type(event) is h11.NEED_DATA:
+                # audit fix r4-M1: h11 buffers without limits by design, so a
+                # server streaming never-completing header bytes (or huge 1xx
+                # blocks) grew RAM here with only the total timeout as a brake
+                # -- and core/api.py's client deliberately has none. abort
+                # before feeding the parser anything past the budget; the
+                # check only fires while h11 still NEED_DATA, so a response
+                # whose headers complete just past the boundary still
+                # surfaces normally. a plain HTTPConnectionError, not a
+                # _StaleConnection: a hostile server does not get retried
+                if header_bytes > MAX_HEADER_SIZE:
+                    raise HTTPConnectionError(
+                        f"Response headers exceed the {MAX_HEADER_SIZE}-byte limit"
+                    )
                 try:
-                    raw = await _deadline_await(deadline, reader.read(READ_CHUNK_SIZE))
+                    raw = await _deadline_await(deadline, reader.read(READ_CHUNK_SIZE), idle=self._idle_timeout)
                 except HTTPTimeout:
                     raise
                 except (ConnectionError, OSError) as e:
                     _raise_conn_error(e, pooled=pooled, got_bytes=got_bytes)
 
                 conn.receive_data(raw)  # empty read = EOF: h11 decides if that's valid
+                header_bytes += len(raw)
                 got_bytes = got_bytes or bool(raw)
                 continue
 
@@ -987,6 +1044,7 @@ class HTTPClient:
             reason=(event.reason or b"").decode("latin-1", errors="replace"),
             headers=Headers(pairs),
             deadline=deadline,
+            idle_timeout=self._idle_timeout,
             max_body_size=max_body_size,
         )
 
