@@ -888,12 +888,14 @@ class Characters(core.module.Module):
     @webui.route("names")
     async def _route_names(self, body=None, query=None):
         """dropdown entries: stored key (what chats reference) + display name"""
+        # -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-23)
+        # category added so the sidebar can filter its character dropdown
         entries = {
-            key: char.get("name") or key
+            key: {"name": char.get("name") or key, "category": char.get("category") or ""}
             for key, char in self.characters.items()
         }
         return sorted(
-            ({"key": k, "name": n} for k, n in entries.items()),
+            ({"key": k, "name": v["name"], "category": v["category"]} for k, v in entries.items()),
             key=lambda e: e["name"].lower()
         )
 
