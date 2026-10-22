@@ -71,7 +71,7 @@ class Coder(core.module.Module):
 
         # paths
         "sandbox_paths": {
-            "default": ["~/coder"],
+            "default": ["sandbox/coder_sandbox"],
             "description": "Paths to folders you want the coder to have access to. You can use the `~` character to refer to your home folder, such as `/home/you` on linux, /Users/You on mac, `C:\\Users\\You` on windows"
         },
 
@@ -206,6 +206,9 @@ class Coder(core.module.Module):
                         output_str += "\n".join([f"- {file}" for file in files])
 
                     final_output.append(output_str)
+
+        if "shell" in self.manager.modules:
+            final_output.append("NOTE: coder sandbox is NOT shell sandbox. they are seperate.")
 
         if self.config.get("use_coding_prompt") and self.config.get("coding_prompt"):
             final_output.append(f"## Coding Guidelines\nYOU MUST ALWAYS follow these guidelines while using the coder:\n{self.config.get('coding_prompt')}")
