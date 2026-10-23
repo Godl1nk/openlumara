@@ -642,6 +642,42 @@
         }
     }
 
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+       --- Secret reveal controls (session_secret / password fields) --- */
+    .secret-input-row {
+        display: flex;
+        align-items: stretch;
+        gap: 6px;
+
+        input {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+    }
+
+    .secret-reveal-btn {
+        flex: 0 0 auto;
+        padding: 0 12px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-family: var(--font-primary);
+        font-size: 12px;
+        cursor: pointer;
+        transition: all .15s ease;
+
+        &:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+    }
+
+    .secret-reveal-error {
+        font-size: 12px;
+        color: var(--error);
+    }
+
 }
 
 
