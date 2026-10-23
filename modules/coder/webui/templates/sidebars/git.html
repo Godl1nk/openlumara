@@ -114,7 +114,7 @@
                 </template>
 
                 <div class="git-section-head">
-                    <span>changes <span class="git-count" x-text="changes.length"></span></span>
+                    <span>changes <span class="git-count" x-text="changeCount()"></span></span>
                     <span class="git-bulk" x-show="!read_only">
                         <button type="button" class="coder-menu-item inline" @click="stageAll()" title="stage everything">stage all</button>
                         <button type="button" class="coder-menu-item inline" @click="unstageAll()" title="unstage everything">unstage</button>
@@ -126,14 +126,25 @@
                         <div class="coder-empty">working tree clean</div>
                     </template>
 
+                    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                       keep-committed layout: active work on top; clean rows
+                       that only live in unpushed commits sink into the violet
+                       group at the bottom and leave on push #}
+                    <template x-if="changes.length && !activeChanges().length">
+                        <div class="coder-empty">nothing uncommitted</div>
+                    </template>
+
                     {# keyed by path+status, NOT index: the list reorders as
                        entries change state, and index keys make Alpine reuse
                        stale nodes (ghost rows showing another file's badge) #}
-                    <template x-for="c in changes" :key="c.path + '|' + c.xy">
+                    <template x-for="c in activeChanges()" :key="c.path + '|' + c.xy">
                         <div class="git-change">
-                            <span class="git-badge" :class="{ staged: c.staged, untracked: c.untracked }" :title="badge(c)"></span>
+                            <!-- committed = violet dot for files living only in
+                                 unpushed commits; also = purple ring on dirty
+                                 files whose path is in one of those commits # -->
+                            <span class="git-badge" :class="{ staged: c.staged, untracked: c.untracked, committed: c.committed_only, also: c.committed && !c.committed_only }" :title="badge(c)"></span>
                             <span class="git-path" x-text="c.path" :title="'view diff: ' + c.path" @click="openDiff(c)"></span>
-                            <button type="button" class="coder-icon-btn git-stage-btn" x-show="!read_only && !c.staged" title="stage" @click="stage(c.path)">
+                            <button type="button" class="coder-icon-btn git-stage-btn" x-show="!read_only && !c.staged && !c.committed_only" title="stage" @click="stage(c.path)">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             </button>
                             <button type="button" class="coder-icon-btn git-stage-btn" x-show="!read_only && c.staged" title="unstage" @click="unstage(c.path)">
@@ -141,12 +152,41 @@
                             </button>
                         </div>
                     </template>
+
+                    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                       pinned bottom group: committed, clean, waiting to ship #}
+                    <template x-if="pendingChanges().length">
+                        <div class="git-pending-head">
+                            <span>committed · waiting to push <span class="git-count pending" x-text="pendingChanges().length"></span></span>
+                        </div>
+                    </template>
+                    <template x-for="c in pendingChanges()" :key="c.path + '|' + c.xy">
+                        <div class="git-change pending-row">
+                            <!-- the ring on a violet dot = edited AGAIN after
+                                 the commit: the active group has its work-in-
+                                 progress twin, this row stays about the commit # -->
+                            <span class="git-badge committed" :class="{ also: c.also_dirty }" :title="badge(c)"></span>
+                            <span class="git-path" x-text="c.path" :title="'view diff: ' + c.path" @click="openDiff(c)"></span>
+                            <button type="button" class="coder-icon-btn git-stage-btn" x-show="!read_only" title="edit (then amend or commit on top)" @click="editPending(c.path)">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                            </button>
+                        </div>
+                    </template>
                 </div>
 
                 <div class="git-commit" x-show="!read_only">
+                    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                       amend last commit: folds staged changes (and an optional
+                       new message, empty = keep the original) into HEAD.
+                       refuses server-side if HEAD is already pushed. #}
+                    <label class="git-amend-row" x-show="lastCommit.hash">
+                        <input type="checkbox" x-model="amend" @change="toggleAmend()" :disabled="committing">
+                        <span class="git-amend-label">amend</span>
+                        <span class="git-amend-target" x-text="lastCommit.hash + ' ' + lastCommit.msg"></span>
+                    </label>
                     <textarea
                         class="git-message"
-                        placeholder="commit message.. (ctrl+enter to commit)"
+                        :placeholder="amend ? 'new message for ' + lastCommit.hash + ' (empty keeps the original).. (ctrl+enter)' : 'commit message.. (ctrl+enter to commit)'"
                         rows="3"
                         spellcheck="false"
                         x-model="message"
@@ -156,9 +196,9 @@
                     <button
                         type="button"
                         class="coder-action primary git-commit-btn"
-                        :disabled="committing || !message.trim() || stagedCount() === 0"
+                        :disabled="committing || (amend ? (!message.trim() && stagedCount() === 0) : (!message.trim() || stagedCount() === 0))"
                         @click="commit()"
-                        x-text="committing ? 'committing..' : 'commit ' + stagedCount() + ' staged'"
+                        x-text="committing ? (amend ? 'amending..' : 'committing..') : (amend ? 'amend last commit' : 'commit ' + stagedCount() + ' staged')"
                     ></button>
                 </div>
 

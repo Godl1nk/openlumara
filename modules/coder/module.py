@@ -129,6 +129,12 @@ class Coder(core.module.Module):
             "description": "Show the coder card on the webui welcome screen: the resume-last-file row, pinned + recent files and the git strip.",
             "depends": "enable_webui_extension"
         },
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        "git_keep_committed_visible": {
+            "default": True,
+            "description": "Git sidebar behavior after a commit.\n\n**On (new way)**: committed-but-unpushed files STAY in the changes list with a violet 'committed' dot, so nothing you wrote silently vanishes before it ships - they leave the list when you push.\n\n**Off (classic)**: committing removes files from the list immediately, plain `git status` style.",
+            "depends": "enable_webui_extension"
+        },
 
         # blacklists
         "folder_blacklist": {
@@ -1432,12 +1438,56 @@ class Coder(core.module.Module):
         rc_s, raw_s = await self._run_git_bytes(root, "status", "--porcelain=v1", "-z")
         changes = self._parse_porcelain_z(raw_s) if rc_s == 0 else []
 
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        # keep-committed mode (setting git_keep_committed_visible): files
+        # that sit in unpushed commits stay in the list marked 'committed'
+        # instead of vanishing on commit; they leave when a push ships them.
+        # committed+still-dirty files keep their working-tree entry and just
+        # gain the committed flag. base resolution is fully server side.
+        keep = bool(self.config.get("git_keep_committed_visible"))
+        committed = {}
+        if keep:
+            base, _target, _note = await self._git_pending_base(root)
+            if base:
+                rc_n, raw_n = await self._run_git_bytes(root, "diff", "--numstat", "--no-renames", f"{base}..HEAD")
+                if rc_n == 0:
+                    for line in raw_n.decode("utf-8", "replace").splitlines():
+                        parts = line.split("\t", 2)
+                        if len(parts) < 3:
+                            continue
+                        committed[parts[2].replace(os.sep, "/")] = True
+        # a dirty file whose path is in an unpushed commit appears TWICE:
+        # once in the active group (its working-tree state, with a purple
+        # ring) and once in the pinned bottom group as committed_only - the
+        # violet row is the entry point to the COMMIT diff (git_pending_diff),
+        # which the working-tree diff cannot show. also_dirty lets the UI
+        # label that combo in the tooltip.
+        dirty_paths = {c["path"] for c in changes}
+        for c in changes:
+            c["committed"] = c["path"] in committed
+        for p in sorted(committed):
+            changes.append({
+                "path": p, "xy": "C ", "staged": False, "untracked": False,
+                "committed": True, "committed_only": True,
+                "also_dirty": p in dirty_paths,
+            })
+
+        # last commit (hash + subject) so the sidebar can offer an amend
+        # toggle without a second round-trip to git_log
+        last_commit = {"hash": "", "msg": ""}
+        ok_l, out_l = await self._run_git(root, "log", "-n1", "--pretty=%h%x09%s")
+        if ok_l and out_l.strip():
+            h, _, m = out_l.strip().partition("\t")
+            last_commit = {"hash": h, "msg": m}
+
         return {
             "is_repo": True,
             "branch": branch,
             "branches": branches,
             "changes": changes,
             "read_only": bool(self.config.get("read-only")),
+            "keep_committed": keep,
+            "last_commit": last_commit,
         }
 
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
@@ -1541,14 +1591,44 @@ class Coder(core.module.Module):
         sandbox = (body or {}).get("sandbox", "")
         subpath = (body or {}).get("subpath", "")
         message = (body or {}).get("message", "").strip()
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        # amend mode: fold the staged changes (and/or a new message) into
+        # HEAD instead of creating a new commit. empty message = --no-edit.
+        amend = bool((body or {}).get("amend"))
 
-        if not sandbox or not message:
+        if not sandbox or (not amend and not message):
             return self.result("sandbox and message are both required", success=False)
 
         try:
             root = await self._git_root(sandbox, subpath)
         except Exception as e:
             return self.result(str(e), success=False)
+
+        if amend:
+            # never rewrite published history: HEAD itself must still be
+            # unpushed. base == HEAD means the remote already has the exact
+            # commit we would be rewriting -> refuse. no resolvable base
+            # (fresh branch / detached) -> nothing can have shipped from it,
+            # except detached HEAD where amending is pointless -> also refuse.
+            ok_h, head = await self._run_git(root, "rev-parse", "HEAD")
+            if not ok_h or not head.strip():
+                return self.result("nothing to amend: this repository has no commits yet", success=False)
+            head = head.strip()
+            base, target, note = await self._git_pending_base(root)
+            if "detached" in (note or ""):
+                return self.result("cannot amend on a detached HEAD", success=False)
+            if base and base == head:
+                return self.result(
+                    f"the latest commit is already pushed to {target}: amending it would rewrite published history",
+                    success=False,
+                )
+            if message:
+                ok, out = await self._run_git(root, "commit", "--amend", "-m", message)
+            else:
+                ok, out = await self._run_git(root, "commit", "--amend", "--no-edit")
+            if not ok:
+                return self.result(out, success=False)
+            return self.result(out)
 
         ok, out = await self._run_git(root, "commit", "-m", message)
         if not ok:
@@ -1657,6 +1737,99 @@ class Coder(core.module.Module):
             "behind": behind,
             "dirty": dirty,
         }
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+    # 'review what a push would send': the push modal lists commits already,
+    # but a push ships CODE, not commit messages. these routes expose the
+    # file list + diff between the remote base and HEAD, resolved entirely
+    # server side (the client never supplies a revision, so there is nothing
+    # to inject).
+    async def _git_pending_base(self, root):
+        """resolve the diff base for a pending push.
+        returns (base_sha | None, target_desc, note)."""
+        ok, branch = await self._run_git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if not ok or branch.strip() == "HEAD":
+            return None, "", "detached HEAD: nothing to review"
+
+        ok, out = await self._run_git(root, "remote")
+        remotes = out.split() if ok else []
+        if not remotes:
+            return None, "", "this repo has no remotes"
+        remote = "origin" if "origin" in remotes else remotes[0]
+
+        ok, upstream = await self._run_git(root, "rev-parse", "--abbrev-ref", "@{u}")
+        upstream = upstream.strip() if ok else ""
+        if "/" in upstream:
+            ok, sha = await self._run_git(root, "rev-parse", upstream)
+            if not ok:
+                return None, upstream, f"could not resolve {upstream} - has it ever been fetched?"
+            return sha.strip(), upstream, ""
+
+        # brand new branch: compare against the closest remote history found
+        for cand in (f"{remote}/HEAD", f"{remote}/main", f"{remote}/master"):
+            ok, out = await self._run_git(root, "rev-parse", "--verify", "--quiet", cand)
+            if ok and out.strip():
+                ok, out = await self._run_git(root, "merge-base", "HEAD", cand)
+                if ok and out.strip():
+                    return out.strip(), f"{remote}/{branch.strip()} (new branch)", ""
+        return None, f"{remote}/{branch.strip()} (new branch)", "no comparable remote history found: this push publishes everything on the branch"
+
+    @webui.route("git_pending_files")
+    async def _route_git_pending_files(self, body=None, query=None):
+        """files (and line counts) that a push would transfer"""
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+        if not sandbox:
+            return self.result("no sandbox given", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        base, target, note = await self._git_pending_base(root)
+        if base is None:
+            return {"files": [], "target": target, "note": note}
+
+        rc, raw = await self._run_git_bytes(root, "diff", "--numstat", "--no-renames", f"{base}..HEAD")
+        if rc != 0:
+            return self.result(raw.decode("utf-8", "replace").strip() or "git diff failed", success=False)
+
+        files = []
+        for line in raw.decode("utf-8", "replace").splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            # added/removed are '-' for binary files: pass through as-is
+            files.append({"path": parts[2], "added": parts[0], "removed": parts[1]})
+        return {"files": files, "target": target, "note": ""}
+
+    @webui.route("git_pending_diff")
+    async def _route_git_pending_diff(self, body=None, query=None):
+        """unified + split diff for one file, between the remote base and HEAD"""
+        sandbox = (query or {}).get("sandbox", "")
+        subpath = (query or {}).get("subpath", "")
+        rel_path = (query or {}).get("path", "")
+        if not sandbox or not rel_path:
+            return self.result("sandbox and path are both required", success=False)
+
+        try:
+            root = await self._git_root(sandbox, subpath)
+            self._check_git_paths(root, [rel_path])
+        except Exception as e:
+            return self.result(str(e), success=False)
+
+        base, target, note = await self._git_pending_base(root)
+        if base is None:
+            return self.result(note or "no comparable remote history to diff against", success=False)
+
+        abs_path = os.path.normpath(os.path.join(root, rel_path))
+        rc, raw = await self._run_git_bytes(root, "diff", f"{base}..HEAD", "--", abs_path)
+        if rc not in (0, 1):
+            return self.result(raw.decode("utf-8", "replace").strip() or "git diff failed", success=False)
+
+        text = raw.decode("utf-8", "replace")
+        return {"diff": text, "rows": self._parse_split_diff(text), "target": target}
 
     @webui.route("git_push", method="POST", admin_only=True)
     async def _route_git_push(self, body=None, query=None):

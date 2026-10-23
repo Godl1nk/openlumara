@@ -81,5 +81,89 @@
                 </template>
             </div>
         </template>
+
+        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+             pre-install code review overlay: read-only, syntax-highlighted
+             source with jump-links to the parts that matter (dependencies,
+             on_install, on_ready), warnings for shell/exec-style APIs, and a
+             two-step confirm. installing = running code; this makes that clear -->
+        <!-- teleported to body (same pattern as the sidebar popovers): the
+             settings .modal is fixed with backface-visibility hidden, which
+             would trap a position:fixed overlay inside the modal's box.
+             NOTE: x-if must NOT sit on the x-teleport template itself - Alpine
+             clones teleported content unconditionally at init, so visibility
+             is gated by x-show/x-cloak on the overlay, with x-if *inside* it
+             (keeps the inner bindings from evaluating while audit is null) -->
+        <template x-teleport="body">
+            <div class="library-audit-overlay" x-show="audit" x-cloak @keydown.escape.window="closeAudit()">
+                <template x-if="audit">
+                <div class="library-audit-modal" role="dialog" aria-modal="true">
+                    <div class="library-audit-header">
+                        <h3 class="section-title"
+                            x-text="(audit.mode === 'update' ? 'Review code before updating: ' : 'Review code before installing: ') + audit.m.name"></h3>
+                        <a class="library-audit-repo" :href="audit.url" target="_blank" rel="noopener"
+                           x-text="audit.url" :title="audit.url"></a>
+                    </div>
+
+                    <p class="library-audit-lead">
+                        Modules are Python code that runs with <strong>full access to your OpenLumara</strong>.
+                        Read through the source below first - the buttons under this text jump straight to the parts that matter.
+                    </p>
+
+                    <div class="library-audit-flags" x-show="audit.flags.length > 0">
+                        <template x-for="flag in audit.flags" :key="'flag-' + flag.name + '-' + flag.line">
+                            <button type="button" class="audit-flag" :class="[flag.kind, { focused: audit.focusLine === flag.line }]"
+                                    @click="auditJump(flag.line)">
+                                <span class="audit-flag-name" x-text="flag.name"></span>
+                                <span class="audit-flag-line" x-text="'line ' + flag.line"></span>
+                                <span class="audit-flag-desc" x-text="flag.desc"></span>
+                            </button>
+                        </template>
+                    </div>
+
+                    <div class="library-audit-warnings" x-show="audit.warnings.length > 0">
+                        <template x-for="(warning, i) in audit.warnings" :key="'warn-' + i">
+                            <div class="audit-warning" x-text="warning"></div>
+                        </template>
+                    </div>
+
+                    <div class="library-audit-filebar">
+                        <label>File:
+                            <select :value="audit.file" @change="auditSelectFile($event.target.value)">
+                                <template x-for="f in audit.files" :key="f">
+                                    <option :value="f" x-text="f"></option>
+                                </template>
+                            </select>
+                        </label>
+                        <span class="audit-truncated" x-show="audit.truncated" x-cloak>file is truncated in this view</span>
+                    </div>
+
+                    <div class="library-audit-loading" x-show="audit.loading" x-cloak>
+                        <div class="spinner"></div>
+                    </div>
+
+                    <div class="library-audit-error" x-show="audit.error" x-cloak x-text="audit.error"></div>
+
+                    <div class="library-audit-code" id="library-audit-scroll" x-show="!audit.loading && !audit.error">
+                        <div class="audit-gutter" aria-hidden="true">
+                            <template x-for="n in auditLineNums" :key="'ln-' + n">
+                                <span class="audit-line" :class="{ focus: n === audit.focusLine }" x-text="n"></span>
+                            </template>
+                        </div>
+                        <pre class="audit-code hljs" x-html="auditHighlighted"></pre>
+                    </div>
+
+                    <div class="library-audit-footer">
+                        <span class="library-audit-footnote">Only install code you have read and trust.</span>
+                        <div class="library-audit-actions">
+                            <button type="button" class="library-btn" @click="closeAudit()">Reject</button>
+                            <button type="button" class="library-btn danger" @click="confirmAudit()"
+                                    :disabled="audit.loading || Boolean(audit.error)">Confirm</button>
+                        </div>
+                    </div>
+                </div>
+                </template>
+            </div>
+        </template>
     </div>
 </template>

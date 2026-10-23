@@ -26,8 +26,8 @@ class Scheduler(core.module.Module):
             "type": "select",
             "default": "system prompt + instruction",
             "options": {
-                "system prompt + instruction": "Sends the system prompt and the scheduled instruction, without chat history. Token-efficient, but may induce prompt reprocessing due to context switching.",
-                "full context": "Sends the entire context window + the scheduled instruction. This makes many API's use the prompt cache to prevent reprocessing, but it will also send your entire history along with the scheduled instructions, which is a lot of tokens.",
+                "system prompt + instruction": "Sends the system prompt and the scheduled instruction, without chat history. Token-efficient, but may induce prompt reprocessing due to context switching. Also the safest option security-wise: a scheduled job can never react based on prompt-injected content from your chat history.",
+                "full context": "Sends the entire context window + the scheduled instruction. This makes many API's use the prompt cache to prevent reprocessing, but it will also send your entire history along with the scheduled instructions, which is a lot of tokens. Security note: anything injected into your chat history (hostile webpages, documents, etc.) travels along into every scheduled job and could influence it - please prefer 'system prompt + instruction' unless you really need the history.",
                 "instruction only": "The most token-efficient option. sends only the scheduled instruction. Drastically reduces token use and cost, but may induce prompt reprocessing due to context switching."
             }
         },

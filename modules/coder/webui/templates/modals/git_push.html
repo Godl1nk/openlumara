@@ -3,7 +3,7 @@
    plus warnings (diverged, uncommitted changes) before anything is sent.
    opened via $store.gitPanel.openPush(). #}
 <template x-if="$store.ui.currentModal === 'git_push' && $store.gitPanel" x-cloak>
-    <div class="modal git-push-modal" @keydown.escape.window="if (!$store.gitPanel.push.pushing) $store.gitPanel.closePush()">
+    <div class="modal git-push-modal" :class="{ reviewing: $store.gitPanel.push.reviewPath }" @keydown.escape.window="if (!$store.gitPanel.push.pushing) $store.gitPanel.closePush()">
         <div class="header">
             <h2 class="coder-editor-title">
                 <span>confirm push</span>
@@ -33,6 +33,76 @@
                     <div class="git-log-entry">
                         <span class="h" x-text="entry.hash"></span>
                         <span x-text="entry.msg"></span>
+                    </div>
+                </template>
+            </div>
+
+            <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                 review before you ship: files sitting between the remote
+                 base and HEAD, each expandable into its unified/split diff
+                 (same view pair as git_diff.html: CSS media queries pick
+                 which one shows). # -->
+            <div class="git-push-changes" x-show="$store.gitPanel.push.files.length || $store.gitPanel.push.filesNote">
+                <div class="git-push-changes-head">
+                    <span>changes in this push</span>
+                    <span class="git-push-changes-count" x-text="$store.gitPanel.push.files.length + ' files'"></span>
+                </div>
+                <div class="git-push-changes-note" x-show="$store.gitPanel.push.filesNote" x-text="$store.gitPanel.push.filesNote"></div>
+                <template x-for="f in $store.gitPanel.push.files" :key="f.path">
+                    <div class="git-push-file">
+                        <div class="git-push-file-head">
+                            <button type="button"
+                                    class="git-push-file-row"
+                                    :class="{ active: $store.gitPanel.push.reviewPath === f.path }"
+                                    @click="$store.gitPanel.toggleReview(f.path)">
+                                <span class="twisty" x-text="$store.gitPanel.push.reviewPath === f.path ? '▾' : '▸'"></span>
+                                <span class="path" x-text="f.path"></span>
+                                <span class="stats">
+                                    <span class="stat add" x-text="f.added === '-' ? 'bin' : '+' + f.added"></span>
+                                    <span class="stat del" x-show="f.added !== '-'" x-text="'-' + f.removed"></span>
+                                </span>
+                            </button>
+                            <!-- edit before you ship: opens the file in the coder
+                                 editor with the push diff highlighted (sibling of
+                                 the row button - buttons cannot nest) # -->
+                            <button type="button"
+                                    class="git-push-edit-btn"
+                                    :disabled="$store.gitPanel.read_only"
+                                    :title="$store.gitPanel.read_only ? 'editor is read-only' : 'Edit this file before pushing'"
+                                    aria-label="Edit file before pushing"
+                                    @click="$store.gitPanel.editPending(f.path)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                    <path d="m15 5 4 4" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="git-push-diff" x-show="$store.gitPanel.push.reviewPath === f.path">
+                            <template x-if="$store.gitPanel.push.reviewLoading">
+                                <div class="git-push-diff-status">loading diff..</div>
+                            </template>
+                            <template x-if="!$store.gitPanel.push.reviewLoading">
+                                <div>
+                                    <pre class="git-push-diff-body git-diff-unified"><template x-for="(line, i) in $store.gitPanel.push.reviewLines" :key="i"><div class="git-diff-line" :class="{ add: line.startsWith('+') && !line.startsWith('+++'), del: line.startsWith('-') && !line.startsWith('---'), hunk: line.startsWith('@@'), meta: line.startsWith('+++') || line.startsWith('---') }" x-text="line || ' '"></div></template></pre>
+                                    <div class="git-split-body git-diff-split git-push-split">
+                                        <div class="git-push-diff-status" x-show="!$store.gitPanel.push.reviewRows.length">(no text changes)</div>
+                                        <table class="git-split-table" x-show="$store.gitPanel.push.reviewRows.length">
+                                            <colgroup><col class="ln-col"><col class="code-col"><col class="ln-col"><col class="code-col"></colgroup>
+                                            <tbody>
+                                                <template x-for="(row, i) in $store.gitPanel.push.reviewRows" :key="i">
+                                                    <tr :class="'split-' + row.type">
+                                                        <td class="ln" x-text="row.old_num || ''"></td>
+                                                        <td class="code" x-text="row.old_text || ' '"></td>
+                                                        <td class="ln" x-text="row.new_num || ''"></td>
+                                                        <td class="code" x-text="row.new_text || ' '"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
                     </div>
                 </template>
             </div>

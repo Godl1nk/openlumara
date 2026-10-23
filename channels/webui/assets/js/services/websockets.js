@@ -10,6 +10,15 @@ let responseSoundPlayed = false;
 let serverShutdownSeen = false;
 let wsClosedAt = null;
 
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+// app-level heartbeat: sends {type:"ping"} every 25s while connected and
+// tracks when the last message of ANY kind arrived. defeats idle-socket
+// reapers (reverse proxies / tunnels dropping quiet connections) and the
+// last-seen timestamp tells us whether a 1006 hit during total silence
+// (network path died) or right after traffic (server side issue).
+let wsHeartbeatTimer = null;
+window.wsLastRx = Date.now();
+
 // intended to be used to queue up messages for sending to the backend in case the
 // websocket isn't connected. it's a stub for now
 let sendQueue = [];
@@ -61,11 +70,22 @@ async function connectWebSocket() {
             return;
         }
 
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // start the app-level heartbeat (server answers {type:"pong"}; the
+        // message switch ignores unknown types, so nothing else changes)
+        clearInterval(wsHeartbeatTimer);
+        wsHeartbeatTimer = setInterval(() => {
+            if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
+                try { wsSocket.send(JSON.stringify({ type: "ping" })); } catch (e) {}
+            }
+        }, 25000);
+
         await Alpine.store("chat").reloadChat();
     };
 
     wsSocket.onmessage = async (event) => {
         let data = null;
+        window.wsLastRx = Date.now();
         try {
             data = JSON.parse(event.data);
             await handleWebSocketMessage(data);
@@ -85,13 +105,28 @@ async function connectWebSocket() {
 
     wsSocket.onclose = async (event) => {
         if (!wsReconnecting) {
-            console.log('WebSocket disconnected:', event.code, event.reason);
+            clearInterval(wsHeartbeatTimer);
+            const silence = Math.round((Date.now() - window.wsLastRx) / 1000);
+            console.log('WebSocket disconnected:', event.code, event.reason, `(silent for ${silence}s before the drop)`);
             wsSocket = null;
             window.socket = null;
             isWsConnected = false;
             wsClosedAt = Date.now();
 
-            Alpine.store('ui').notice = "Not connected to the backend server! Is OpenLumara running?"
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+            // make the disconnect actually diagnosable: the close code tells
+            // auth failures apart from server restarts, and the generic
+            // "is it running?" notice made all of them look identical.
+            let notice = "Not connected to the backend server! Is OpenLumara running?";
+            if (event.code === 4001) {
+                notice = "Login session no longer accepted (expired, or the session secret changed). Log out and back in.";
+            } else if (event.code === 4003) {
+                notice = "WebSocket blocked: origin mismatch. The address in the URL bar does not match the webui's host/port settings.";
+            } else if (event.code === 1012 || event.code === 1011 || event.code === 1006) {
+                notice = "Connection to the backend dropped (code " + event.code + "). Reconnecting..";
+            }
+            notice += " [" + event.code + (event.reason ? ' - ' + event.reason : '') + "]";
+            Alpine.store('ui').notice = notice;
             stream = Alpine.store("stream")
             stream.state = 'idle';
 
