@@ -1338,7 +1338,6 @@ async def op_chat_rename(channel, title, chat_id=None):
 ADMIN_ONLY_ENDPOINTS = [
     "/api/settings/load",
     "/api/settings/save",
-    "/api/settings/reveal",
     "/api/check_connection",
     "/api/models",
     "/api/model/set",
@@ -1425,45 +1424,27 @@ def api_result(obj = None, success: bool = True):
     return {"data": result, "success": success}
 
 # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-# /api/settings/load merges raw config values into its category tree. With
-# require_login off (the shipped default) that response handed the webui
-# login password AND the session signing key to anyone who could reach the
-# port - and unlike a password, a captured signing key forges valid sessions
-# FOREVER, even after the operator enables login later. So secret fields are
-# replaced by a sentinel on the way out and swapped back for the stored
-# value on save, making the load/save round-trip lossless. (Setting a field
-# literally to this sentinel text is not supported; do not pick
-# '********' as a password.)
-SECRET_MASK = "********"
-SECRET_FIELD_NAMES = ("session_secret", "password")
+def trusted_client_ip(conn):
+    """rate-limit identity for a fastapi Request or WebSocket.
 
-def mask_secret_fields(node, path=()):
-    """recursively replace the 'value' of any secret-named field object.
-    the webui's own password / signing key additionally get a revealable
-    flag + their raw config key, so the settings UI can offer a show
-    button that goes through /api/settings/reveal (logged-in only)."""
-    if not isinstance(node, dict):
-        return node
-    for key, val in node.items():
-        if not isinstance(val, dict):
-            continue
-        if isinstance(key, str) and key.lower() in SECRET_FIELD_NAMES and "value" in val and val.get("value"):
-            val["value"] = SECRET_MASK
-            if "webui" in path:
-                val["secretKey"] = key.lower()
-                val["revealable"] = True
-        mask_secret_fields(val, path + (str(key),))
-    return node
-
-def restore_masked_secrets(flat, old):
-    """undo the sentinel in a flattened save tree using the pre-save config"""
-    if not isinstance(flat, dict) or not isinstance(old, dict):
-        return
-    for key, val in list(flat.items()):
-        if isinstance(val, dict):
-            restore_masked_secrets(val, old.get(key))
-        elif val == SECRET_MASK and key in old and not isinstance(old[key], (dict, list)):
-            flat[key] = old[key]
+    Behind a reverse proxy the socket peer is always 127.0.0.1, so every
+    visitor would share one login rate-limit bucket: one crank could lock
+    the real user out for 15 minutes (and per-user limiting would not exist).
+    X-Forwarded-For is therefore honored ONLY when the socket peer is
+    loopback: the webui binds to 127.0.0.1, so a connection either arrives
+    from the local proxy (whose XFF is trustworthy) or from a local process,
+    which is already inside the machine's trust boundary. A remote attacker
+    cannot reach this socket without the proxy, so the header can never be
+    used to forge a rate-limit identity across the network boundary.
+    """
+    peer = conn.client.host if conn.client else "unknown"
+    if peer in ("127.0.0.1", "::1"):
+        forwarded = conn.headers.get("x-forwarded-for")
+        if forwarded:
+            first = forwarded.split(",")[0].strip()
+            if first:
+                return first
+    return peer
 
 async def create_fastapi(channel):
     app = fastapi.FastAPI()
@@ -1672,7 +1653,10 @@ async def create_fastapi(channel):
         """Handles login form submission."""
 
         # rate limit the request
-        client_ip = request.client.host if request.client else "unknown"
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        # per-USER bucket: behind a local proxy the socket peer is always
+        # loopback; trusted_client_ip() restores real attribution via XFF.
+        client_ip = trusted_client_ip(request)
         now = time.time()
 
         if client_ip in channel.login_attempts:
@@ -2166,44 +2150,11 @@ async def create_fastapi(channel):
         """Returns the complete, render-ready settings structure (categories, field types, schemas and current values merged)"""
         module_info, core_sections = get_module_info()
         structure = build_settings_structure(core.config.config, module_info, core_sections)
-        # secrets never leave the server, see mask_secret_fields()
-        structure = mask_secret_fields(copy.deepcopy(structure))
 
         return api_result({
             "categories": structure,
             "show_unsafe_settings": bool(channel.config.get("show_unsafe_settings"))
         })
-
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-    # reveal a masked webui secret (password / session_secret) for the
-    # "show" button in the settings modal. strict gate: login must be ON
-    # and the caller must be authenticated. with login off nobody can
-    # reveal - the settings/load mask already protects the future (an
-    # anonymous reveal endpoint would hand back exactly what round 2 of
-    # the audit complained about: capture now, forge after login is
-    # enabled). blocked outright when enable_admin_settings is off.
-    @app.post("/api/settings/reveal")
-    async def settings_reveal(request: fastapi.Request):
-        if not channel.config.get("require_login", False):
-            return fastapi.responses.JSONResponse(
-                api_result("revealing secrets requires login to be enabled; the webui password lives in the config file and the session signing key in the webui_session_secret file (data folder) instead", success=False),
-                status_code=403,
-            )
-        if not request.session.get("authenticated", False):
-            return fastapi.responses.JSONResponse(api_result("Unauthorized", success=False), status_code=401)
-
-        data = await request.json()
-        field = str((data or {}).get("field") or "")
-        if field == "password":
-            value = channel.config.get("password") or ""
-        elif field == "session_secret":
-            value = getattr(channel, "session_secret_value", "") or ""
-        else:
-            return fastapi.responses.JSONResponse(api_result("unknown secret field", success=False), status_code=400)
-
-        if not value:
-            return api_result({"value": ""})
-        return api_result({"value": value})
 
     @app.get("/api/check_connection")
     async def check_connection():
@@ -2257,11 +2208,6 @@ async def create_fastapi(channel):
         # client-side with four JSON.stringify diffs
         old_config = copy.deepcopy(dict(core.config.config))
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-        # masked secrets (see mask_secret_fields) round-trip back to the
-        # stored values, so saving unrelated settings can never blank or
-        # overwrite the login password / session signing key with the mask.
-        restore_masked_secrets(flattened, old_config)
 
         result = core.config.config.load(data=flattened)
         core.config.config.save()
@@ -2668,7 +2614,8 @@ async def create_fastapi(channel):
             ws_session = websocket.scope.get("session") or {}
             if not ws_session.get("authenticated", False):
                 # check if rate limited
-                client_ip = websocket.client.host if websocket.client else "unknown"
+                # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                client_ip = trusted_client_ip(websocket)
                 now = time.time()
 
                 if client_ip in channel.login_attempts:

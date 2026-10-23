@@ -30,19 +30,8 @@
         ">
             <div class="row">
                 <label x-text="setting.title"></label>
-                <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-                     masked secrets (password / session key) get a show button
-                     that asks the server for the stored value (authenticated
-                     sessions only; login must be enabled) # -->
-                <div class="secret-input-row">
-                    <input type="text" :type="setting.type" :value="setting.value" 
-                           @input="updateSetting(setting, $event.target.value)">
-                    <button type="button" class="secret-reveal-btn"
-                            x-show="setting.revealable && setting.value === '********'"
-                            title="Reveal stored value (requires an authenticated session)"
-                            @click="revealSecret(setting)">show</button>
-                </div>
-                <span class="secret-reveal-error" x-show="secretRevealError" x-text="secretRevealError"></span>
+                <input type="text" :type="setting.type" :value="setting.value" 
+                       @input="updateSetting(setting, $event.target.value)">
                 <span class="description" x-show="setting.description" x-html="renderMarkdown(setting.description)"></span>
             </div>
         </template>
