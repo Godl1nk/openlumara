@@ -7,7 +7,7 @@ import regex as re
 
 TEMPORARY = False
 
-def _storage_open(path: str = None, mode: str = "r", base: str = None, rel: str = None):
+def _storage_open(path: str = None, mode: str = "r", base: str = None, rel: str = None, file_mode: int = None):
     """open() replacement that fixes TOCTOU using core.sandbox_open"""
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
 
@@ -21,6 +21,12 @@ def _storage_open(path: str = None, mode: str = "r", base: str = None, rel: str 
         flags = os.O_RDONLY
 
     fd = core.sandbox_open(base, rel, flags)
+    if file_mode is not None and ("w" in mode or "x" in mode):
+        try:
+            # chmod it to the filemode specified
+            os.fchmod(fd, file_mode)
+        except OSError:
+            pass
     fdopen_mode = mode.replace("x", "w")
     if "b" in mode:
         return os.fdopen(fd, fdopen_mode)
@@ -176,8 +182,9 @@ class StorageList(list):
 
 class StorageDict(dict):
     """subclassed dict that handles storage of data. supports a variety of storage formats."""
-    def __init__(self, name: str, type: str, manager=None, path=None, autoload=True, override_temporary=False, *args):
+    def __init__(self, name: str, type: str, manager=None, path=None, autoload=True, override_temporary=False, file_mode: int = None, *args):
         super().__init__(*args)
+        self.file_mode = file_mode
 
         # default to openlumara data folder if no path specified
         if not path:
@@ -239,7 +246,7 @@ class StorageDict(dict):
     def _write(self, content):
         try:
             write_mode = "wb" if self.binary else "w"
-            with _storage_open(self.path, write_mode) as f:
+            with _storage_open(self.path, write_mode, file_mode=self.file_mode) as f:
                 f.write(content)
         except Exception as e:
             core.log("error", f"error writing {self.name}: {e}")
