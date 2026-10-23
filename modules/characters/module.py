@@ -515,9 +515,6 @@ class Characters(core.module.Module):
         if not name.strip():
             return self.result("character name cannot be empty", False)
 
-        if tags is None:
-            tags = []
-
         exists = self._find_character(name)
         if exists:
             return self.result("character already exists", False)
@@ -874,15 +871,13 @@ class Characters(core.module.Module):
         """the character key stored in a chat's metadata, '' when none"""
         return (chat.get("metadata") or {}).get("character") or ""
 
-    def _chats_for_character(self, character, category=None, tags=None):
+    def _chats_for_character(self, character, category=None):
         chats = [
             c for c in self.channel.context.chat.get_all()
             if self._chat_character(c) == character
         ]
         if category:
             chats = [c for c in chats if c.get("category") == category]
-        if tags:
-            chats = [c for c in chats if all(t in (c.get("tags") or []) for t in tags)]
         return chats
 
     @webui.route("names")
