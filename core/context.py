@@ -69,8 +69,13 @@ class Context:
             # keep a reference to the summary message so trimming can never cut past it.
             for i in range(len(messages) - 1, -1, -1):
                 if messages[i].get("_metadata", {}).get("signal") == "SUMMARIZATION_CUTOFF":
-                    summary_ref = {"role": "user", "content": messages[i+1].get("content")}
-                    messages = [summary_ref] + messages[i + 2:]
+                    summary_content = messages[i + 1].get("content") if i + 1 < len(messages) else None
+                    if isinstance(summary_content, str) and summary_content.strip():
+                        summary_ref = {"role": "user", "content": summary_content}
+                        messages = [summary_ref] + messages[i + 2:]
+                    else:
+                        self.channel.log("context", "Broken summarization cutoff detected (summary missing or empty) - ignoring it")
+                        messages = messages[i + 2:]
                     break
 
             # Remove ghost messages and signal messages from history
@@ -140,6 +145,21 @@ class Context:
             if msg.get("tool_calls") else msg
             for msg in messages
         ]
+
+        # remove the content field from a message if its value is None
+        cleaned = []
+        for msg in messages:
+            if msg.get("content") is None:
+                if msg.get("role") == "assistant":
+                    msg.pop("content", None)
+                    cleaned.append(msg)
+                else:
+                    # user/system/tool messages require the content field according to spec,
+                    # but a null value is illegal, so use a blank string instead
+                    msg["content"] = ""
+                continue
+            cleaned.append(msg)
+        messages = cleaned
 
         # enforce correct turn order
         # system -> user -> assistant -> user -> assistant -> ...
@@ -333,11 +353,20 @@ Hard rules:
                 await self.channel.context.get(end_prompt=False)
                 + [{"role": "user", "content": compress_prompt}]
             )
-            # and push it to the channel so that the channel will consume the streamed tokens
+            
+            # send the stream into the current channel
             response = await self.channel.push_stream(stream)
-
-            if not response:
-                return False
+            
+            # validate the result
+            if not isinstance(response.get("content"), str) or not response.get("content").strip():
+                # if the AI somehow decided not to output any final content,
+                # we first fall back to the reasoning. and if we can't do that...
+                # the compaction has basically failed
+                reasoning = response.get("reasoning_content")
+                if reasoning:
+                    response["content"] = reasoning
+                else:
+                	return False
 
             # add special cutoff message that gets handled by the context manager
             await self.channel.context.chat.messages.add(self.channel.context.SUMMARIZATION_CUTOFF)
