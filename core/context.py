@@ -353,12 +353,12 @@ Hard rules:
                 await self.channel.context.get(end_prompt=False)
                 + [{"role": "user", "content": compress_prompt}]
             )
-            
+
             # send the stream into the current channel
             response = await self.channel.push_stream(stream)
-            
+
             # validate the result
-            if not isinstance(response.get("content"), str) or not response.get("content").strip():
+            if not response or not isinstance(response.get("content"), str) or not response.get("content").strip():
                 # if the AI somehow decided not to output any final content,
                 # we first fall back to the reasoning. and if we can't do that...
                 # the compaction has basically failed
@@ -366,7 +366,7 @@ Hard rules:
                 if reasoning and reasoning.strip():
                     response["content"] = reasoning
                 else:
-                	return False
+                    return False
 
             # add special cutoff message that gets handled by the context manager
             await self.channel.context.chat.messages.add(self.channel.context.SUMMARIZATION_CUTOFF)
