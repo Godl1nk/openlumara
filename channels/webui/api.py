@@ -37,15 +37,25 @@ CONTRACT:
   {"data": <error>, "success": false}.
 - Routes are namespaced per module and discovered automatically at startup
   and after settings saves (module reloads). No registration call needed.
+- Routes that do powerful things (run commands, write files, reconfigure)
+  MUST be marked @webui.route(..., admin_only=True): while
+  enable_admin_settings is off, those respond 403. Everything else stays
+  reachable, since chat-UI widgets must keep working without admin settings.
 """
 
-def route(path: str, method: str = "GET"):
+def route(path: str, method: str = "GET", admin_only: bool = False):
     """Marks a module method as a webui extension route at
-    /api/ext/<module>/<path>. See module docstring for the contract."""
+    /api/ext/<module>/<path>. See module docstring for the contract.
+
+    Pass admin_only=True for routes that do powerful things (run commands,
+    write files, reconfigure): while enable_admin_settings is off those
+    respond 403. Ordinary chat-UI routes (state, polls, cosmetic actions)
+    stay reachable without admin settings."""
     def decorator(func):
         func._ui_route = {
             "path": str(path).strip("/").lower(),
             "method": str(method).upper(),
+            "admin_only": bool(admin_only),
         }
         return func
     return decorator
