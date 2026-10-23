@@ -16,6 +16,7 @@ import core
 # system
 import os
 import copy
+import hashlib
 import json
 import asyncio
 import importlib
@@ -1496,15 +1497,14 @@ async def create_fastapi(channel):
         return await call_next(request)
 
     session_lifetime_days = channel.config.get("login_lifetime")
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-    # security: the old fallback was a hardcoded public string, letting anyone
-    # forge signed "authenticated" session cookies. on_ready() loads the
-    # signing key from the dedicated 0600 key file into
-    # channel.session_secret_value; this random() fallback only covers
-    # unusual startup paths and simply invalidates sessions on restart there.
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+    signing_key = getattr(channel, "session_secret_value", "") or secrets.token_urlsafe(48)
+    cookie_name = "session_" + hashlib.sha256(signing_key.encode()).hexdigest()[:12]
+    channel.session_cookie_name = cookie_name
     app.add_middleware(
         starlette.middleware.sessions.SessionMiddleware,
-        secret_key=getattr(channel, "session_secret_value", "") or secrets.token_urlsafe(48),
+        session_cookie=cookie_name,
+        secret_key=signing_key,
         max_age=session_lifetime_days * 86400,
         # CSRF hardening: the session cookie is never sent on cross-site
         # requests (a malicious page can no longer ride an active session)
@@ -2627,7 +2627,7 @@ async def create_fastapi(channel):
                         await websocket.close(code=4001, reason="Rate limited")
                         return
 
-                channel.log(channel.name, f"websocket handshake rejected: session not authenticated (cookie_present={'session' in websocket.cookies}, client={client_ip})")
+                channel.log(channel.name, f"websocket handshake rejected: session not authenticated (cookie_present={getattr(channel, 'session_cookie_name', 'session') in websocket.cookies}, client={client_ip})")
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
 
@@ -2758,7 +2758,6 @@ async def create_fastapi(channel):
                     channel.log(channel.name, f"WebSocket command error: {core.detail_error(e)}")
 
         except fastapi.WebSocketDisconnect as e:
-            channel.log(channel.name, f"websocket disconnected: code {getattr(e, 'code', '?')} {(getattr(e, 'reason', '') or '')!r}")
             ws_mgr.disconnect(websocket)
         except Exception as e:
             channel.log(channel.name, f"WebSocket error: {core.detail_error(e)}")
