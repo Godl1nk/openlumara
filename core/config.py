@@ -1093,7 +1093,8 @@ def load(file_path=None):
     global _registry_cache
     _registry_cache = None
 
-    config = core.storage.StorageDict(filename, "yaml", path=dirname, override_temporary=True)
+    # file_mode 0o600, in other words chmod 600... readable only by the user, no other groups or other users
+    config = core.storage.StorageDict(filename, "yaml", path=dirname, override_temporary=True, file_mode=0o600)
     if not config:
         new_config = True
 
