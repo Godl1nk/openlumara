@@ -8,6 +8,7 @@
             <h2 class="coder-editor-title">
                 <span x-text="$store.gitPanel.diff.path"></span>
                 <span class="git-ro-tag" x-show="$store.gitPanel.diff.staged">staged</span>
+                <span class="git-ro-tag unpushed" x-show="$store.gitPanel.diff.committed">unpushed</span>
             </h2>
             <div class="coder-editor-header-actions">
                 {# open in editor with diff highlights #}

@@ -23,6 +23,7 @@ import calendar
 import datetime
 import re
 import time
+import ast
 import html as html_lib
 import urllib.parse
 
@@ -147,6 +148,11 @@ class Webui(core.channel.Channel):
         "session_secret": {
             "description": "Secret used to sign login session cookies. Leave empty to auto-generate a random one on startup (recommended). Never share or reuse this value.",
             "default": None
+        },
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        "extra_allowed_origins": {
+            "default": [],
+            "description": "Extra origins allowed to open WebSockets to this webui. You NEED this when OpenLumara sits behind a reverse proxy or HTTPS tunnel (e.g. https://mybox:8443 fronting 127.0.0.1:3000): the browser sends that public URL as the Origin, which no longer matches the bound host/port, and every websocket gets rejected. Scheme-less entries like \"crystal-ai:8006\" match that host+port over any scheme. Exact matches only - no wildcards."
         }
     }
 
@@ -169,6 +175,35 @@ class Webui(core.channel.Channel):
             or (parsed.scheme == "https" and origin_port == 443)
         ):
             origin_port = None
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        # explicit allow list (extra_allowed_origins): the public origin of a
+        # reverse proxy / tunnel will never match the bound host:port, so the
+        # setting is the only way a proxied webui can pass this check.
+        # entries with a scheme must match it exactly; scheme-less entries
+        # match host+port over either scheme. exact matches only.
+        for spec in (self.config.get("extra_allowed_origins") or []):
+            if not isinstance(spec, str) or not spec.strip():
+                continue
+            spec = spec.strip().lower().rstrip("/")
+            has_scheme = "://" in spec
+            parsed_spec = urllib.parse.urlsplit(spec if has_scheme else "//" + spec)
+            spec_host = (parsed_spec.hostname or "").lower()
+            if spec_host == "localhost":
+                spec_host = "127.0.0.1"
+            if spec_host != origin_host:
+                continue
+            spec_port = parsed_spec.port
+            if spec_port and (
+                (parsed_spec.scheme == "http" and spec_port == 80)
+                or (parsed_spec.scheme == "https" and spec_port == 443)
+            ):
+                spec_port = None
+            if spec_port != origin_port:
+                continue
+            if has_scheme and parsed_spec.scheme != parsed.scheme:
+                continue
+            return True
 
         if self.host in ("0.0.0.0", "::"):
             # internet mode: bind address says nothing about the real host,
@@ -514,6 +549,15 @@ class Webui(core.channel.Channel):
             # this makes it work in situations where https and http content are served mixed
             proxy_headers=True,
             forwarded_allow_ips = "127.0.0.1",
+
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+            # keep the protocol-level ping (defends against silently-dead TCP:
+            # sleep/resume, wifi switches, tunnels) but widen the pong deadline
+            # from the 20s default: on a box busy serving local models the
+            # event loop can answer a pong late WITHOUT anything being wrong,
+            # and uvicorn would tear healthy websockets down as code 1006.
+            ws_ping_interval=20,
+            ws_ping_timeout=90,
 
             # only log critical http errors
             log_level="error"
@@ -1285,7 +1329,67 @@ ADMIN_ONLY_ENDPOINTS = [
     "/api/libraries/install",
     "/api/libraries/update",
     "/api/libraries/uninstall",
+    "/api/libraries/source",
 ]
+
+# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+# static hints for the pre-install code review modal. the entry file is only
+# parsed with ast - nothing from the library is imported or executed here.
+_REVIEW_IMPORT_FLAGS = {
+    "subprocess": "imports subprocess - can run shell commands",
+    "ctypes": "imports ctypes - can call native code",
+    "socket": "imports socket - can open raw network connections",
+}
+
+def library_review_flags(entry_path):
+    """returns (flags, warnings) for a library module's entry file:
+    flags = places the user should look (dependencies, on_install, on_ready),
+    warnings = anything that smells like shell/exec/network access."""
+    flags = []
+    warnings = []
+    try:
+        with open(entry_path, "r", encoding="utf-8", errors="replace") as f:
+            tree = ast.parse(f.read())
+    except Exception:
+        return flags, warnings
+
+    warned = set()
+    def warn(text):
+        if text not in warned:
+            warned.add(text)
+            warnings.append(text)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "dependencies":
+                    flags.append({"name": "dependencies", "line": node.lineno, "kind": "info",
+                                  "desc": "pip packages - auto-installed when you install this module"})
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name == "on_install":
+                flags.append({"name": "on_install", "line": node.lineno, "kind": "warn",
+                              "desc": "runs code the moment this module is installed"})
+            elif node.name == "on_ready":
+                flags.append({"name": "on_ready", "line": node.lineno, "kind": "warn",
+                              "desc": "runs code every time the server starts"})
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                top = str(alias.name).split(".")[0]
+                if top in _REVIEW_IMPORT_FLAGS:
+                    warn(_REVIEW_IMPORT_FLAGS[top])
+        elif isinstance(node, ast.ImportFrom):
+            top = str(node.module or "").split(".")[0]
+            if top in _REVIEW_IMPORT_FLAGS:
+                warn(_REVIEW_IMPORT_FLAGS[top])
+        elif isinstance(node, ast.Call):
+            fn = node.func
+            if isinstance(fn, ast.Name) and fn.id in ("eval", "exec", "compile", "__import__"):
+                warn(f"calls {fn.id}() - can run dynamically generated code")
+            elif isinstance(fn, ast.Attribute) and fn.attr in ("system", "popen", "execv", "execve", "spawnl", "spawnv"):
+                warn(f"calls os.{fn.attr}() - can run shell commands")
+
+    flags.sort(key=lambda flag: flag["line"])
+    return flags, warnings
 
 def api_result(obj = None, success: bool = True):
     if obj is None:
@@ -2128,6 +2232,62 @@ async def create_fastapi(channel):
         synced = await mm.load()
         return api_result({"synced": bool(synced), "modules": mm.list_available()}, success=True)
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+    # source viewer for the pre-install code review modal. read-only, and
+    # hard-restricted to .py files inside the cloned module's own folder:
+    # the requested file must appear in the server-generated file list, so
+    # traversal through this endpoint is not possible.
+    @app.get("/api/libraries/source")
+    async def libraries_source(request: fastapi.Request):
+        """returns a library module's source code plus review hints"""
+        library = (request.query_params.get("library") or "").strip()
+        name = (request.query_params.get("name") or "").strip()
+        file_rel = (request.query_params.get("file") or "").strip()
+
+        mm = get_module_manager()
+        lib_path = mm.list_libraries().get(library)
+        if not lib_path:
+            return api_result("library not found", success=False)
+        source, kind = mm._find_source(lib_path, name)
+        if not source:
+            return api_result("module not found in this library", success=False)
+
+        source_root = os.path.realpath(source)
+        files = []
+        for dirpath, dirnames, filenames in os.walk(source_root):
+            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git")]
+            for fname in filenames:
+                if fname.endswith(".py"):
+                    rel = os.path.relpath(os.path.join(dirpath, fname), source_root)
+                    files.append(rel.replace(os.sep, "/"))
+        files.sort()
+
+        entry = "module.py" if kind == "module" else "channel.py"
+        wanted = file_rel if file_rel in files else entry
+        full = os.path.realpath(os.path.join(source_root, wanted))
+        if not full.startswith(source_root + os.sep) or not os.path.isfile(full):
+            return api_result("file is not part of this module", success=False)
+
+        max_chars = 500_000
+        try:
+            with open(full, "r", encoding="utf-8", errors="replace") as f:
+                code = f.read(max_chars)
+        except Exception as e:
+            return api_result(core.detail_error(e), success=False)
+
+        flags, warnings = library_review_flags(os.path.join(source_root, entry))
+        return api_result({
+            "library": library,
+            "name": name,
+            "kind": kind,
+            "file": wanted,
+            "files": files,
+            "code": code,
+            "truncated": len(code) >= max_chars,
+            "flags": flags,
+            "warnings": warnings
+        })
+
     @app.post("/api/libraries/install")
     async def libraries_install(request: fastapi.Request):
         """Installs a module/channel from a library into the user folders and installs its dependencies"""
@@ -2389,6 +2549,7 @@ async def create_fastapi(channel):
         # Origin and stay allowed.
         ws_origin = websocket.headers.get("origin")
         if ws_origin and channel._origin_allowed(ws_origin) is False:
+            channel.log(channel.name, f"websocket handshake rejected: foreign origin '{ws_origin}' (expected host '{channel.host}', port {channel.port}) - if this webui runs behind a proxy/tunnel, add that origin to the 'extra_allowed_origins' setting")
             await websocket.close(code=4003, reason="Foreign origin")
             return
 
@@ -2409,10 +2570,11 @@ async def create_fastapi(channel):
                         t for t in channel.login_attempts[client_ip] if now - t < 900
                     ]
                     if len(channel.login_attempts[client_ip]) >= 5:
+                        channel.log(channel.name, f"websocket handshake rejected: rate limited ({client_ip})")
                         await websocket.close(code=4001, reason="Rate limited")
                         return
 
-                # failure
+                channel.log(channel.name, f"websocket handshake rejected: session not authenticated (cookie_present={'session' in websocket.cookies}, client={client_ip})")
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
 
@@ -2428,6 +2590,14 @@ async def create_fastapi(channel):
                     msg_type = data.get("type")
 
                     match msg_type:
+                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                        # app-level heartbeat: an in-band frame every ~25s
+                        # keeps idle-socket reapers (reverse proxies, tunnels)
+                        # off the connection no matter what the protocol-level
+                        # pings are doing, and proves liveness end to end
+                        # (through proxies that mangle ws control frames).
+                        case "ping":
+                            await websocket.send_json({"type": "pong"})
                         case "stop":
                             if channel:
                                 await channel.manager.API.cancel()
@@ -2534,7 +2704,8 @@ async def create_fastapi(channel):
                 except Exception as e:
                     channel.log(channel.name, f"WebSocket command error: {core.detail_error(e)}")
 
-        except fastapi.WebSocketDisconnect:
+        except fastapi.WebSocketDisconnect as e:
+            channel.log(channel.name, f"websocket disconnected: code {getattr(e, 'code', '?')} {(getattr(e, 'reason', '') or '')!r}")
             ws_mgr.disconnect(websocket)
         except Exception as e:
             channel.log(channel.name, f"WebSocket error: {core.detail_error(e)}")

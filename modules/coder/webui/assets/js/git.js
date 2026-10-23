@@ -20,11 +20,19 @@ const GIT_PANEL = {
     changes: [],
     message: "",
     committing: false,
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+    // amend mode + the HEAD info it would amend, served by git_status
+    amend: false,
+    lastCommit: { hash: "", msg: "" },
+    _preAmendMsg: "",
     log: [],
     diff: { path: "", staged: false, lines: [], loading: false },
     push: {
         branch: "", remote: "", upstream: "", has_upstream: false, target: "",
         ahead: [], behind: 0, dirty: false, loading: false, pushing: false, error: "",
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // review-before-push: files a push would ship + one expanded file diff
+        files: [], filesNote: "", reviewPath: "", reviewLines: [], reviewRows: [], reviewLoading: false,
     },
     // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
     // fetch/pull state
@@ -118,6 +126,9 @@ const GIT_PANEL = {
             this.branches = data.branches || [];
             this.changes = data.changes || [];
             this.read_only = !!data.read_only;
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+            this.lastCommit = data.last_commit || { hash: "", msg: "" };
+            if (!this.lastCommit.hash) this.amend = false; // nothing left to amend
         } catch (e) {
             this.error = this.errorText(e);
             this.changes = [];
@@ -140,10 +151,46 @@ const GIT_PANEL = {
         return this.changes.filter(c => c.staged).length;
     },
 
+    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+    // keep-committed layout: the clean violet rows (file lives only in an
+    // unpushed commit, nothing to do until push) sink to a pinned group at
+    // the BOTTOM. dirty files - ringed or not - stay in the active group on
+    // top, since they still want staging/committing. keys are path-based,
+    // so rows survive the regroup when their state changes.
+    activeChanges() {
+        return this.changes.filter(c => !c.committed_only);
+    },
+    // a file that is committed AND dirty again exists once per group, so
+    // the section header counts unique paths, not rows
+    changeCount() {
+        return new Set(this.changes.map(c => c.path)).size;
+    },
+    pendingChanges() {
+        return this.changes.filter(c => c.committed_only);
+    },
+
     badge(c) {
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // keep-committed mode: files that exist only in unpushed commits,
+        // and dirty files whose path is ALSO in one of those commits
+        if (c.committed_only) return c.also_dirty ? "committed (also edited again since)" : "committed";
         if (c.untracked) return "new";
-        if (c.staged) return "staged";
-        return "changed";
+        if (c.staged) return c.committed ? "staged (also unpushed-committed)" : "staged";
+        return c.committed ? "changed (also unpushed-committed)" : "changed";
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+       amend toggle: turning it on pre-fills the last commit's message so it
+       can be extended; turning it off again restores whatever was typed
+       before, as long as the message is still the untouched pre-fill. # */
+    toggleAmend() {
+        if (this.amend) {
+            this._preAmendMsg = this.message;
+            if (!this.message.trim() && this.lastCommit.msg) this.message = this.lastCommit.msg;
+        } else if (this.lastCommit && this.message === this.lastCommit.msg) {
+            this.message = this._preAmendMsg || "";
+        }
+        this.error = "";
     },
 
     async _gitPost(route, payload) {
@@ -183,19 +230,29 @@ const GIT_PANEL = {
 
     stage(path) { return this._gitPost("git_stage", { paths: [path] }); },
     unstage(path) { return this._gitPost("git_unstage", { paths: [path] }); },
-    stageAll() { return this._gitPost("git_stage", { paths: this.changes.map(c => c.path) }); },
-    unstageAll() { return this._gitPost("git_unstage", { paths: this.changes.map(c => c.path) }); },
+    // committed-only rows have nothing in the working tree to act on
+    // (deleted files would even make `git add` fail): bulk ops skip them
+    stageAll() { return this._gitPost("git_stage", { paths: this.changes.filter(c => !c.committed_only).map(c => c.path) }); },
+    unstageAll() { return this._gitPost("git_unstage", { paths: this.changes.filter(c => !c.committed_only).map(c => c.path) }); },
 
     async commit() {
         const msg = (this.message || "").trim();
-        if (!msg || this.committing) return;
+        if (this.committing) return;
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // amend: an empty message means --no-edit, so the only hard
+        // requirement is *something* to fold in (message or staged files)
+        if (this.amend) {
+            if (!msg && !this.stagedCount()) return;
+        } else if (!msg) return;
 
         this.committing = true;
         this.error = "";
 
         try {
-            await simpleApiPost("/api/ext/coder/git_commit", { sandbox: this.sandbox, subpath: this.subpath, message: msg });
+            await simpleApiPost("/api/ext/coder/git_commit", { sandbox: this.sandbox, subpath: this.subpath, message: msg, amend: this.amend });
             this.message = "";
+            this.amend = false;
+            this._preAmendMsg = "";
             await this.refresh();
             // keep the log modal fresh if it happens to be open
             await this.loadLog();
@@ -245,8 +302,15 @@ const GIT_PANEL = {
                 this.error = "nothing to push: every commit is already on the remote";
                 return;
             }
-            this.push = { ...this.push, ...data, ahead, loading: false, pushing: false, error: "" };
+            this.push = { ...this.push, ...data, ahead, loading: false, pushing: false, error: "",
+                // fresh review state per push dialog: never show the previous
+                // repo/branch's file list while the new one is still loading
+                files: [], filesNote: "", reviewPath: "", reviewLines: [], reviewRows: [], reviewLoading: false };
             Alpine.store("ui").openModal("git_push");
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+            // fire-and-forget: the commit list renders immediately, the
+            // changed-files section fills in when this resolves
+            this.loadPendingFiles();
         } catch (e) {
             this.error = this.errorText(e);
         } finally {
@@ -257,6 +321,95 @@ const GIT_PANEL = {
     closePush() {
         if (this.push.pushing) return; // never close mid-push
         Alpine.store("ui").closeModal();
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+       review-before-push: list the files (with +/- counts) that sit between
+       the remote base and HEAD, so Rosie can read the CODE a push ships
+       rather than just its commit messages. failures are non-fatal: the
+       push dialog stays fully usable without the review section. # */
+    async loadPendingFiles() {
+        try {
+            const d = await simpleApiFetch(`/api/ext/coder/git_pending_files?sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}`);
+            this.push.files = d.files || [];
+            this.push.filesNote = d.note || "";
+        } catch (e) {
+            this.push.files = [];
+            this.push.filesNote = "could not load changed files: " + this.errorText(e);
+        }
+    },
+
+    async toggleReview(path) {
+        // clicking the open file again collapses it
+        if (this.push.reviewPath === path) {
+            this.push.reviewPath = "";
+            this.push.reviewLines = [];
+            this.push.reviewRows = [];
+            return;
+        }
+        this.push.reviewPath = path;
+        this.push.reviewLines = [];
+        this.push.reviewRows = [];
+        this.push.reviewLoading = true;
+        try {
+            const d = await simpleApiFetch(
+                `/api/ext/coder/git_pending_diff?sandbox=${encodeURIComponent(this.sandbox)}` +
+                `&subpath=${encodeURIComponent(this.subpath)}&path=${encodeURIComponent(path)}`
+            );
+            // the user may have switched files (or closed the modal) while
+            // this was in flight: drop the response if it is no longer wanted
+            if (this.push.reviewPath !== path) return;
+            this.push.reviewLines = String(d.diff || "(no changes)").split("\n");
+            this.push.reviewRows = d.rows || [];
+        } catch (e) {
+            if (this.push.reviewPath !== path) return;
+            this.push.reviewLines = [this.errorText(e)];
+            this.push.reviewRows = [];
+        } finally {
+            if (this.push.reviewPath === path) this.push.reviewLoading = false;
+        }
+    },
+
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+       edit a committed-not-pushed file straight from the push dialog: opens
+       it in the coder editor with the push diff highlighted (fetching that
+       diff first when the row is still collapsed). edits land in the working
+       tree, so the workflow afterwards is commit -> then push. # */
+    async editPending(path) {
+        const panel = Alpine.store("coderPanel");
+        if (!panel) return;
+
+        let lines = [];
+        if (this.push.reviewPath === path && this.push.reviewLines.length) {
+            lines = this.push.reviewLines;
+        } else {
+            try {
+                const d = await simpleApiFetch(
+                    `/api/ext/coder/git_pending_diff?sandbox=${encodeURIComponent(this.sandbox)}` +
+                    `&subpath=${encodeURIComponent(this.subpath)}&path=${encodeURIComponent(path)}`
+                );
+                lines = String(d.diff || "").split("\n");
+            } catch (e) {
+                lines = []; // no highlights is no reason to refuse opening the file
+            }
+        }
+
+        // pending paths are repo-relative; the editor wants sandbox-relative
+        const full = this.subpath ? this.subpath + "/" + path : path;
+
+        let marks = null;
+        const p = this.parseDiffPoints(lines);
+        if (p.adds.length || p.dels.length) {
+            marks = { adds: p.adds, dels: p.dels, label: "changes in this push" };
+        }
+
+        // same sandbox handoff as editFile(): the git tab has its own picker
+        if (panel.sandbox !== this.sandbox) {
+            panel.sandbox = this.sandbox;
+            panel.onSandboxChange();
+        }
+
+        panel.openFile({ path: full }, 0, marks);
     },
 
     /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
@@ -419,8 +572,28 @@ const GIT_PANEL = {
     },
 
     openDiff(c) {
-        this.diff = { path: c.path, staged: c.staged, untracked: !!c.untracked, lines: ["loading.."], rows: [], loading: true };
+        this.diff = { path: c.path, staged: c.staged, untracked: !!c.untracked, committed: !!c.committed_only, lines: ["loading.."], rows: [], loading: true };
         Alpine.store("ui").openModal("git_diff");
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // committed-only rows are clean against HEAD: the only diff worth
+        // showing is the one the push would ship (remote base..HEAD), and
+        // that route returns unified + split rows in a single response
+        if (c.committed_only) {
+            const pend = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}` +
+                `&path=${encodeURIComponent(c.path)}`;
+            simpleApiFetch(`/api/ext/coder/git_pending_diff?${pend}`)
+                .then(d => {
+                    this.diff.lines = String(d.diff || "(no changes)").split("\n");
+                    this.diff.rows = d.rows || [];
+                })
+                .catch(e => {
+                    this.diff.lines = [this.errorText(e)];
+                    this.diff.rows = [];
+                })
+                .finally(() => { this.diff.loading = false; });
+            return;
+        }
 
         const params = `sandbox=${encodeURIComponent(this.sandbox)}&subpath=${encodeURIComponent(this.subpath)}` +
             `&path=${encodeURIComponent(c.path)}&staged=${c.staged ? 1 : 0}&untracked=${c.untracked ? 1 : 0}`;
@@ -461,7 +634,7 @@ const GIT_PANEL = {
         if (!d.untracked) {
             const p = this.parseDiffPoints(d.lines);
             if (p.adds.length || p.dels.length) {
-                marks = { adds: p.adds, dels: p.dels, label: d.staged ? "staged changes" : "changes" };
+                marks = { adds: p.adds, dels: p.dels, label: d.committed ? "changes in this push" : d.staged ? "staged changes" : "changes" };
             }
         }
 

@@ -23,6 +23,14 @@ function moduleLibrary() {
         // completion notice shown inside the restart banner after an action
         restartNote: '',
 
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // pre-install code review: installing a module runs arbitrary Python
+        // with full OpenLumara access, so install/update first open a
+        // read-only source viewer (GET /api/libraries/source) with jump-links
+        // to dependencies / on_install / on_ready and a two-step confirm.
+        audit: null,
+        auditLineHeight: 19,
+
         async init() {
             await this.refresh();
         },
@@ -150,11 +158,93 @@ function moduleLibrary() {
         },
 
         install(m) {
-            this.runAction(m, 'install');
+            this.openAudit(m, 'install');
         },
 
         update(m) {
-            this.runAction(m, 'update');
+            this.openAudit(m, 'update');
+        },
+
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // code review modal logic (source viewing + flags + two-step confirm)
+        async openAudit(m, mode) {
+            this.audit = {
+                m, mode,
+                url: this.libraryUrls[m.library] || m.library,
+                loading: true, error: null,
+                code: '', files: [], file: '', truncated: false,
+                flags: [], warnings: [], focusLine: 0
+            };
+            await this.fetchAuditSource();
+        },
+
+        async fetchAuditSource() {
+            const a = this.audit;
+            if (!a) return;
+            a.loading = true;
+            a.error = null;
+            try {
+                const url = '/api/libraries/source?library=' + encodeURIComponent(a.m.library)
+                    + '&name=' + encodeURIComponent(a.m.name)
+                    + (a.file ? '&file=' + encodeURIComponent(a.file) : '');
+                const data = await simpleApiFetch(url);
+                Object.assign(a, data, { loading: false });
+            } catch (err) {
+                a.error = String(err);
+                a.loading = false;
+            }
+        },
+
+        async auditSelectFile(rel) {
+            if (!this.audit || rel === this.audit.file) return;
+            this.audit.file = rel;
+            this.audit.focusLine = 0;
+            await this.fetchAuditSource();
+        },
+
+        get auditLineNums() {
+            const count = this.audit && this.audit.code ? this.audit.code.split('\n').length : 0;
+            return Array.from({ length: count }, (_, i) => i + 1);
+        },
+
+        get auditHighlighted() {
+            if (!this.audit || !this.audit.code) return '';
+            const code = this.audit.code;
+            try {
+                if (typeof hljs !== 'undefined') {
+                    // hljs output is escaped markup, safe for x-html (same
+                    // sanctioned escape hatch as the coder tool displays)
+                    return hljs.getLanguage('python')
+                        ? hljs.highlight(code, { language: 'python' }).value
+                        : hljs.highlightAuto(code).value;
+                }
+            } catch (err) { /* fall through to plain escaping */ }
+            return escapeHtml(code);
+        },
+
+        auditJump(line) {
+            if (!this.audit) return;
+            this.audit.focusLine = line;
+            const box = document.getElementById('library-audit-scroll');
+            if (box) box.scrollTop = Math.max(0, (line - 1) * this.auditLineHeight - box.clientHeight / 3);
+        },
+
+        closeAudit() {
+            this.audit = null;
+        },
+
+        confirmAudit() {
+            const a = this.audit;
+            if (!a || a.loading || a.error) return;
+            const verb = a.mode === 'update' ? 'update' : 'install';
+            const extra = a.warnings.length
+                ? '\n\nHeads up: this module uses shell/exec-style APIs (see the red warnings).'
+                : '';
+            if (!confirm('Really ' + verb + ' "' + a.m.name + '"?\n\nInstalled code runs with full access to your OpenLumara - only continue if you trust this source.' + extra)) return;
+            const m = a.m;
+            const action = a.mode;
+            this.audit = null;
+            this.runAction(m, action);
         },
 
         async uninstall(m) {

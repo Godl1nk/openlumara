@@ -49,8 +49,7 @@ def route(path: str, method: str = "GET", admin_only: bool = False):
 
     Pass admin_only=True for routes that do powerful things (run commands,
     write files, reconfigure): while enable_admin_settings is off those
-    respond 403. Ordinary chat-UI routes (state, polls, cosmetic actions)
-    stay reachable without admin settings."""
+    respond 403."""
     def decorator(func):
         func._ui_route = {
             "path": str(path).strip("/").lower(),
