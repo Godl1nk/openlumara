@@ -145,24 +145,22 @@ class Webui(core.channel.Channel):
             "default": 30,
             "depends": "require_login"
         },
-        "session_secret": {
-            "description": "Secret used to sign login session cookies. Leave empty to auto-generate a random one on startup (recommended). Never share or reuse this value.",
-            "default": None
-        },
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
         "extra_allowed_origins": {
             "default": [],
             "description": "Extra origins allowed to open WebSockets to this webui. You NEED this when OpenLumara sits behind a reverse proxy or HTTPS tunnel (e.g. https://mybox:8443 fronting 127.0.0.1:3000): the browser sends that public URL as the Origin, which no longer matches the bound host/port, and every websocket gets rejected. Scheme-less entries like \"crystal-ai:8006\" match that host+port over any scheme. Exact matches only - no wildcards."
         }
     }
 
-    def _origin_allowed(self, origin: str) -> bool:
+    def _origin_allowed(self, origin: str, host_header: str = "") -> bool:
         """-- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
         True when an Origin header refers back to this same webui instance.
         localhost and 127.0.0.1 are treated as the same host. Used to reject
         cross-origin WebSocket handshakes, which is the only real defense
         against a malicious web page driving a localhost instance (WebSocket
-        frames are not covered by SameSite cookies)."""
+        frames are not covered by SameSite cookies).
+
+        host_header enables the wildcard-bind fix below; callers should pass
+        the request's Host header when they have one."""
         try:
             parsed = urllib.parse.urlsplit(origin)
         except ValueError:
@@ -206,10 +204,17 @@ class Webui(core.channel.Channel):
             return True
 
         if self.host in ("0.0.0.0", "::"):
-            # internet mode: bind address says nothing about the real host,
-            # so compare against the port we listen on only. (a reverse
-            # proxy in front is assumed to handle host validation)
-            return origin_port in (None, self.port)
+            if not host_header:
+                return origin_port in (None, self.port)
+            try:
+                parsed_hdr = urllib.parse.urlsplit("//" + host_header.strip().lower())
+            except ValueError:
+                return False
+            
+            hdr_host = (parsed_hdr.hostname or "").lower()
+            if hdr_host == "localhost":
+                hdr_host = "127.0.0.1"
+            return hdr_host == origin_host and parsed_hdr.port == origin_port
 
         server_host = (self.host or "").lower()
         if server_host == "localhost":
@@ -488,13 +493,32 @@ class Webui(core.channel.Channel):
         self.assets_path = os.path.join(self.path, "assets")
 
         # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-        # security: sessions used to be signed with a hardcoded fallback secret
-        # that ships in the source, which made forged "authenticated" cookies
-        # trivial. generate a random secret on first startup and persist it,
-        # so sessions survive restarts but are never signable by outsiders.
-        if not self.config.get("session_secret"):
-            self.config["session_secret"] = secrets.token_urlsafe(48)
-            self.log("webui", "generated a new random session_secret and saved it to the config")
+        self.session_secret_value = ""
+        secret_file = core.get_data_path("webui_session_secret")
+        try:
+            if os.path.exists(secret_file):
+                with open(secret_file, "r", encoding="utf-8") as f:
+                    self.session_secret_value = f.read().strip()
+        except OSError:
+            self.session_secret_value = ""
+        if not self.session_secret_value:
+            legacy = str(self.config.get("session_secret") or "").strip()
+            self.session_secret_value = legacy or secrets.token_urlsafe(48)
+            try:
+                fd = os.open(secret_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(self.session_secret_value)
+                self.log("webui", "session signing key stored in webui_session_secret (data folder, 0600)"
+                         + (" - migrated from the old config value" if legacy else ""))
+            except OSError:
+                self.log("webui", "WARNING: could not persist the session key; all sessions will reset on restart")
+        # the config must not keep a signing key, even an ignored one: drop
+        # any leftover so it stops riding along in config dumps and saves.
+        try:
+            if self.config.get("session_secret"):
+                self.config.pop("session_secret")
+        except (AttributeError, TypeError):
+            pass
 
         # fastapi-specific instances
         self.templates = fastapi.templating.Jinja2Templates(self.template_path)
@@ -1314,6 +1338,7 @@ async def op_chat_rename(channel, title, chat_id=None):
 ADMIN_ONLY_ENDPOINTS = [
     "/api/settings/load",
     "/api/settings/save",
+    "/api/settings/reveal",
     "/api/check_connection",
     "/api/models",
     "/api/model/set",
@@ -1399,6 +1424,47 @@ def api_result(obj = None, success: bool = True):
 
     return {"data": result, "success": success}
 
+# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+# /api/settings/load merges raw config values into its category tree. With
+# require_login off (the shipped default) that response handed the webui
+# login password AND the session signing key to anyone who could reach the
+# port - and unlike a password, a captured signing key forges valid sessions
+# FOREVER, even after the operator enables login later. So secret fields are
+# replaced by a sentinel on the way out and swapped back for the stored
+# value on save, making the load/save round-trip lossless. (Setting a field
+# literally to this sentinel text is not supported; do not pick
+# '********' as a password.)
+SECRET_MASK = "********"
+SECRET_FIELD_NAMES = ("session_secret", "password")
+
+def mask_secret_fields(node, path=()):
+    """recursively replace the 'value' of any secret-named field object.
+    the webui's own password / signing key additionally get a revealable
+    flag + their raw config key, so the settings UI can offer a show
+    button that goes through /api/settings/reveal (logged-in only)."""
+    if not isinstance(node, dict):
+        return node
+    for key, val in node.items():
+        if not isinstance(val, dict):
+            continue
+        if isinstance(key, str) and key.lower() in SECRET_FIELD_NAMES and "value" in val and val.get("value"):
+            val["value"] = SECRET_MASK
+            if "webui" in path:
+                val["secretKey"] = key.lower()
+                val["revealable"] = True
+        mask_secret_fields(val, path + (str(key),))
+    return node
+
+def restore_masked_secrets(flat, old):
+    """undo the sentinel in a flattened save tree using the pre-save config"""
+    if not isinstance(flat, dict) or not isinstance(old, dict):
+        return
+    for key, val in list(flat.items()):
+        if isinstance(val, dict):
+            restore_masked_secrets(val, old.get(key))
+        elif val == SECRET_MASK and key in old and not isinstance(old[key], (dict, list)):
+            flat[key] = old[key]
+
 async def create_fastapi(channel):
     app = fastapi.FastAPI()
 
@@ -1451,12 +1517,13 @@ async def create_fastapi(channel):
     session_lifetime_days = channel.config.get("login_lifetime")
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
     # security: the old fallback was a hardcoded public string, letting anyone
-    # forge signed "authenticated" session cookies. on_ready() now always
-    # persists a random secret; this random() fallback only covers unusual
-    # startup paths and simply invalidates sessions on restart there.
+    # forge signed "authenticated" session cookies. on_ready() loads the
+    # signing key from the dedicated 0600 key file into
+    # channel.session_secret_value; this random() fallback only covers
+    # unusual startup paths and simply invalidates sessions on restart there.
     app.add_middleware(
         starlette.middleware.sessions.SessionMiddleware,
-        secret_key=channel.config.get("session_secret") or secrets.token_urlsafe(48),
+        secret_key=getattr(channel, "session_secret_value", "") or secrets.token_urlsafe(48),
         max_age=session_lifetime_days * 86400,
         # CSRF hardening: the session cookie is never sent on cross-site
         # requests (a malicious page can no longer ride an active session)
@@ -2099,11 +2166,44 @@ async def create_fastapi(channel):
         """Returns the complete, render-ready settings structure (categories, field types, schemas and current values merged)"""
         module_info, core_sections = get_module_info()
         structure = build_settings_structure(core.config.config, module_info, core_sections)
+        # secrets never leave the server, see mask_secret_fields()
+        structure = mask_secret_fields(copy.deepcopy(structure))
 
         return api_result({
             "categories": structure,
             "show_unsafe_settings": bool(channel.config.get("show_unsafe_settings"))
         })
+
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+    # reveal a masked webui secret (password / session_secret) for the
+    # "show" button in the settings modal. strict gate: login must be ON
+    # and the caller must be authenticated. with login off nobody can
+    # reveal - the settings/load mask already protects the future (an
+    # anonymous reveal endpoint would hand back exactly what round 2 of
+    # the audit complained about: capture now, forge after login is
+    # enabled). blocked outright when enable_admin_settings is off.
+    @app.post("/api/settings/reveal")
+    async def settings_reveal(request: fastapi.Request):
+        if not channel.config.get("require_login", False):
+            return fastapi.responses.JSONResponse(
+                api_result("revealing secrets requires login to be enabled; the webui password lives in the config file and the session signing key in the webui_session_secret file (data folder) instead", success=False),
+                status_code=403,
+            )
+        if not request.session.get("authenticated", False):
+            return fastapi.responses.JSONResponse(api_result("Unauthorized", success=False), status_code=401)
+
+        data = await request.json()
+        field = str((data or {}).get("field") or "")
+        if field == "password":
+            value = channel.config.get("password") or ""
+        elif field == "session_secret":
+            value = getattr(channel, "session_secret_value", "") or ""
+        else:
+            return fastapi.responses.JSONResponse(api_result("unknown secret field", success=False), status_code=400)
+
+        if not value:
+            return api_result({"value": ""})
+        return api_result({"value": value})
 
     @app.get("/api/check_connection")
     async def check_connection():
@@ -2156,6 +2256,12 @@ async def create_fastapi(channel):
         # API reconnect (api section); that decision used to be made
         # client-side with four JSON.stringify diffs
         old_config = copy.deepcopy(dict(core.config.config))
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        # masked secrets (see mask_secret_fields) round-trip back to the
+        # stored values, so saving unrelated settings can never blank or
+        # overwrite the login password / session signing key with the mask.
+        restore_masked_secrets(flattened, old_config)
 
         result = core.config.config.load(data=flattened)
         core.config.config.save()
@@ -2548,7 +2654,7 @@ async def create_fastapi(channel):
         # drive this instance (CSRF-style). non-browser clients send no
         # Origin and stay allowed.
         ws_origin = websocket.headers.get("origin")
-        if ws_origin and channel._origin_allowed(ws_origin) is False:
+        if ws_origin and channel._origin_allowed(ws_origin, host_header=websocket.headers.get("host") or "") is False:
             channel.log(channel.name, f"websocket handshake rejected: foreign origin '{ws_origin}' (expected host '{channel.host}', port {channel.port}) - if this webui runs behind a proxy/tunnel, add that origin to the 'extra_allowed_origins' setting")
             await websocket.close(code=4003, reason="Foreign origin")
             return

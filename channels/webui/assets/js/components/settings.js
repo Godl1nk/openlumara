@@ -235,6 +235,23 @@ function settingsModal() {
             }
         },
 
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        // show a masked secret (webui password / session signing key). the
+        // server only answers for logged-in callers when login is enabled;
+        // with login off the value lives in the config / key file instead,
+        // and the endpoint's error text says so.
+        async revealSecret(settingObj) {
+            if (!settingObj || !settingObj.revealable || !settingObj.secretKey) return;
+            try {
+                const res = await simpleApiPost('/api/settings/reveal', { field: settingObj.secretKey });
+                const value = res && res.value ? String(res.value) : '';
+                if (value) this.updateSetting(settingObj, value);
+            } catch (e) {
+                this.secretRevealError = typeof e === 'string' ? e : (e && e.message) || 'reveal failed';
+                setTimeout(() => { this.secretRevealError = null; }, 6000);
+            }
+        },
+
         /**
          * Checks if a setting's dependency is satisfied.
          * @param {string|object} depends - Either a key path string (e.g., "some_field" or "parent.child") for truthy checks,
