@@ -396,6 +396,9 @@ class Characters(core.module.Module):
 
     async def on_message_inject(self, user_message: str):
         curr_char_name = self.channel.context.chat.get("metadata").get("character")
+        if not curr_char_name:
+            return None
+
         char = self._find_character(curr_char_name)
 
         output = ""
