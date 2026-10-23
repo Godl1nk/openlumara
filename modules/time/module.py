@@ -64,7 +64,7 @@ class Time(core.module.Module):
         time_info_str = " ".join(time_info)
         return f"Current time/date is {time_info_str}"
 
-    async def on_message_inject(self):
+    async def on_message_inject(self, user_message: str):
         if self.config.get("method") != "message injection":
             return None
 
