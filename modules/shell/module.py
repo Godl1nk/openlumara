@@ -751,7 +751,7 @@ class Shell(core.module.Module):
     # commands run through the exact same sandboxed run() path the AI
     # uses, so timeouts, output limits and container isolation all apply.
 
-    @webui.route("run", method="POST")
+    @webui.route("run", method="POST", admin_only=True)
     async def _route_run(self, body=None, query=None):
         command = str((body or {}).get("command", "")).strip()
         if not command:

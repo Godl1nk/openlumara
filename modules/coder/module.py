@@ -935,7 +935,7 @@ class Coder(core.module.Module):
 
         return {"path": rel_path, "content": content, "read_only": bool(self.config.get("read-only"))}
 
-    @webui.route("save", method="POST")
+    @webui.route("save", method="POST", admin_only=True)
     async def _route_save(self, body=None, query=None):
         """writes the modal's content back to disk, gated by the same
         syntax check coder_file_edit uses. refuses in read-only mode."""
@@ -967,7 +967,7 @@ class Coder(core.module.Module):
 
         return self.result(f"saved {rel_path}")
 
-    @webui.route("lint", method="POST")
+    @webui.route("lint", method="POST", admin_only=True)
     async def _route_lint(self, body=None, query=None):
         """live syntax annotations for the webui editor: runs the same
         treesitter check that gates saves, but returns structured results
@@ -1015,7 +1015,7 @@ class Coder(core.module.Module):
 
         return {"annotations": annotations}
 
-    @webui.route("create", method="POST")
+    @webui.route("create", method="POST", admin_only=True)
     async def _route_create(self, body=None, query=None):
         """creates an empty file or a folder (webui context menu). empty
         files always pass syntax, so no treesitter gate here."""
@@ -1050,7 +1050,7 @@ class Coder(core.module.Module):
 
         return self.result(f"created {rel_path}")
 
-    @webui.route("move", method="POST")
+    @webui.route("move", method="POST", admin_only=True)
     async def _route_move(self, body=None, query=None):
         """renames or moves an entry: src -> dst, both sandbox-relative.
         rename is just a move within the same parent."""
@@ -1083,7 +1083,7 @@ class Coder(core.module.Module):
 
         return self.result(f"moved {src} -> {dst}")
 
-    @webui.route("delete", method="POST")
+    @webui.route("delete", method="POST", admin_only=True)
     async def _route_delete(self, body=None, query=None):
         """deletes a file, or a folder recursively. the webui confirms
         before calling this; the AI-facing tools stay stricter on purpose."""
@@ -1111,7 +1111,7 @@ class Coder(core.module.Module):
 
         return self.result(f"deleted {rel_path}")
 
-    @webui.route("duplicate", method="POST")
+    @webui.route("duplicate", method="POST", admin_only=True)
     async def _route_duplicate(self, body=None, query=None):
         """copies a file or folder next to the original as 'name copy.ext'
         (numbered if taken)."""
@@ -1483,7 +1483,7 @@ class Coder(core.module.Module):
 
         return {"is_repo": True, "branch": branch, "log": entries}
 
-    @webui.route("git_stage", method="POST")
+    @webui.route("git_stage", method="POST", admin_only=True)
     async def _route_git_stage(self, body=None, query=None):
         if self.config.get("read-only"):
             return self.result("coder is in read-only mode", success=False)
@@ -1508,7 +1508,7 @@ class Coder(core.module.Module):
 
         return self.result("staged")
 
-    @webui.route("git_unstage", method="POST")
+    @webui.route("git_unstage", method="POST", admin_only=True)
     async def _route_git_unstage(self, body=None, query=None):
         if self.config.get("read-only"):
             return self.result("coder is in read-only mode", success=False)
@@ -1533,7 +1533,7 @@ class Coder(core.module.Module):
 
         return self.result("unstaged")
 
-    @webui.route("git_commit", method="POST")
+    @webui.route("git_commit", method="POST", admin_only=True)
     async def _route_git_commit(self, body=None, query=None):
         if self.config.get("read-only"):
             return self.result("coder is in read-only mode", success=False)
@@ -1556,7 +1556,7 @@ class Coder(core.module.Module):
 
         return self.result(out)
 
-    @webui.route("git_branch", method="POST")
+    @webui.route("git_branch", method="POST", admin_only=True)
     async def _route_git_branch(self, body=None, query=None):
         if self.config.get("read-only"):
             return self.result("coder is in read-only mode", success=False)
@@ -1658,7 +1658,7 @@ class Coder(core.module.Module):
             "dirty": dirty,
         }
 
-    @webui.route("git_push", method="POST")
+    @webui.route("git_push", method="POST", admin_only=True)
     async def _route_git_push(self, body=None, query=None):
         if self.config.get("read-only"):
             return self.result("coder is in read-only mode", success=False)
@@ -1785,7 +1785,7 @@ class Coder(core.module.Module):
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
     # webui routes: git fetch + pull
     # ------------------------------
-    @webui.route("git_fetch", method="POST")
+    @webui.route("git_fetch", method="POST", admin_only=True)
     async def _route_git_fetch(self, body=None, query=None):
         """fetches from remote without merging. returns incoming commits."""
         if self.config.get("read-only"):
@@ -1836,7 +1836,7 @@ class Coder(core.module.Module):
 
         return {"output": out, "incoming": incoming, "branch": branch}
 
-    @webui.route("git_pull", method="POST")
+    @webui.route("git_pull", method="POST", admin_only=True)
     async def _route_git_pull(self, body=None, query=None):
         """pulls from remote. returns output or conflict info."""
         if self.config.get("read-only"):
@@ -1873,7 +1873,7 @@ class Coder(core.module.Module):
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
     # webui routes: branch create / delete
     # -------------------------------------
-    @webui.route("git_branch_create", method="POST")
+    @webui.route("git_branch_create", method="POST", admin_only=True)
     async def _route_git_branch_create(self, body=None, query=None):
         if self.config.get("read-only"):
             return self.result("coder is in read-only mode", success=False)
@@ -1904,7 +1904,7 @@ class Coder(core.module.Module):
 
         return self.result(out or f"created branch {name}")
 
-    @webui.route("git_branch_delete", method="POST")
+    @webui.route("git_branch_delete", method="POST", admin_only=True)
     async def _route_git_branch_delete(self, body=None, query=None):
         if self.config.get("read-only"):
             return self.result("coder is in read-only mode", success=False)
@@ -1958,7 +1958,7 @@ class Coder(core.module.Module):
         conflicts = [l.strip() for l in raw.decode("utf-8", "replace").splitlines() if l.strip()]
         return {"conflicts": conflicts}
 
-    @webui.route("git_resolve", method="POST")
+    @webui.route("git_resolve", method="POST", admin_only=True)
     async def _route_git_resolve(self, body=None, query=None):
         """resolves a conflicted file: strategy is 'ours', 'theirs', or 'both'."""
         if self.config.get("read-only"):
@@ -2017,7 +2017,7 @@ class Coder(core.module.Module):
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
     # webui route: revert a file to HEAD
     # ------------------------------------
-    @webui.route("git_revert_file", method="POST")
+    @webui.route("git_revert_file", method="POST", admin_only=True)
     async def _route_git_revert_file(self, body=None, query=None):
         """restores a file to its HEAD version, discarding all local
         modifications (staged and unstaged). the webui confirms before
@@ -2050,7 +2050,7 @@ class Coder(core.module.Module):
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
     # webui route: file upload (drag from OS into tree)
     # ---------------------------------------------------
-    @webui.route("upload", method="POST")
+    @webui.route("upload", method="POST", admin_only=True)
     async def _route_upload(self, body=None, query=None):
         """writes a file from a base64-encoded payload into the sandbox.
         used by the webui's drag-and-drop-from-OS upload. auto-creates

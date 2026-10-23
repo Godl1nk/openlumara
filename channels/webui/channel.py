@@ -24,6 +24,7 @@ import datetime
 import re
 import time
 import html as html_lib
+import urllib.parse
 
 # webui stuff
 import fastapi, fastapi.templating, fastapi.staticfiles
@@ -142,8 +143,47 @@ class Webui(core.channel.Channel):
             "description": "How many days to stay logged in for",
             "default": 30,
             "depends": "require_login"
+        },
+        "session_secret": {
+            "description": "Secret used to sign login session cookies. Leave empty to auto-generate a random one on startup (recommended). Never share or reuse this value.",
+            "default": None
         }
     }
+
+    def _origin_allowed(self, origin: str) -> bool:
+        """-- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        True when an Origin header refers back to this same webui instance.
+        localhost and 127.0.0.1 are treated as the same host. Used to reject
+        cross-origin WebSocket handshakes, which is the only real defense
+        against a malicious web page driving a localhost instance (WebSocket
+        frames are not covered by SameSite cookies)."""
+        try:
+            parsed = urllib.parse.urlsplit(origin)
+        except ValueError:
+            return False
+        origin_host = (parsed.hostname or "").lower()
+        # strip the scheme-default port so http://host:80 matches host
+        origin_port = parsed.port
+        if origin_port and (
+            (parsed.scheme == "http" and origin_port == 80)
+            or (parsed.scheme == "https" and origin_port == 443)
+        ):
+            origin_port = None
+
+        if self.host in ("0.0.0.0", "::"):
+            # internet mode: bind address says nothing about the real host,
+            # so compare against the port we listen on only. (a reverse
+            # proxy in front is assumed to handle host validation)
+            return origin_port in (None, self.port)
+
+        server_host = (self.host or "").lower()
+        if server_host == "localhost":
+            server_host = "127.0.0.1"
+        if origin_host == "localhost":
+            origin_host = "127.0.0.1"
+        if origin_host != server_host:
+            return False
+        return origin_port in (None, self.port)
 
     async def _verify_credentials(self, username: str, password: str) -> bool:
         """Verify credentials securely using timing-safe comparison."""
@@ -411,6 +451,15 @@ class Webui(core.channel.Channel):
         self.path = core.get_path(os.path.join("channels", "webui"))
         self.template_path = os.path.join(self.path, "templates")
         self.assets_path = os.path.join(self.path, "assets")
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        # security: sessions used to be signed with a hardcoded fallback secret
+        # that ships in the source, which made forged "authenticated" cookies
+        # trivial. generate a random secret on first startup and persist it,
+        # so sessions survive restarts but are never signable by outsiders.
+        if not self.config.get("session_secret"):
+            self.config["session_secret"] = secrets.token_urlsafe(48)
+            self.log("webui", "generated a new random session_secret and saved it to the config")
 
         # fastapi-specific instances
         self.templates = fastapi.templating.Jinja2Templates(self.template_path)
@@ -1296,10 +1345,18 @@ async def create_fastapi(channel):
         return await call_next(request)
 
     session_lifetime_days = channel.config.get("login_lifetime")
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+    # security: the old fallback was a hardcoded public string, letting anyone
+    # forge signed "authenticated" session cookies. on_ready() now always
+    # persists a random secret; this random() fallback only covers unusual
+    # startup paths and simply invalidates sessions on restart there.
     app.add_middleware(
         starlette.middleware.sessions.SessionMiddleware,
-        secret_key=channel.config.get("session_secret", "openlumara-default-session-secret-change-me"),
-        max_age=session_lifetime_days * 86400
+        secret_key=channel.config.get("session_secret") or secrets.token_urlsafe(48),
+        max_age=session_lifetime_days * 86400,
+        # CSRF hardening: the session cookie is never sent on cross-site
+        # requests (a malicious page can no longer ride an active session)
+        same_site="strict"
     )
 
     # serve asset files (formerly /static) using fastAPI's mount()
@@ -1343,6 +1400,14 @@ async def create_fastapi(channel):
                 route_exists = True
                 if meta["method"] != method:
                     continue
+                # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                # security: routes explicitly marked admin_only=True are
+                # blocked (403) while enable_admin_settings is off. the
+                # meta.get default is True so hand-written _ui_route dicts
+                # that predate the flag fail closed; the decorator itself
+                # defaults to admin_only=False.
+                if meta.get("admin_only", True) and not channel.config.get("enable_admin_settings", True):
+                    return None, "admin-only"
                 return getattr(module, attr_name), None
         if not route_exists:
             return None, "route not found"
@@ -1355,7 +1420,15 @@ async def create_fastapi(channel):
         standard api envelope) or the self.result() dict (unwrapped)."""
         handler, reason = _ui_api_lookup(module_name, route_path, request.method)
         if handler is None:
-            status = 405 if "accepts" in reason else 404
+            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+            # "admin-only" (route blocked because enable_admin_settings is off)
+            # gets a proper 403, everything else keeps 404/405 behavior.
+            if reason == "admin-only":
+                status = 403
+            elif "accepts" in reason:
+                status = 405
+            else:
+                status = 404
             return fastapi.responses.JSONResponse(api_result(reason, success=False), status_code=status)
 
         # -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-04)
@@ -2309,10 +2382,24 @@ async def create_fastapi(channel):
     # ------------------
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: fastapi.WebSocket):
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        # security: origin check. browsers always send Origin on WebSocket
+        # handshakes; a foreign origin means a malicious page is trying to
+        # drive this instance (CSRF-style). non-browser clients send no
+        # Origin and stay allowed.
+        ws_origin = websocket.headers.get("origin")
+        if ws_origin and channel._origin_allowed(ws_origin) is False:
+            await websocket.close(code=4003, reason="Foreign origin")
+            return
+
         # WebSocket auth check
         if channel.config.get("require_login", False):
-            session_cookie = websocket.cookies.get("session")
-            if not session_cookie:
+            # security: previously any non-empty cookie passed this check,
+            # which made forging access trivial. verify the actual signed
+            # session instead (starlette's SessionMiddleware runs for
+            # websocket handshakes too and unsigns it into scope["session"]).
+            ws_session = websocket.scope.get("session") or {}
+            if not ws_session.get("authenticated", False):
                 # check if rate limited
                 client_ip = websocket.client.host if websocket.client else "unknown"
                 now = time.time()

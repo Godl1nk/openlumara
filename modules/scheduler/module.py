@@ -858,7 +858,7 @@ Use tools if needed. For simple reminders, do not use tools.
         """available channels for the job form"""
         return core.channel.get_available_channels()
 
-    @webui.route("create", method="POST")
+    @webui.route("create", method="POST", admin_only=True)
     async def _route_create(self, body=None, query=None):
         body = body or {}
 
@@ -900,7 +900,7 @@ Use tools if needed. For simple reminders, do not use tools.
 
         return self.result(f"job added. ID: {job_id}")
 
-    @webui.route("update", method="POST")
+    @webui.route("update", method="POST", admin_only=True)
     async def _route_update(self, body=None, query=None):
         """full rebuild of a job from the modal's form fields. rebuilds
         instead of forwarding to edit_job because edit_job merges old and
@@ -954,7 +954,7 @@ Use tools if needed. For simple reminders, do not use tools.
 
         return self.result("job edited")
 
-    @webui.route("delete", method="POST")
+    @webui.route("delete", method="POST", admin_only=True)
     async def _route_delete(self, body=None, query=None):
         job_id = (body or {}).get("id")
         if not job_id:

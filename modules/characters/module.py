@@ -678,7 +678,7 @@ class Characters(core.module.Module):
         await self.switch_to_default()
         return self.result("switched to default character")
 
-    @webui.route("delete", method="POST")
+    @webui.route("delete", method="POST", admin_only=True)
     async def _route_delete(self, body=None, query=None):
         name = (body or {}).get("name", "")
         char = self._find_character(name)
@@ -689,7 +689,7 @@ class Characters(core.module.Module):
         self.characters.save()
         return self.result(f"deleted character {stored_key}")
 
-    @webui.route("import", method="POST")
+    @webui.route("import", method="POST", admin_only=True)
     async def _route_import(self, body=None, query=None):
         json_code = (body or {}).get("json_code", "")
         if isinstance(json_code, (dict, list)):
@@ -700,7 +700,7 @@ class Characters(core.module.Module):
     # CRUD + file-import routes backing the character management modal
     # (webui/templates/modals/manage_characters.html).
 
-    @webui.route("remove", method="POST")
+    @webui.route("remove", method="POST", admin_only=True)
     async def _route_remove(self, body=None, query=None):
         return await self.delete(str((body or {}).get("name", "")))
 
@@ -730,7 +730,7 @@ class Characters(core.module.Module):
             return [str(t).strip() for t in raw if str(t).strip()]
         return []
 
-    @webui.route("add", method="POST")
+    @webui.route("add", method="POST", admin_only=True)
     async def _route_add(self, body=None, query=None):
         body = body or {}
         name = str(body.get("name", "")).strip()
@@ -753,7 +753,7 @@ class Characters(core.module.Module):
         self.characters.save()
         return self.result(f"character {name} added")
 
-    @webui.route("edit", method="POST")
+    @webui.route("edit", method="POST", admin_only=True)
     async def _route_edit(self, body=None, query=None):
         body = body or {}
         # 'key' is the canonical storage key (sent by the modal); 'name' is
@@ -799,7 +799,7 @@ class Characters(core.module.Module):
         self.characters.save()
         return self.result("character edited")
 
-    @webui.route("import_file", method="POST")
+    @webui.route("import_file", method="POST", admin_only=True)
     async def _route_import_file(self, body=None, query=None):
         """imports a character card from a file the browser read locally.
         json -> parse and normalize; png -> extract the embedded card from
@@ -907,7 +907,7 @@ class Characters(core.module.Module):
                 counts[char] = counts.get(char, 0) + 1
         return counts
 
-    @webui.route("apply", method="POST")
+    @webui.route("apply", method="POST", admin_only=True)
     async def _route_apply(self, body=None, query=None):
         """sets (or clears, with an empty name) the character on the current
         chat without any switch side effects - meant for tagging freshly

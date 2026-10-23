@@ -4,8 +4,14 @@
             <div class="multimodal-content">
                 <template x-for="(block, blockIndex) in message.content" :key="'block-' + blockIndex">
                     <div>
+                        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+                             security: this used to be x-html="block.text", which
+                             injected uploaded-file text (e.g. PDF contents) into the
+                             DOM unsanitized = stored XSS. routed through the x-md
+                             directive instead: raw mode = plain escaped text, exactly
+                             like the string-content path below -->
                         <template x-if="blockIndex === 0">
-                            <span x-html="block.text"></span>
+                            <div x-md="{ message: { content: block.text }, live: false, raw: true }"></div>
                         </template>
 
                         <template x-if="blockIndex > 0 && message._metadata?.filenames">
