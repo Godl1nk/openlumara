@@ -82,7 +82,7 @@ class Messages:
             for module_name, module in self.channel.manager.modules.items():
                 if hasattr(module, 'on_message_inject'):
                     try:
-                        injection = await module.on_message_inject()
+                        injection = await module.on_message_inject(new_message.get("content"))
                         if injection:
                             injections.append(injection)
                     except Exception as e:
