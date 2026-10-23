@@ -363,7 +363,7 @@ Hard rules:
                 # we first fall back to the reasoning. and if we can't do that...
                 # the compaction has basically failed
                 reasoning = response.get("reasoning_content")
-                if reasoning:
+                if reasoning and reasoning.strip():
                     response["content"] = reasoning
                 else:
                 	return False
