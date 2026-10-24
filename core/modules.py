@@ -234,9 +234,7 @@ async def install_module_deps(package, module_name, manager):
 
     missing = _check_missing_deps(deps)
     if missing:
-        # availability fix: pip install can take minutes - running it inline
-        # froze the whole event loop (same bug class as host_shell's
-        # subprocess.run fix). to_thread keeps it off the loop.
+        # run pip in a thread so that it doesn't block the rest of the harness
         await asyncio.to_thread(_install_deps, module_name, missing, manager)
         return True
 
