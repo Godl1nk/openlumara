@@ -312,7 +312,7 @@ class DiscordClient(discord.Client):
 class DiscordBot(core.channel.Channel):
     """Talk to your AI over Discord"""
 
-    dependencies = ["aiohttp", "discord.py"]
+    dependencies = ["discord.py"]
 
     settings =  {
         "token": {
@@ -388,13 +388,43 @@ class DiscordBot(core.channel.Channel):
         intents.message_content = True
 
         self.bot = DiscordClient(self, intents=intents)
-        await self.bot.start(self.config.get("token"))
+
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+        try:
+            await self.bot.start(self.config.get("token"))
+        except discord.LoginFailure:
+            # report it right here, right away, instead of letting the
+            # exception sit on a dead task until shutdown makes it look
+            # like shutdown itself is failing
+            self.log(self.name, "Discord login failed: the token in this channel's settings is missing or invalid")
+        except discord.DiscordException as e:
+            self.log(self.name, f"Discord client stopped: {core.detail_error(e)}")
+        except Exception as e:
+            # e.g. TypeError when the token is not set at all
+            self.log(self.name, f"Discord client stopped: {core.detail_error(e)}")
+        finally:
+            # discord.py opens its own aiohttp session internally;
+            # if start() raised, that session never gets cleaned up,
+            # leaking a connector ("Unclosed connector" on shutdown).
+            # close() is idempotent, so calling it after a normal
+            # disconnect is harmless.
+            try:
+                await self.bot.close()
+            except Exception:
+                pass
 
     async def on_shutdown(self):
         shutdown_msg = self.config.get("shutdown_message")
+        if not shutdown_msg:
+            return
 
-        if shutdown_msg:
-            await self.bot.send_to_main(shutdown_msg)
+        # the bot may never have logged in (bad token, network issues),
+        # in which case there is no connection to say goodbye over
+        if getattr(self, "bot", None) is not None and not self.bot.is_closed():
+            try:
+                await self.bot.send_to_main(shutdown_msg)
+            except Exception:
+                pass
 
     async def on_push(self, message: dict):
         content = message.get("content")

@@ -26,8 +26,6 @@ class Ntfy(core.channel.Channel):
         }
     }
 
-    dependencies = ["aiohttp"]
-
     async def run(self):
         # this is not a normal channel lol
         pass
