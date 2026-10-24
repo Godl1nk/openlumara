@@ -165,16 +165,32 @@ class APIClient():
             return await self._connect_setup(silent=silent)
 
     async def _connect_setup(self, silent=False):
+        # Resolve active endpoint from active model or configured providers
+        target_model = core.config.get("model", "name")
+        prov, _ = self.find_provider_for_model(target_model)
+        if not prov:
+            for p in self.get_providers():
+                if p.get("enabled", True) and p.get("url") and p.get("url") != "http://API_URL_HERE/v1":
+                    prov = p
+                    break
+
+        if prov and prov.get("url"):
+            if "api" not in core.config.config:
+                core.config.config["api"] = {}
+            core.config.config["api"]["url"] = prov["url"]
+            if prov.get("key"):
+                core.config.config["api"]["key"] = prov["key"]
+            core.config.config.save()
+
         api_config = core.config.get("api", {})
 
-        if api_config.get("url") == "http://API_URL_HERE/v1":
+        if api_config.get("url") == "http://API_URL_HERE/v1" or not api_config.get("url"):
             return APIError("The API connection has not been set up yet! Please set up your API connection by either using the WebUI, the /config command, or editing the config file")
-
         # close any session left over from a previous failed connect attempt
         await self._close_session()
 
-        use_secure_connection = not self.manager.args.insecure_tls
-        if not use_secure_connection:
+        use_secure_connection = not getattr(getattr(self.manager, "args", None), "insecure_tls", False)
+        if not use_secure_connection and self.manager:
             self.manager.log("API", "WARNING: TLS certificate and hostname verification are disabled")
 
         try:
@@ -227,7 +243,7 @@ class APIClient():
         # probe for a llama.cpp router so we can stream model-load progress
         await self._detect_router()
 
-        if not silent:
+        if not silent and self.manager:
             self.manager.log("API", "Successfully connected to AI")
 
         return True
@@ -359,8 +375,19 @@ class APIClient():
 
     def set_model(self, name: str):
         core.config.config["model"]["name"] = name
-        core.config.config.save()
 
+        # Sync api.url and api.key with the provider hosting this model
+        p, _ = self.find_provider_for_model(name)
+        if p and p.get("url"):
+            if "api" not in core.config.config:
+                core.config.config["api"] = {}
+            core.config.config["api"]["url"] = p["url"]
+            if p.get("key"):
+                core.config.config["api"]["key"] = p["key"]
+            self._router_origin = None
+            self.connected = False
+
+        core.config.config.save()
         return True
     def get_image_model(self):
         return core.config.get("model", "image_model", default="dall-e-3")
@@ -517,10 +544,18 @@ class APIClient():
             "is_image_provider": bool(is_image_provider),
             "models": []
         }
-
         providers = self.get_providers()
         providers.append(new_provider)
         self.save_providers(providers)
+
+        # Sync default api.url if still placeholder
+        if "api" not in core.config.config:
+            core.config.config["api"] = {}
+        if core.config.get("api", "url") in ("http://API_URL_HERE/v1", "", None):
+            core.config.config["api"]["url"] = url_clean
+            if key:
+                core.config.config["api"]["key"] = str(key).strip()
+            core.config.config.save()
 
         await self.refresh_provider_models(pid)
         for p in self.get_providers():

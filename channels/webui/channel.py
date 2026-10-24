@@ -2205,6 +2205,7 @@ async def create_fastapi(channel):
             return api_result("Model name cannot be empty", success=False)
 
         channel.manager.API.set_model(name)
+        await channel.manager.API.connect(silent=True)
         return api_result({"name": name}, success=True)
 
     @app.post("/api/model/image/set")
@@ -2284,6 +2285,7 @@ async def create_fastapi(channel):
         provider = await channel.manager.API.add_provider(
             name=name, url=url, key=key, type=type_, api_format=api_format, is_image_provider=is_image
         )
+        await channel.manager.API.connect(silent=True)
         return api_result(provider, success=True)
 
     @app.post("/api/provider/update")
