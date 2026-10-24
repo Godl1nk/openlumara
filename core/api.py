@@ -328,6 +328,38 @@ class APIClient():
         except Exception as e:
             pass
 
+    async def _wait_for_model_loaded(self, timeout=240.0):
+        """Wait until the router reports the chat model as loaded.
+
+        Only used before retrying an empty completion: the first request is what
+        triggers the swap, so polling afterwards is safe. No-ops for providers
+        that don't expose model status.
+        """
+        if not self._router_origin:
+            return
+
+        model_name = core.config.get("model", "name")
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            if self.cancel_request:
+                return
+            try:
+                status, body = await self._http_get(f"{self._router_origin}/models", timeout_total=5.0)
+                if status == 200:
+                    for entry in (json.loads(body).get("data") or []):
+                        if entry.get("id") != model_name:
+                            continue
+                        state = (entry.get("status") or {}).get("value")
+                        if state in (None, "", "loaded"):
+                            return
+                        break
+                else:
+                    return
+            except Exception:
+                return
+            await asyncio.sleep(1.0)
+
     async def _watch_model_load(self, model_name, queue):
         """reads the llamacpp router's /models/sse feed while a model loads"""
         try:
@@ -1072,16 +1104,42 @@ class APIClient():
         try:
             self.is_streaming = True
 
-            async for token in self._recv_stream(response):
+            # a router swapping the model in can end the request right after its
+            # load banner, yielding no real tokens at all; one retry then hits
+            # the loaded model and returns the actual answer
+            for attempt in (0, 1):
+                saw_output = False
+
+                async for token in self._recv_stream(response):
+                    if self.cancel_request:
+                        # cancel the entire stream
+                        raise asyncio.CancelledError("Request cancelled")
+
+                    if token.get("type") in ("content", "reasoning", "tool_calls", "tool_call_delta"):
+                        saw_output = True
+
+                    if core.debug_stream:
+                        self.manager.log("debug:stream", json.dumps(token, ensure_ascii=True))
+
+                    # let the channel calling send_stream() handle token processing
+                    yield token
+
+                if saw_output or attempt:
+                    break
+
+                if response is not None and hasattr(response, "close"):
+                    response.close()
+
+                # the failed attempt started the swap; wait for it to finish so
+                # the retry doesn't just collect another load banner
+                await self._wait_for_model_loaded()
                 if self.cancel_request:
-                    # cancel the entire stream
-                    raise asyncio.CancelledError("Request cancelled")
+                    break
 
-                if core.debug_stream:
-                    self.manager.log("debug:stream", json.dumps(token, ensure_ascii=True))
-
-                # let the channel calling send_stream() handle token processing
-                yield token
+                response = await self._request(context, tools=(tools if use_tools else None), stream=True, use_thinking=use_thinking, **kwargs)
+                if isinstance(response, APIError):
+                    yield {"type": "error", "content": str(response)}
+                    break
         except asyncio.CancelledError:
             self.cancel_request = False
             raise  # let callers handle cancellation
