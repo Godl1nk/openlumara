@@ -29,28 +29,23 @@ let STREAM_STORE = {
     recordToken(token) {
         if (!token) return;
 
-        // llama.cpp & some compatible servers attach native generation timings
-        // (predicted_n tokens over predicted_ms); prefer those when present
-        const timings = token.timings;
-        if (timings && timings.predicted_n && timings.predicted_ms) {
-            const rate = (Number(timings.predicted_n) * 1000) / Number(timings.predicted_ms);
-            if (isFinite(rate) && rate > 0) {
-                this.tokens_per_second = Math.round(rate);
-                return;
-            }
-        }
-
-        // fallback: rolling 2s window over streamed text (~4 chars per token)
+        // tokens in this chunk: ~4 chars per token, or the server's own count.
+        // clamp the reported count because a cumulative timing (the whole
+        // generation) arrives once and would otherwise spike the window
         const text = token.content || "";
-        const n = Math.max(1, Math.round(text.length / 4));
+        let n = Math.max(1, Math.round(text.length / 4));
+        const reported = Number(token.timings && token.timings.predicted_n);
+        if (reported > 0 && reported <= 8) n = Math.max(n, reported);
+
         const now = performance.now();
         this._tokSamples.push({ t: now, n });
-        while (this._tokSamples.length && now - this._tokSamples[0].t > 2000) {
+        // rolling 1.5s window: per-chunk timings jitter too much to show raw
+        while (this._tokSamples.length > 2 && now - this._tokSamples[0].t > 1500) {
             this._tokSamples.shift();
         }
         const first = this._tokSamples[0];
         const span = (now - first.t) / 1000;
-        if (span >= 0.6) {
+        if (span >= 0.5) {
             const total = this._tokSamples.reduce((sum, s) => sum + s.n, 0);
             this.tokens_per_second = Math.max(1, Math.round(total / span));
         }

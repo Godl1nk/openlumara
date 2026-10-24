@@ -27,6 +27,31 @@ header {
             display: flex;
             align-items: center;
         }
+
+        #tok-rate {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 0.3em;
+            flex-shrink: 0;
+            padding: 4px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: var(--bg-secondary);
+            font-size: 0.8rem;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            color: var(--text-secondary);
+
+            .tok-rate-value {
+                color: var(--accent);
+                font-weight: 600;
+            }
+
+            .tok-rate-unit {
+                color: var(--text-secondary);
+            }
+        }
     }
 
     h1 {

@@ -111,6 +111,28 @@ class ImageTools(core.module.Module):
         if os.path.isabs(configured):
             return configured
         return core.get_path(configured, sandbox=False)
+
+    def _view_url(self, path: str) -> str:
+        """Web URL that serves an image saved in the output directory."""
+        return f"/api/ext/image_tools/view?file={urllib.parse.quote(os.path.basename(path))}"
+
+    def _edit_result(self, action: str, src: str, dest: str, alt: str = None, **extra):
+        """Edit result carrying a ready-to-use web link.
+
+        The model pastes this into its reply, so it has to be a URL: a bare
+        filesystem path renders as a broken image in the chat.
+        """
+        url = self._view_url(dest)
+        payload = {
+            "action": action,
+            "source": src,
+            "output": dest,
+            "url": url,
+            "markdown": f"![{alt or action}]({url})",
+        }
+        payload.update(extra)
+        return self.result(payload, success=True)
+
     def _get_image_model(self) -> str:
         """Resolve active image model from module config, global core config, or fallback."""
         return self.config.get("model") or core.config.get("model", "image_model") or self.config.get("openai_model") or "dall-e-3"
@@ -480,12 +502,7 @@ class ImageTools(core.module.Module):
                 draw.text((20, y), text[:100], fill=text_color)
                 out.save(dest)
 
-            return self.result({
-                "action": "add_text",
-                "text": text,
-                "source": src,
-                "output": dest
-            }, success=True)
+            return self._edit_result("add_text", src, dest, text=text)
         except Exception as e:
             return self.result(f"Failed to add text: {core.detail_error(e)}", success=False)
 
@@ -518,12 +535,7 @@ class ImageTools(core.module.Module):
                 out = img.resize((width, height), Image.Resampling.LANCZOS)
                 out.save(dest)
 
-            return self.result({
-                "action": "resize",
-                "source": src,
-                "output": dest,
-                "dimensions": f"{width}x{height}"
-            }, success=True)
+            return self._edit_result("resize", src, dest, f"resized {width}x{height}", dimensions=f"{width}x{height}")
         except Exception as e:
             return self.result(f"Resize failed: {core.detail_error(e)}", success=False)
 
@@ -564,13 +576,9 @@ class ImageTools(core.module.Module):
                 cropped = img.crop((left_c, top_c, right_c, bottom_c))
                 cropped.save(dest)
 
-            return self.result({
-                "action": "crop",
-                "source": src,
-                "output": dest,
-                "box": [left_c, top_c, right_c, bottom_c],
-                "new_size": f"{cropped.width}x{cropped.height}"
-            }, success=True)
+            return self._edit_result("crop", src, dest, f"cropped {cropped.width}x{cropped.height}",
+                                     box=[left_c, top_c, right_c, bottom_c],
+                                     new_size=f"{cropped.width}x{cropped.height}")
         except Exception as e:
             return self.result(f"Crop failed: {core.detail_error(e)}", success=False)
 
@@ -600,13 +608,8 @@ class ImageTools(core.module.Module):
                 rotated = img.rotate(float(angle), expand=bool(expand), resample=Image.Resampling.BICUBIC)
                 rotated.save(dest)
 
-            return self.result({
-                "action": "rotate",
-                "source": src,
-                "output": dest,
-                "angle": angle,
-                "dimensions": f"{rotated.width}x{rotated.height}"
-            }, success=True)
+            return self._edit_result("rotate", src, dest, f"rotated {angle} degrees",
+                                     angle=angle, dimensions=f"{rotated.width}x{rotated.height}")
         except Exception as e:
             return self.result(f"Rotation failed: {core.detail_error(e)}", success=False)
 
@@ -640,12 +643,7 @@ class ImageTools(core.module.Module):
                     flipped = ImageOps.mirror(img)
                 flipped.save(dest)
 
-            return self.result({
-                "action": "flip",
-                "mode": mode_clean,
-                "source": src,
-                "output": dest
-            }, success=True)
+            return self._edit_result("flip", src, dest, f"flipped {mode_clean}", mode=mode_clean)
         except Exception as e:
             return self.result(f"Flip failed: {core.detail_error(e)}", success=False)
 
@@ -701,12 +699,7 @@ class ImageTools(core.module.Module):
 
                 out.save(dest)
 
-            return self.result({
-                "action": "filter",
-                "filter": f_name,
-                "source": src,
-                "output": dest
-            }, success=True)
+            return self._edit_result("filter", src, dest, f"{f_name} filter", filter=f_name)
         except Exception as e:
             return self.result(f"Filter failed: {core.detail_error(e)}", success=False)
 
@@ -744,12 +737,7 @@ class ImageTools(core.module.Module):
                     img = img.convert("RGB")
                 img.save(dest, fmt.upper())
 
-            return self.result({
-                "action": "convert_format",
-                "format": fmt,
-                "source": src,
-                "output": dest
-            }, success=True)
+            return self._edit_result("convert_format", src, dest, f"converted to {fmt}", format=fmt)
         except Exception as e:
             return self.result(f"Format conversion failed: {core.detail_error(e)}", success=False)
 

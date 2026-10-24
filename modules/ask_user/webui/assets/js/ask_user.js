@@ -1,6 +1,7 @@
 /*
  * Ask User Module - WebUI Controller
- * Connects to /api/ext/ask_user/ routes and provides interactive human-in-the-loop modal dialogs.
+ * Connects to /api/ext/ask_user/ routes and renders a pending question as an
+ * inline card above the chat input (no modal window).
  */
 
 const ASK_USER_STORE = {
@@ -45,12 +46,7 @@ const ASK_USER_STORE = {
                     this.error = "";
                     this._deadline = Date.now() + (Number(target.remaining_seconds) || 0) * 1000;
 
-                    // Open the modal if not already open. Polls for a question
-                    // we already hold land in the else branch, so dismissing the
-                    // modal to answer in chat doesn't get it re-opened.
-                    if (Alpine.store("ui") && Alpine.store("ui").currentModal !== "ask_user") {
-                        Alpine.store("ui").openModal("ask_user");
-                    }
+                    // the card is bound to `current`, so no window to open
                     this.startCountdown();
                 } else {
                     // Update remaining time and the deadline it is derived from
@@ -62,9 +58,6 @@ const ASK_USER_STORE = {
                 this.current = null;
                 this._deadline = null;
                 this.stopCountdown();
-                if (Alpine.store("ui") && Alpine.store("ui").currentModal === "ask_user") {
-                    Alpine.store("ui").closeModal();
-                }
             }
         } catch (e) {
             // Ignore background network/auth errors silently
@@ -108,27 +101,11 @@ const ASK_USER_STORE = {
             this.current = null;
             this._deadline = null;
             this.stopCountdown();
-            if (Alpine.store("ui")) {
-                Alpine.store("ui").closeModal();
-            }
         } catch (err) {
             this.error = (typeof err === "string") ? err : (err.message || "Failed to submit response");
         } finally {
             this.submitting = false;
         }
-    },
-
-    replyInChat() {
-        // leave the question pending, close the popup, and let the user answer
-        // with a normal chat message (the backend intercepts it before
-        // cancelling the paused agent turn)
-        if (Alpine.store("ui") && Alpine.store("ui").currentModal === "ask_user") {
-            Alpine.store("ui").closeModal();
-        }
-        setTimeout(() => {
-            const input = document.getElementById("user-input");
-            if (input) input.focus();
-        }, 60);
     },
 
     async submitText() {
@@ -141,10 +118,7 @@ const ASK_USER_STORE = {
     },
 
     async cancelCurrent() {
-        if (!this.current) {
-            if (Alpine.store("ui")) Alpine.store("ui").closeModal();
-            return;
-        }
+        if (!this.current) return;
 
         try {
             await simpleApiPost("/api/ext/ask_user/cancel", { id: this.current.id });
@@ -155,9 +129,6 @@ const ASK_USER_STORE = {
         this.current = null;
         this._deadline = null;
         this.stopCountdown();
-        if (Alpine.store("ui")) {
-            Alpine.store("ui").closeModal();
-        }
     }
 };
 

@@ -50,16 +50,6 @@
 {% include 'chat/context_pill.html' %}
 {% endif %}
 
-<!-- live generation speed, updated from stream timings while a turn runs -->
-<span id="tok-rate"
-      x-show="$store.stream.state !== 'idle' && $store.stream.tokens_per_second > 0"
-      x-cloak
-      title="Live generation speed"
-      :aria-label="'Generation speed: ' + $store.stream.tokens_per_second + ' tokens per second'">
-    <span class="tok-rate-value" x-text="$store.stream.tokens_per_second"></span>
-    <span class="tok-rate-unit">tok/s</span>
-</span>
-
 <button id="send" aria-label="Send message"
     @click="
         $event.preventDefault();

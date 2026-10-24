@@ -1,12 +1,44 @@
-{# -- Macro for above_input_bar extension slot: displays banner when an AI question is pending -- #}
+{# -- Macro for above_input_bar extension slot: an inline answer card, no modal window -- #}
 {% macro above_input_bar() %}
 <template x-if="$store.askUser && $store.askUser.current" x-cloak>
-    <div class="ask-user-banner" @click="$store.ui.openModal('ask_user')" title="Click to open answer dialog">
-        <span class="ask-user-banner-badge">Question</span>
-        <span class="ask-user-banner-text">
-            <strong>AI waiting for reply:</strong> <span x-text="$store.askUser.current.question"></span>
-        </span>
-        <button type="button" class="ask-user-banner-btn">Answer</button>
+    <div class="ask-user-card" role="group" aria-label="AI question">
+        <div class="ask-user-card-header">
+            <span class="ask-user-badge">AI Question</span>
+            <span class="ask-user-timer" x-show="$store.askUser.current.remaining_seconds > 0"
+                  x-text="$store.askUser.current.remaining_seconds + 's left'"></span>
+            <span class="ask-user-default-badge" x-show="$store.askUser.current.default_choice"
+                  x-text="'Default: ' + $store.askUser.current.default_choice"></span>
+            <button type="button" class="ask-user-card-close" @click="$store.askUser.cancelCurrent()"
+                    aria-label="Dismiss question" title="Dismiss question">&times;</button>
+        </div>
+
+        <div class="ask-user-question" x-text="$store.askUser.current.question"></div>
+
+        <template x-if="$store.askUser.current.options && $store.askUser.current.options.length > 0">
+            <div class="ask-user-options">
+                <template x-for="opt in $store.askUser.current.options" :key="opt">
+                    <button type="button" class="ask-user-option-btn"
+                            :disabled="$store.askUser.submitting"
+                            @click="$store.askUser.selectOption(opt)"
+                            x-text="opt"></button>
+                </template>
+            </div>
+        </template>
+
+        <form class="ask-user-form" @submit.prevent="$store.askUser.submitText()">
+            <input class="ask-user-input"
+                   :type="$store.askUser.current.secret ? 'password' : 'text'"
+                   :placeholder="$store.askUser.current.options && $store.askUser.current.options.length ? 'Or type your own answer...' : 'Type your answer...'"
+                   x-model="$store.askUser.textInput"
+                   :disabled="$store.askUser.submitting"
+                   autocomplete="off"
+                   aria-label="Your answer">
+            <button type="submit" class="ask-user-submit-btn"
+                    :disabled="$store.askUser.submitting || !$store.askUser.textInput.trim()"
+                    x-text="$store.askUser.submitting ? '...' : 'Send'"></button>
+        </form>
+
+        <div class="ask-user-error" x-show="$store.askUser.error" x-text="$store.askUser.error"></div>
     </div>
 </template>
 {% endmacro %}

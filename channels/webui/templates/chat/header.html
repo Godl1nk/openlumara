@@ -25,6 +25,16 @@
             {% include 'svg/search.svg' %}
         </button>
         -->
+        <!-- live generation speed, shown beside the model picker while a turn runs -->
+        <span id="tok-rate"
+              x-show="$store.stream.state !== 'idle' && $store.stream.tokens_per_second > 0"
+              x-cloak
+              title="Live generation speed"
+              :aria-label="'Generation speed: ' + $store.stream.tokens_per_second + ' tokens per second'">
+            <span class="tok-rate-value" x-text="$store.stream.tokens_per_second"></span>
+            <span class="tok-rate-unit">tok/s</span>
+        </span>
+
         {% if config.get("enable_model_switcher") and config.get("enable_admin_settings") %}
         <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
              quick model switcher: same cached model list and model.name
