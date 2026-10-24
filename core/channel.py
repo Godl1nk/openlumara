@@ -522,6 +522,8 @@ class Channel:
         await self._set_as_active_channel()
         user_message = message
 
+        self.context._overflow_warned = False
+
         # sometimes legacy parts of the openlumara framework still send dicts.
         # that is not supposed to happen, and i need to find the code that does it
         # so, TODO: find the legacy code that calls channel.send()/send_stream() with dicts

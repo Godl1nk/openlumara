@@ -59,6 +59,9 @@ class APIClient():
         # active low-level HTTP request task, used for reliable cancellation
         self._request_task = None
 
+        # guards session lifecycle against concurrent connect/disconnect calls
+        self._connect_lock = asyncio.Lock()
+
         # the aiohttp session is the one HTTP client for everything
         self._session = None
         self._ssl_ctx = None # only set when TLS verification is disabled
@@ -153,6 +156,14 @@ class APIClient():
         if self.connected:
             return True
 
+        async with self._connect_lock:
+            # dont allow concurrent connect() calls
+            if self.connected:
+                return True
+
+            return await self._connect_setup(silent=silent)
+
+    async def _connect_setup(self, silent=False):
         api_config = core.config.get("api", {})
 
         if api_config.get("url") == "http://API_URL_HERE/v1":
@@ -244,13 +255,16 @@ class APIClient():
 
     async def disconnect(self):
         """disconnect from the API"""
-        await self._close_session()
+        # dont allow concurrent disconnect() calls
+        async with self._connect_lock:
+            await self._close_session()
 
-        # clear per-session state
-        self._ssl_ctx = None
-        self._router_origin = None
+            # clear per-session state
+            self._ssl_ctx = None
+            self._router_origin = None
 
-        self.connected = False
+            self.connected = False
+
         return True
 
     async def reconnect(self):

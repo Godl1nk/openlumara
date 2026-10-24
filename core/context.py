@@ -12,6 +12,7 @@ class Context:
         self.using_api_token_data = False
         self.token_encoding = None
         self.compressing = False
+        self._overflow_warned = False
 
         # prompt cache invalidation debugging
         self._prompt_cache_state = {}
@@ -237,12 +238,12 @@ class Context:
         # If we are STILL over the limit even with empty history,
         # the system prompt + end prompt alone exceed the limit, or a single message is too large.
         if trim and current_tokens > max_tokens:
-            await self.channel.push(
-                f"Your system prompt of {current_tokens} tokens somehow exceeds the maximum context size of {max_tokens}! Please set a larger context size. Or disable some modules, disable system prompt insertion across modules, do whatever you can to reduce token size."
-            )
+            if not self._overflow_warned:
+                self._overflow_warned = True
 
-            # immediately disconnect so we don't spam the API
-            await self.channel.manager.API.disconnect()
+                await self.channel.push(
+                    f"Your system prompt of {current_tokens} tokens somehow exceeds the maximum context size of {max_tokens}! Please set a larger context size. Or disable some modules, disable system prompt insertion across modules, do whatever you can to reduce token size."
+                )
 
             return None
 
@@ -348,10 +349,13 @@ Hard rules:
             compress_prompt += f'\n\nThe user\'s active request is the message below. Before the numbered sections, output a line "ACTIVE USER REQUEST:" followed by this message quoted verbatim. Do NOT paraphrase it.\n"""\n{active_request}\n"""'
 
         try:
+            compress_context = await self.channel.context.get(end_prompt=False)
+            if compress_context is None:
+                return False
+
             # request the stream
             stream = self.channel.manager.API.send_stream(
-                await self.channel.context.get(end_prompt=False)
-                + [{"role": "user", "content": compress_prompt}]
+                compress_context + [{"role": "user", "content": compress_prompt}]
             )
 
             # send the stream into the current channel
