@@ -43,7 +43,7 @@ core_settings_schema = {
             "description": "Timeout in seconds for tool execution. This applies per individual tool, and is used to forcefully kill off tools that run too long."
         },
         "module_libraries": {
-            "description": "A list of github urls that contain modules you want to be able to download and update in openlumara *(currently not implemented yet - stay tuned, this is the dev branch after all, lol)*",
+            "description": "A list of git repo urls containing modules, channels, skills and themes you want to be able to download and update in openlumara.",
             "default": []
         }
     },

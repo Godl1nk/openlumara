@@ -2304,17 +2304,27 @@ async def create_fastapi(channel):
         if not source:
             return api_result("module not found in this library", success=False)
 
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+        # kind-aware source view: skills (SKILL.md + extras) and themes (flat
+        # json + optional css sidecar) are reviewable too, not just .py modules.
         source_root = os.path.realpath(source)
-        files = []
-        for dirpath, dirnames, filenames in os.walk(source_root):
-            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git")]
-            for fname in filenames:
-                if fname.endswith(".py"):
-                    rel = os.path.relpath(os.path.join(dirpath, fname), source_root)
-                    files.append(rel.replace(os.sep, "/"))
-        files.sort()
+        REVIEW_TEXT_EXTS = (".py", ".json", ".md", ".txt", ".yaml", ".yml", ".css", ".js", ".html")
 
-        entry = "module.py" if kind == "module" else "channel.py"
+        if kind == "theme":
+            files = [f for f in (f"{name}.json", f"{name}.css")
+                     if os.path.isfile(os.path.join(source_root, f))]
+            entry = f"{name}.json"
+        else:
+            files = []
+            for dirpath, dirnames, filenames in os.walk(source_root):
+                dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git")]
+                for fname in filenames:
+                    if fname.endswith(REVIEW_TEXT_EXTS):
+                        rel = os.path.relpath(os.path.join(dirpath, fname), source_root)
+                        files.append(rel.replace(os.sep, "/"))
+            files.sort()
+            entry = "module.py" if kind == "module" else "channel.py" if kind == "channel" else "SKILL.md"
+
         wanted = file_rel if file_rel in files else entry
         full = os.path.realpath(os.path.join(source_root, wanted))
         if not full.startswith(source_root + os.sep) or not os.path.isfile(full):
@@ -2327,7 +2337,12 @@ async def create_fastapi(channel):
         except Exception as e:
             return api_result(core.detail_error(e), success=False)
 
-        flags, warnings = library_review_flags(os.path.join(source_root, entry))
+        # shell/exec smell checks only apply to runnable python entries
+        if kind in ("module", "channel"):
+            flags, warnings = library_review_flags(os.path.join(source_root, entry))
+        else:
+            flags, warnings = [], []
+
         return api_result({
             "library": library,
             "name": name,
@@ -2340,45 +2355,68 @@ async def create_fastapi(channel):
             "warnings": warnings
         })
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+    # install/update/uninstall are kind-aware: mm returns (success, message, kind).
+    # modules -> user_modules, channels -> user_channels, skills -> skills/,
+    # themes -> user_webui_themes/. Only module/channel have pip dependencies
+    # or need a restart.
     @app.post("/api/libraries/install")
     async def libraries_install(request: fastapi.Request):
-        """Installs a module/channel from a library into the user folders and installs its dependencies"""
+        """Installs a module/channel/skill/theme from a library and installs its dependencies"""
         data = await request.json()
         library = (data.get("library") or "").strip()
         name = (data.get("name") or "").strip()
 
         mm = get_module_manager()
-        success, message = mm.install(library, name)
+        success, message, kind = mm.install(library, name)
         if not success:
             return api_result(message, success=False)
 
-        try:
-            kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
-            await core.modules.install_module_deps(__import__(kind), name, channel.manager)
-        except Exception as e:
-            channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+        if kind in ("module", "channel"):
+            pkg = "user_channels" if kind == "channel" else "user_modules"
+            try:
+                await core.modules.install_module_deps(__import__(pkg), name, channel.manager)
+            except Exception as e:
+                channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
 
-        return api_result({"restart_required": True, "message": message}, success=True)
+        return api_result({
+            "kind": kind,
+            "restart_required": kind in ("module", "channel"),
+            "message": message,
+            "note": {
+                "theme": "Pick it in Settings -> Appearance after a page reload.",
+                "skill": "Run /skills reload to load it.",
+            }.get(kind, ""),
+        }, success=True)
 
     @app.post("/api/libraries/update")
     async def libraries_update(request: fastapi.Request):
-        """Re-syncs a library and overwrites an installed module with the newest version from it"""
+        """Re-syncs a library and overwrites an installed entry with the newest version from it"""
         data = await request.json()
         library = (data.get("library") or "").strip()
         name = (data.get("name") or "").strip()
 
         mm = get_module_manager()
-        success, message = await mm.update(library, name)
+        success, message, kind = await mm.update(library, name)
         if not success:
             return api_result(message, success=False)
 
-        try:
-            kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
-            await core.modules.install_module_deps(__import__(kind), name, channel.manager)
-        except Exception as e:
-            channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+        if kind in ("module", "channel"):
+            pkg = "user_channels" if kind == "channel" else "user_modules"
+            try:
+                await core.modules.install_module_deps(__import__(pkg), name, channel.manager)
+            except Exception as e:
+                channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
 
-        return api_result({"restart_required": True, "message": message}, success=True)
+        return api_result({
+            "kind": kind,
+            "restart_required": kind in ("module", "channel"),
+            "message": message,
+            "note": {
+                "theme": "Pick it in Settings -> Appearance after a page reload.",
+                "skill": "Run /skills reload to load it.",
+            }.get(kind, ""),
+        }, success=True)
 
     @app.post("/api/libraries/uninstall")
     async def libraries_uninstall(request: fastapi.Request):
@@ -2395,11 +2433,16 @@ async def create_fastapi(channel):
             except Exception as e:
                 channel.log("libraries", f"dependency cleanup failed for {name}: {core.detail_error(e)}")
 
-        success, message = mm.uninstall(name)
+        success, message, kind = mm.uninstall(name)
         if not success:
             return api_result(message, success=False)
 
-        return api_result({"restart_required": True, "message": message}, success=True)
+        return api_result({
+            "kind": kind,
+            "restart_required": kind in ("module", "channel"),
+            "message": message,
+            "note": "Run /skills reload to apply." if kind == "skill" else "",
+        }, success=True)
 
     # ----------------------------
     # System.. stuff
@@ -2445,37 +2488,60 @@ async def create_fastapi(channel):
     # ----------------------------
     # Theme API endpoints
     # ----------------------------
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+    # themes now come from two places: the WebUI's bundled folder (built-ins)
+    # and the root-level user_webui_themes/ folder (user themes, including ones
+    # installed from module libraries). The user folder wins on name collisions.
+    def user_themes_dir():
+        return core.get_path("user_webui_themes", sandbox=False)
+
+    def builtin_themes_dir():
+        return os.path.join(channel.path, "themes")
+
+    def themes_dirs():
+        return [user_themes_dir(), builtin_themes_dir()]
+
     @app.get("/api/themes")
     async def get_themes():
         """Returns a list of available theme families with their supported modes (dark/light)"""
-        themes_dir = os.path.join(channel.path, "themes")
-        theme_list = []
+        families = {}
 
-        for f in os.listdir(themes_dir):
-            if f.endswith('.json') and f != 'base.json':
-                family_name = f[:-5]
-                filepath = os.path.join(themes_dir, f)
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as fh:
-                        theme_data = json.load(fh)
-                        theme_list.append({
-                            "name": family_name,
-                            "dark": "dark" in theme_data,
-                            "light": "light" in theme_data
-                        })
-                except Exception as e:
-                    channel.log(channel.name, f"failed to read theme {filepath}: {e}")
+        # built-ins first, user themes override same-name families afterwards
+        for themes_dir in reversed(themes_dirs()):
+            if not os.path.isdir(themes_dir):
+                continue
+            for f in os.listdir(themes_dir):
+                if f.endswith('.json') and f != 'base.json':
+                    family_name = f[:-5]
+                    filepath = os.path.join(themes_dir, f)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as fh:
+                            theme_data = json.load(fh)
+                            families[family_name] = {
+                                "name": family_name,
+                                "dark": "dark" in theme_data,
+                                "light": "light" in theme_data
+                            }
+                    except Exception as e:
+                        channel.log(channel.name, f"failed to read theme {filepath}: {e}")
 
-        theme_list.sort(key=lambda x: x["name"])
+        theme_list = sorted(families.values(), key=lambda x: x["name"])
         return theme_list
 
     @app.get("/api/themes/{family_name}")
     async def get_theme(family_name: str):
         """Returns full theme data for a specific family"""
-        themes_dir = os.path.join(channel.path, "themes")
-        filepath = os.path.join(themes_dir, f"{family_name}.json")
-        
-        if not os.path.exists(filepath):
+        if family_name != os.path.basename(family_name) or ".." in family_name:
+            return api_result(f"Theme family '{family_name}' not found", success=False)
+
+        filepath = None
+        for themes_dir in themes_dirs():
+            candidate = os.path.join(themes_dir, f"{family_name}.json")
+            if os.path.isfile(candidate):
+                filepath = candidate
+                break
+
+        if not filepath:
             return api_result(f"Theme family '{family_name}' not found", success=False)
 
         try:
@@ -2489,16 +2555,18 @@ async def create_fastapi(channel):
     # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
     # serve theme sidecar CSS: a .css file sitting next to a theme JSON with
     # the same name is auto-loaded by theming.js when that theme is active.
-    # only .css files are served (no JS), and only from the themes dir.
+    # only .css files are served (no JS), and only from the themes dirs
+    # (user themes first, then the WebUI built-ins).
     @app.get("/themes/{file_name}")
     async def theme_sidecar_css(file_name: str):
         if not file_name.endswith(".css"):
             raise fastapi.HTTPException(status_code=404, detail="Only CSS files are served")
-        themes_dir = os.path.realpath(os.path.join(channel.path, "themes"))
-        full_path = os.path.realpath(os.path.join(themes_dir, file_name))
-        if not full_path.startswith(themes_dir + os.sep) or not os.path.isfile(full_path):
-            raise fastapi.HTTPException(status_code=404, detail="Theme CSS not found")
-        return fastapi.responses.FileResponse(full_path, media_type="text/css")
+        for themes_dir in themes_dirs():
+            themes_dir = os.path.realpath(themes_dir)
+            full_path = os.path.realpath(os.path.join(themes_dir, file_name))
+            if full_path.startswith(themes_dir + os.sep) and os.path.isfile(full_path):
+                return fastapi.responses.FileResponse(full_path, media_type="text/css")
+        raise fastapi.HTTPException(status_code=404, detail="Theme CSS not found")
 
     def generate_cache_version():
         # generate an sw.js cache version based on this file's last modified time

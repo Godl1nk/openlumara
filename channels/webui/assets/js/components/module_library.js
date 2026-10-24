@@ -51,7 +51,7 @@ function moduleLibrary() {
         // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
         // per-type totals for the tab bar badges
         get typeCounts() {
-            const counts = { module: 0, channel: 0 };
+            const counts = { module: 0, channel: 0, theme: 0, skill: 0 };
             for (const m of this.modules) {
                 counts[m.type] = (counts[m.type] || 0) + 1;
             }
@@ -147,7 +147,9 @@ function moduleLibrary() {
                     this.restartNeeded = true;
                     this.restartNote = done + ' complete. Restart the server for it to take effect.';
                 } else {
-                    this.flash(done + ' complete.', 'success');
+                    // themes/skills need no restart: carry the server's hint
+                    // (e.g. '/skills reload', page refresh) in the flash
+                    this.flash(done + ' complete. ' + (data.note || ''), 'success');
                 }
                 await this.refresh();
             } catch (err) {
@@ -210,12 +212,18 @@ function moduleLibrary() {
         get auditHighlighted() {
             if (!this.audit || !this.audit.code) return '';
             const code = this.audit.code;
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+            // pick the grammar by file extension: skills and themes review
+            // .md/.json/.css files too, not just .py
+            const LANG_BY_EXT = { py: 'python', json: 'json', css: 'css', md: 'markdown', yaml: 'yaml', yml: 'yaml', html: 'xml', js: 'javascript' };
             try {
                 if (typeof hljs !== 'undefined') {
+                    const ext = (this.audit.file || '').split('.').pop().toLowerCase();
+                    const lang = LANG_BY_EXT[ext] || (this.audit.kind === 'skill' ? 'markdown' : 'python');
                     // hljs output is escaped markup, safe for x-html (same
                     // sanctioned escape hatch as the coder tool displays)
-                    return hljs.getLanguage('python')
-                        ? hljs.highlight(code, { language: 'python' }).value
+                    return hljs.getLanguage(lang)
+                        ? hljs.highlight(code, { language: lang }).value
                         : hljs.highlightAuto(code).value;
                 }
             } catch (err) { /* fall through to plain escaping */ }
@@ -237,10 +245,16 @@ function moduleLibrary() {
             const a = this.audit;
             if (!a || a.loading || a.error) return;
             const verb = a.mode === 'update' ? 'update' : 'install';
+            // themes and skills are data, not executed code - different trust note
+            const trust = a.m.type === 'theme'
+                ? 'Themes are color data + CSS rendered by the WebUI - only continue if you trust this source.'
+                : a.m.type === 'skill'
+                    ? 'Skills are instruction files your AI will follow - only continue if you trust this source.'
+                    : 'Installed code runs with full access to your OpenLumara - only continue if you trust this source.';
             const extra = a.warnings.length
                 ? '\n\nHeads up: this module uses shell/exec-style APIs (see the red warnings).'
                 : '';
-            if (!confirm('Really ' + verb + ' "' + a.m.name + '"?\n\nInstalled code runs with full access to your OpenLumara - only continue if you trust this source.' + extra)) return;
+            if (!confirm('Really ' + verb + ' "' + a.m.name + '"?\n\n' + trust + extra)) return;
             const m = a.m;
             const action = a.mode;
             this.audit = null;
@@ -248,7 +262,12 @@ function moduleLibrary() {
         },
 
         async uninstall(m) {
-            if (!confirm('Uninstall ' + m.name + '? Its settings are kept, but dependencies nothing else needs will be removed.')) return;
+            const tail = m.type === 'theme'
+                ? '? The theme files are removed from your user_webui_themes folder.'
+                : m.type === 'skill'
+                    ? '? The skill folder is removed from your skills folder.'
+                    : '? Its settings are kept, but dependencies nothing else needs will be removed.';
+            if (!confirm('Uninstall ' + m.name + tail)) return;
             this.runAction(m, 'uninstall');
         },
 
