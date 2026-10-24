@@ -288,6 +288,110 @@
             </template>
         </div>
 
+        <!-- 3. IMAGE GENERATION & EDITING SETTINGS (Matches user screenshot) -->
+        <div class="image-gen-card" x-data="imageGenSettingsComponent()" x-init="init()">
+            <!-- Header Row with Master Toggle -->
+            <div class="image-gen-header">
+                <div class="image-gen-title-group">
+                    <span class="image-gen-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                    </span>
+                    <span class="image-gen-title">Image Generation</span>
+                </div>
+                <label class="toggle-switch" title="Enable or disable image generation">
+                    <input type="checkbox" x-model="settings.enabled" @change="save()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="image-gen-subtext">Configure which model to use for image generation.</div>
+
+            <!-- Ask Before Generate / Edit Row with Toggle -->
+            <div class="image-gen-toggle-row">
+                <div class="image-gen-toggle-text">
+                    <strong>Ask before generate / edit</strong>
+                    <span>Pause image requests and pick the model in chat each time.</span>
+                </div>
+                <label class="toggle-switch" title="Pause and ask before generating">
+                    <input type="checkbox" x-model="settings.ask_before_generate" @change="save()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <!-- Fields: Endpoint, Model, Quality -->
+            <div class="image-gen-fields">
+                <!-- Endpoint -->
+                <div class="image-gen-field-row">
+                    <label class="field-label" for="image-gen-endpoint-select">Endpoint</label>
+                    <select id="image-gen-endpoint-select" class="image-gen-select" x-model="settings.endpoint" @change="save()">
+                        <option value="auto">Auto-detect</option>
+                        <template x-for="p in providers" :key="'img-prov-' + p.id">
+                            <option :value="p.name" x-text="p.name" :selected="settings.endpoint === p.name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Model -->
+                <div class="image-gen-field-row">
+                    <label class="field-label" for="image-gen-model-select">Model</label>
+                    <div class="image-gen-model-input-wrap">
+                        <select id="image-gen-model-select" class="image-gen-select" x-model="settings.model" @change="save()">
+                            <option value="Qwen-Image-2.1">Qwen-Image-2.1</option>
+                            <option value="FLUX.2-klein">FLUX.2-klein</option>
+                            <option value="ERNIE-Image">ERNIE-Image</option>
+                            <option value="dall-e-3">dall-e-3</option>
+                            <option value="dall-e-2">dall-e-2</option>
+                            <template x-for="m in availableModels" :key="'img-m-' + m">
+                                <option :value="m" x-text="m" :selected="settings.model === m"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quality -->
+                <div class="image-gen-field-row">
+                    <label class="field-label" for="image-gen-quality-select">Quality</label>
+                    <select id="image-gen-quality-select" class="image-gen-select" x-model="settings.quality" @change="save()">
+                        <option value="high">High (best quality)</option>
+                        <option value="standard">Standard</option>
+                        <option value="hd">HD (Ultra)</option>
+                    </select>
+                </div>
+
+                <!-- Subheading: Image Editing -->
+                <div class="image-edit-section-header">Image Editing</div>
+
+                <!-- Editing Endpoint -->
+                <div class="image-gen-field-row">
+                    <label class="field-label" for="image-edit-endpoint-select">Endpoint</label>
+                    <select id="image-edit-endpoint-select" class="image-gen-select" x-model="settings.edit_endpoint" @change="save()">
+                        <option value="auto">Auto-detect</option>
+                        <template x-for="p in providers" :key="'img-edit-prov-' + p.id">
+                            <option :value="p.name" x-text="p.name" :selected="settings.edit_endpoint === p.name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Editing Model -->
+                <div class="image-gen-field-row">
+                    <label class="field-label" for="image-edit-model-select">Model</label>
+                    <select id="image-edit-model-select" class="image-gen-select" x-model="settings.edit_model" @change="save()">
+                        <option value="same">Same as generation</option>
+                        <option value="Qwen-Image-2.1">Qwen-Image-2.1</option>
+                        <option value="FLUX.2-klein">FLUX.2-klein</option>
+                        <option value="dall-e-2">dall-e-2</option>
+                        <template x-for="m in availableModels" :key="'img-edit-m-' + m">
+                            <option :value="m" x-text="m" :selected="settings.edit_model === m"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+
         <!-- 3. ADVANCED API SETTINGS -->
         <div class="api-advanced-settings-card" x-data="{ openAdvanced: false }">
             <button type="button" class="api-advanced-toggle-btn" @click="openAdvanced = !openAdvanced">

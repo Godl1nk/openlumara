@@ -22,10 +22,50 @@ class ImageTools(core.module.Module):
     category = "utilities"
 
     settings = {
+        "enabled": {
+            "type": "boolean",
+            "default": True,
+            "description": "Enable or disable image generation and editing."
+        },
+        "ask_before_generate": {
+            "type": "boolean",
+            "default": False,
+            "description": "Pause image requests and pick the model in chat each time."
+        },
+        "endpoint": {
+            "type": "string",
+            "default": "auto",
+            "description": "Configured provider endpoint for image generation (or 'auto')."
+        },
+        "model": {
+            "type": "string",
+            "default": "Qwen-Image-2.1",
+            "description": "Model to use for image generation."
+        },
+        "quality": {
+            "type": "select",
+            "default": "high",
+            "options": {
+                "high": "High (best quality)",
+                "standard": "Standard",
+                "hd": "HD (Ultra)"
+            },
+            "description": "Generation quality level."
+        },
+        "edit_endpoint": {
+            "type": "string",
+            "default": "auto",
+            "description": "Endpoint for image editing (auto uses generation endpoint)."
+        },
+        "edit_model": {
+            "type": "string",
+            "default": "same",
+            "description": "Model for image editing (same uses generation model)."
+        },
         "backend": {
             "type": "select",
             "default": "mock",
-            "description": "Image generation engine: 'mock' (offline gradient placeholder), 'openai' (DALL-E 3 / DALL-E 2 / compatible endpoint), 'sd_webui' (Local Stable Diffusion WebUI / Forge txt2img).",
+            "description": "Image generation engine: 'mock' (offline gradient placeholder), 'openai' (DALL-E 3 / OpenAI API-compatible), 'sd_webui' (Local Stable Diffusion WebUI / Forge txt2img).",
             "options": {
                 "mock": "Mock / Offline Generator (Generates stylized PNGs without external APIs)",
                 "openai": "OpenAI DALL-E (DALL-E 3 / DALL-E 2 / OpenAI API-compatible)",
@@ -76,8 +116,8 @@ class ImageTools(core.module.Module):
             return configured
         return core.get_path(configured, sandbox=False)
     def _get_image_model(self) -> str:
-        """Resolve active image model from global core config or local module config."""
-        return core.config.get("model", "image_model") or self.config.get("openai_model") or "dall-e-3"
+        """Resolve active image model from module config, global core config, or fallback."""
+        return self.config.get("model") or core.config.get("model", "image_model") or self.config.get("openai_model") or "Qwen-Image-2.1"
 
 
     def _safe_image_path(self, path_str: str) -> str:
@@ -109,9 +149,24 @@ class ImageTools(core.module.Module):
             negative_prompt: Optional negative prompt (used when backend is Stable Diffusion / Forge).
             filename: Optional custom base filename (without path).
         """
+        if self.config.get("enabled") is False:
+            return self.result("Image generation is currently disabled in settings.", success=False)
+
+        effective_model = self._get_image_model()
+        configured_endpoint = self.config.get("endpoint") or "auto"
+
+        if self.config.get("ask_before_generate"):
+            ask_mod = self.manager.modules.get("ask_user")
+            if ask_mod and hasattr(ask_mod, "ask"):
+                q_text = f"🎨 Image generation requested:\n- Prompt: '{prompt}'\n- Model: {effective_model}\n- Endpoint: {configured_endpoint}\n\nProceed with generation?"
+                ack = await ask_mod.ask(q_text, options=["Proceed", "Cancel"], timeout=60, default_choice="Proceed")
+                if ack.get("status") == "success":
+                    ans = str(ack.get("content", {}).get("answer", "")).lower()
+                    if ans in ("cancel", "no", "stop", "abort"):
+                        return self.result("Image generation cancelled by user.", success=False)
+
         if not prompt or not str(prompt).strip():
             return self.result("Prompt cannot be empty.", success=False)
-
         backend = self.config.get("backend") or "mock"
         out_dir = self._get_output_dir()
         os.makedirs(out_dir, exist_ok=True)
@@ -693,6 +748,42 @@ class ImageTools(core.module.Module):
             os.remove(full_path)
             return self.result(f"Deleted {clean_name}", success=True)
         return self.result("File not found", success=False)
+    @webui.route("settings")
+    async def _route_get_settings(self, body=None, query=None):
+        """Returns image generation & editing settings and available providers/models."""
+        providers = []
+        if hasattr(self.manager.API, "get_providers"):
+            for p in self.manager.API.get_providers():
+                providers.append({
+                    "id": p["id"],
+                    "name": p["name"],
+                    "models": [m["id"] if isinstance(m, dict) else str(m) for m in p.get("models", [])]
+                })
+
+        return {
+            "enabled": self.config.get("enabled", True),
+            "ask_before_generate": self.config.get("ask_before_generate", False),
+            "endpoint": self.config.get("endpoint", "auto"),
+            "model": self._get_image_model(),
+            "quality": self.config.get("quality", "high"),
+            "edit_endpoint": self.config.get("edit_endpoint", "auto"),
+            "edit_model": self.config.get("edit_model", "same"),
+            "providers": providers
+        }
+
+    @webui.route("settings", method="POST")
+    async def _route_save_settings(self, body=None, query=None):
+        """Saves image generation & editing settings."""
+        body = body or {}
+        for key in ("enabled", "ask_before_generate", "endpoint", "model", "quality", "edit_endpoint", "edit_model"):
+            if key in body:
+                self.config.set(key, body[key])
+        if "model" in body and body["model"]:
+            if hasattr(self.manager.API, "set_image_model"):
+                self.manager.API.set_image_model(body["model"])
+        core.config.config.save()
+        return self.result({"saved": True}, success=True)
+
 
     # =========================================================================
     # User Command (/images)

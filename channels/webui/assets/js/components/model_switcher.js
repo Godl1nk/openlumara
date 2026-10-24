@@ -391,6 +391,74 @@ function providerManagerComponent() {
         }
     };
 }
+function imageGenSettingsComponent() {
+    return {
+        settings: {
+            enabled: true,
+            ask_before_generate: false,
+            endpoint: "auto",
+            model: "Qwen-Image-2.1",
+            quality: "high",
+            edit_endpoint: "auto",
+            edit_model: "same"
+        },
+        providers: [],
+        saving: false,
+
+        async init() {
+            try {
+                const res = await simpleApiFetch("/api/ext/image_tools/settings");
+                if (res) {
+                    this.settings.enabled = res.enabled !== false;
+                    this.settings.ask_before_generate = Boolean(res.ask_before_generate);
+                    this.settings.endpoint = res.endpoint || "auto";
+                    this.settings.model = res.model || "Qwen-Image-2.1";
+                    this.settings.quality = res.quality || "high";
+                    this.settings.edit_endpoint = res.edit_endpoint || "auto";
+                    this.settings.edit_model = res.edit_model || "same";
+                    this.providers = Array.isArray(res.providers) ? res.providers : [];
+                }
+            } catch (e) {
+                const mgr = Alpine.store("modelManager");
+                if (mgr) {
+                    this.providers = (mgr.providers || []).map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        models: (p.models || []).map(m => m.id || String(m))
+                    }));
+                }
+            }
+        },
+
+        get availableModels() {
+            const models = new Set();
+            for (const p of this.providers) {
+                if (this.settings.endpoint !== "auto" && p.name !== this.settings.endpoint) continue;
+                for (const m of (p.models || [])) {
+                    models.add(m);
+                }
+            }
+            return Array.from(models);
+        },
+
+        async save() {
+            if (this.saving) return;
+            this.saving = true;
+            try {
+                await simpleApiPost("/api/ext/image_tools/settings", this.settings);
+                const mgr = Alpine.store("modelManager");
+                if (mgr && this.settings.model) {
+                    mgr.imageModel = this.settings.model;
+                }
+            } catch (e) {
+                // Ignore silent save error
+            } finally {
+                this.saving = false;
+            }
+        }
+    };
+}
+
 
 document.addEventListener("alpine:init", () => {
     Alpine.store("modelManager", MODEL_MANAGER_STORE);

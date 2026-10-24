@@ -823,6 +823,174 @@
     border-top: 1px solid var(--border-color);
 }
 
+/* --------------------------------------------------------------------------
+ * Image Generation & Editing Card (Matches User Screenshot)
+ * -------------------------------------------------------------------------- */
+
+.image-gen-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md, 10px);
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.image-gen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.image-gen-title-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.image-gen-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+}
+
+.image-gen-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.image-gen-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.image-gen-subtext {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: -6px;
+}
+
+.image-gen-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    gap: 16px;
+}
+
+.image-gen-toggle-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.image-gen-toggle-text strong {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.image-gen-toggle-text span {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.image-gen-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.image-gen-field-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.image-gen-field-row .field-label {
+    width: 110px;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.modal select.image-gen-select {
+    flex: 1 !important;
+    height: 38px !important;
+    background-color: var(--bg-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-sm, 6px) !important;
+    color: var(--text-primary) !important;
+    font-size: 13px !important;
+    box-sizing: border-box !important;
+}
+
+.image-gen-model-input-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.image-edit-section-header {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    padding-top: 10px;
+}
+
+/* Pill Toggle Switch (Matches User Screenshot) */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s ease;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--text-primary);
+    transition: all 0.2s ease;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+    background-color: var(--bg-primary);
+}
+
 /* Responsive Overrides */
 @media (max-width: 640px) {
     .provider-form-row {
