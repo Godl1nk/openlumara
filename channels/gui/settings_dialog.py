@@ -779,6 +779,10 @@ class QtSettingsDialog(QtWidgets.QDialog):
             self.status.setText("Could not load models: " + core.detail_error(e))
             return
 
+        if isinstance(models, core.api.APIError):
+            self.status.setText("Could not load models: " + str(models))
+            return
+
         self.models = [str(name) for name in (models or [])]
         self._fill_model_fields()
         self.status.setText("")

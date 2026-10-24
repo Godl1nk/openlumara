@@ -34,7 +34,7 @@ class Models(core.module.Module):
         if self.config.get("insert_available_models_into_system_prompt"):
             if not self.models:
                 models = await self.manager.API.list_models()
-                if not models:
+                if not models or isinstance(models, core.api.APIError):
                     return output if output else None
                 self.models = models
 
@@ -50,7 +50,7 @@ class Models(core.module.Module):
     async def _load_models(self):
         if not self.models:
             models = await self.manager.API.list_models()
-            if not models:
+            if not models or isinstance(models, core.api.APIError):
                 return None
             self.models = models
 
@@ -86,7 +86,7 @@ class Models(core.module.Module):
         """Switches you to a different AI model"""
         if not self.models:
             models = await self.manager.API.list_models()
-            if not models:
+            if not models or isinstance(models, core.api.APIError):
                 return None
             self.models = models
 
