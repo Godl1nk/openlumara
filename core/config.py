@@ -76,7 +76,12 @@ core_settings_schema = {
             "type": "object",
             "default": {},
             "description": "Additional custom fields to send with API requests. You can put anything in here that your chosen API supports!"
-        }
+        },
+        "providers": {
+            "default": [],
+            "description": "Configured API model providers and endpoints.",
+            "type": "list"
+        },
     },
     "model": {
         "name": {
@@ -141,6 +146,29 @@ When disabled, it will instead remove your old messages from context to make spa
                 "max": 5
             },
             "depends": "enable_thinking"
+        },
+        "custom_reasoning_effort": {
+            "default": "",
+            "description": "Custom reasoning effort value (e.g. 'minimal', '1024', '0.5'). Overrides the preset reasoning_effort level when set.",
+            "depends": "enable_thinking"
+        },
+        "image_model": {
+            "default": "dall-e-3",
+            "description": "The designated model to use for image generation and image editing tools."
+        },
+        "disabled_models": {
+            "default": [],
+            "description": "List of models disabled or hidden from the model switcher.",
+            "type": "list"
+        },
+        "compression_model": {
+            "default": "",
+            "description": "Optional fast/cheap model to use for conversation summarization & context compression. If empty, inherits the active chat model."
+        },
+        "model_profiles": {
+            "default": {},
+            "type": "object",
+            "description": "Per-model parameter overrides (e.g. temperature, max_context, reasoning_effort) automatically applied when switching models."
         },
     },
     "channels": {

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Ensure origin points to Godl1nk repository
+git remote set-url origin https://github.com/Godl1nk/openlumara.git 2>/dev/null
+
 echo "checking for updates..."
 if git fetch origin 2>/dev/null; then
     if git rev-parse --abbrev-ref @{u} >/dev/null 2>&1; then

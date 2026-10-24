@@ -17,7 +17,7 @@ class Models(core.module.Module):
     }
 
     async def on_ready(self):
-        self.models = None
+        self._models_cache = None
 
         if self.config.get("insert_available_models_into_system_prompt"):
             self.disabled_tools.append("get_available")
@@ -32,15 +32,15 @@ class Models(core.module.Module):
         current_model = self.manager.API.get_model()
         
         if self.config.get("insert_available_models_into_system_prompt"):
-            if not self.models:
+            if not self._models_cache:
                 models = await self.manager.API.list_models()
                 if not models or isinstance(models, core.api.APIError):
                     return output if output else None
-                self.models = models
+                self._models_cache = models
 
-            if len(self.models) > 1:
+            if len(self._models_cache) > 1:
                 output += f"\n\nModels you can switch to using the models_switch() toolcall: "
-                output += ", ".join(self.models)
+                output += ", ".join(self._models_cache)
         else:
             self.header = "current model"
             output = current_model
@@ -48,62 +48,164 @@ class Models(core.module.Module):
         return output
 
     async def _load_models(self):
-        if not self.models:
+        if not self._models_cache:
             models = await self.manager.API.list_models()
             if not models or isinstance(models, core.api.APIError):
                 return None
-            self.models = models
+            self._models_cache = models
 
     async def get_available(self):
-        """Returns a list of AI/LLM models available to switch to"""
+        """Returns a list of AI/LLM models available to switch to, along with current model, image model, and reasoning efforts."""
         await self._load_models()
 
-        output = []
+        current_model = self.manager.API.get_model()
+        image_model = self.manager.API.get_image_model()
+        disabled_models = self.manager.API.get_disabled_models()
+        reasoning_effort = core.config.get("model", "reasoning_effort", default="none")
+        custom_effort = core.config.get("model", "custom_reasoning_effort", default="")
 
-        for model in self.models:
-            output.append(str(model))
+        return self.result({
+            "models": list(self._models_cache or []),
+            "current": current_model,
+            "image_model": image_model,
+            "disabled_models": disabled_models,
+            "reasoning_effort": reasoning_effort,
+            "custom_reasoning_effort": custom_effort
+        })
 
-        return self.result(output)
+    async def switch(self, name: str):
+        """Switches the active chat model."""
+        await self._load_models()
+        if not self._models_cache:
+            return self.result("No models available or API connection error.", success=False)
 
-    @core.module.command("model")
+        found_id = None
+        for model_id in self._models_cache:
+            if model_id.strip().lower() == name.strip().lower():
+                found_id = model_id
+                break
+
+        if not found_id:
+            return self.result(f"Model '{name}' does not exist on the server. Use models() to see available models.", success=False)
+
+        disabled_models = self.manager.API.get_disabled_models()
+        if found_id in disabled_models:
+            return self.result(f"Model '{found_id}' is currently disabled. Enable it first with `/model enable {found_id}`.", success=False)
+
+        self.manager.API.set_model(found_id)
+        return self.result(f"Model has been switched to {found_id}", success=True)
+
+    async def set_image_model(self, name: str):
+        """Sets the designated model to be used for image generation and editing."""
+        name_clean = str(name).strip()
+        if not name_clean:
+            return self.result("Image model name cannot be empty.", success=False)
+
+        self.manager.API.set_image_model(name_clean)
+        return self.result(f"Image model has been set to '{name_clean}'.", success=True)
+
+    async def set_reasoning_effort(self, effort: str, custom: bool = False):
+        """
+        Sets the model's reasoning effort level (preset or custom).
+
+        Args:
+            effort: Effort value (e.g. 'none', 'low', 'medium', 'high', or custom string/number).
+            custom: If True, sets this as a custom reasoning effort overriding presets.
+        """
+        eff = str(effort).strip()
+        if custom:
+            self.manager.API.set_reasoning_effort(effort=None, custom=eff)
+            return self.result(f"Custom reasoning effort set to '{eff}'.", success=True)
+        else:
+            self.manager.API.set_reasoning_effort(effort=eff, custom="")
+            return self.result(f"Reasoning effort set to '{eff}'.", success=True)
+
+    async def toggle_model(self, name: str, enable: bool = True):
+        """
+        Enables or disables an AI model in the switcher.
+
+        Args:
+            name: Model identifier.
+            enable: True to enable, False to disable.
+        """
+        name_clean = str(name).strip()
+        if not name_clean:
+            return self.result("Model name cannot be empty.", success=False)
+
+        updated = self.manager.API.set_model_disabled(name_clean, not enable)
+        status = "enabled" if enable else "disabled"
+        return self.result(f"Model '{name_clean}' has been {status}.", success=True)
+
+    @core.module.command("model", help={
+        "": "Shows current active model, image model, and reasoning effort",
+        "<name>": "Switches the active chat model to <name>",
+        "image <name>": "Sets the designated image model to <name>",
+        "effort <level>": "Sets reasoning effort (e.g. low, medium, high, max, or custom value)",
+        "enable <name>": "Enables a model in the model switcher",
+        "disable <name>": "Disables a model in the model switcher"
+    })
     async def model(self, args: list):
-         """Switches to model <name>.
-         Args:
-             args: the model name or empty to show current model
-         """
-         if not args:
-            return f"Current model: {self.manager.API.get_model()}"
+        """Model configuration and switching command."""
+        if not args:
+            curr = self.manager.API.get_model() or "None"
+            img = self.manager.API.get_image_model() or "None"
+            preset_effort = core.config.get("model", "reasoning_effort", default="none")
+            custom_effort = core.config.get("model", "custom_reasoning_effort", default="")
+            eff_display = f"Custom ({custom_effort})" if custom_effort else preset_effort
+            return f"**Active Chat Model**: `{curr}`\n**Image Model**: `{img}`\n**Reasoning Effort**: `{eff_display}`"
 
-         return await self.switch(" ".join(args).strip())
+        sub = args[0].lower()
+        if sub == "image" and len(args) > 1:
+            img_target = " ".join(args[1:]).strip()
+            self.manager.API.set_image_model(img_target)
+            return f"Image model set to `{img_target}`"
+        elif sub == "effort" and len(args) > 1:
+            eff_val = " ".join(args[1:]).strip()
+            presets = ("none", "low", "medium", "high", "xhigh", "max")
+            if eff_val.lower() in presets:
+                self.manager.API.set_reasoning_effort(effort=eff_val.lower(), custom="")
+                return f"Reasoning effort preset set to `{eff_val}`"
+            else:
+                self.manager.API.set_reasoning_effort(effort="none", custom=eff_val)
+                return f"Custom reasoning effort set to `{eff_val}`"
+        elif sub == "enable" and len(args) > 1:
+            target = " ".join(args[1:]).strip()
+            self.manager.API.set_model_disabled(target, False)
+            return f"Model `{target}` is now enabled."
+        elif sub == "disable" and len(args) > 1:
+            target = " ".join(args[1:]).strip()
+            self.manager.API.set_model_disabled(target, True)
+            return f"Model `{target}` is now disabled."
 
-    @core.module.command("models")
+        target_name = " ".join(args).strip()
+        res = await self.switch(target_name)
+        return res.get("content") if isinstance(res, dict) else str(res)
+
+    @core.module.command("models", help={
+        "": "Lists all available models with their current status"
+    })
     async def models(self, args: list):
         """Lists available models."""
         await self._load_models()
-        return "\n".join(self.models)+"\n\nUse `/model <name>` to switch to your model of choice"
+        if not self._models_cache:
+            return "No models available or API connection error."
 
-    async def switch(self, name: str):
-        """Switches you to a different AI model"""
-        if not self.models:
-            models = await self.manager.API.list_models()
-            if not models or isinstance(models, core.api.APIError):
-                return None
-            self.models = models
+        curr = self.manager.API.get_model()
+        img = self.manager.API.get_image_model()
+        disabled = set(self.manager.API.get_disabled_models())
 
-        found = False
-        found_id = None
-        for model_id in self.models:
-            if model_id.strip().lower() == name.strip().lower():
-                found = True
-                found_id = model_id
+        lines = ["**Available Models**:"]
+        for m in self._models_cache:
+            tags = []
+            if m == curr:
+                tags.append("ACTIVE CHAT")
+            if m == img:
+                tags.append("IMAGE")
+            if m in disabled:
+                tags.append("DISABLED")
 
-        if not found:
-            return "model does not exist. use models_get_available() first"
+            tag_str = f" *[{', '.join(tags)}]*" if tags else ""
+            lines.append(f"- `{m}`{tag_str}")
 
-        core.config.config["model"]["name"] = found_id
-        core.config.config.save()
-
-        self.manager.API.set_model(found_id)
-
-        return f"model has been switched to {found_id}"
-
+        lines.append("\n*Commands: `/model <name>`, `/model image <name>`, `/model effort <level>`, `/model disable <name>`*")
+        return "\n".join(lines)

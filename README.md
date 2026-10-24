@@ -53,7 +53,7 @@ Features:
 
 Run this command in a terminal or your command prompt:
 ```
-git clone https://github.com/Rose22/openlumara
+git clone https://github.com/Godl1nk/openlumara
 ```
 Doing it this way will let update.sh (on linux) and update.bat (on windows) update your instance of openlumara easily. You can also choose to download the zip, but the update scripts won't work that way, because they use git.
 

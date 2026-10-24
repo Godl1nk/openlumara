@@ -4,6 +4,9 @@ setlocal enabledelayedexpansion
 :: Switch to the directory where this .bat file is located
 cd /d "%~dp0"
 
+:: Ensure origin points to Godl1nk repository
+git remote set-url origin https://github.com/Godl1nk/openlumara.git >nul 2>nul
+
 :: 1. Smart auto-update
 echo checking for updates...
 git fetch origin >nul 2>nul

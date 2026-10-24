@@ -7,6 +7,7 @@ import json
 import ssl
 import time
 import urllib.parse
+import ulid
 
 class APIError:
     """Simple class that holds an error message, used for passing on to channels"""
@@ -361,19 +362,282 @@ class APIClient():
         core.config.config.save()
 
         return True
+    def get_image_model(self):
+        return core.config.get("model", "image_model", default="dall-e-3")
+
+    def set_image_model(self, name: str):
+        if "model" not in core.config.config:
+            core.config.config["model"] = {}
+        core.config.config["model"]["image_model"] = str(name).strip()
+        core.config.config.save()
+        return True
+
+    def get_disabled_models(self) -> list:
+        return list(core.config.get("model", "disabled_models", default=[]))
+
+    def set_model_disabled(self, name: str, disabled: bool):
+        if "model" not in core.config.config:
+            core.config.config["model"] = {}
+        disabled_list = list(core.config.get("model", "disabled_models", default=[]))
+        name_clean = str(name).strip()
+        if disabled and name_clean not in disabled_list:
+            disabled_list.append(name_clean)
+        elif not disabled and name_clean in disabled_list:
+            disabled_list.remove(name_clean)
+        core.config.config["model"]["disabled_models"] = disabled_list
+        core.config.config.save()
+        return disabled_list
+
+    def set_reasoning_effort(self, effort: str = None, custom: str = None):
+        if "model" not in core.config.config:
+            core.config.config["model"] = {}
+        if effort is not None:
+            core.config.config["model"]["reasoning_effort"] = str(effort).strip()
+        if custom is not None:
+            core.config.config["model"]["custom_reasoning_effort"] = str(custom).strip()
+        core.config.config.save()
+        return True
+    # -------------------
+    # Multi-Provider & Model Config
+    # -------------------
+    def get_providers(self) -> list:
+        """Returns all configured API providers, auto-seeding a default provider if empty."""
+        providers = core.config.get("api", "providers", default=[])
+        if not providers and core.config.get("api", "url"):
+            default_url = core.config.get("api", "url")
+            parsed = urllib.parse.urlparse(default_url)
+            host_label = parsed.netloc or "default-provider"
+            default_p = {
+                "id": "p_default",
+                "name": host_label,
+                "url": default_url,
+                "key": core.config.get("api", "key", default=""),
+                "type": "llm",
+                "api_format": "auto",
+                "enabled": True,
+                "is_image_provider": False,
+                "models": []
+            }
+            if "api" not in core.config.config:
+                core.config.config["api"] = {}
+            core.config.config["api"]["providers"] = [default_p]
+            core.config.config.save()
+            providers = [default_p]
+        return list(providers or [])
+
+    def save_providers(self, providers: list):
+        if "api" not in core.config.config:
+            core.config.config["api"] = {}
+        core.config.config["api"]["providers"] = providers
+        core.config.config.save()
+        return True
+
+    def find_provider_for_model(self, model_name: str):
+        """Finds the provider and model configuration for a given model ID."""
+        if not model_name:
+            return None, None
+        name_clean = str(model_name).strip().lower()
+        for p in self.get_providers():
+            if not p.get("enabled", True):
+                continue
+            for m in p.get("models", []):
+                m_id = m.get("id") if isinstance(m, dict) else str(m)
+                if m_id and str(m_id).strip().lower() == name_clean:
+                    return p, (m if isinstance(m, dict) else {"id": m_id})
+        return None, None
+
+    def get_image_model_provider(self):
+        """Finds the designated image model and its provider."""
+        img_model = self.get_image_model()
+        p, m = self.find_provider_for_model(img_model)
+        if p:
+            return p, img_model
+        for prov in self.get_providers():
+            if prov.get("enabled", True) and prov.get("is_image_provider"):
+                return prov, img_model
+        return None, img_model
+
+    async def test_provider_connection(self, url: str, key: str = ""):
+        """Tests connectivity and latency to an endpoint without persisting."""
+        url_clean = str(url).strip().rstrip("/")
+        if not url_clean:
+            return {"success": False, "error": "URL cannot be empty"}
+
+        endpoint = f"{url_clean}/models"
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        headers["Accept"] = "application/json"
+
+        t0 = time.time()
+        try:
+            timeout = aiohttp.ClientTimeout(total=8.0, connect=4.0)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(endpoint, headers=headers, ssl=self._ssl_ctx) as resp:
+                    latency = round((time.time() - t0) * 1000)
+                    body_text = await resp.text()
+
+                    if resp.status != 200:
+                        return {
+                            "success": False,
+                            "status": resp.status,
+                            "latency_ms": latency,
+                            "error": f"HTTP {resp.status}: {body_text[:200]}"
+                        }
+
+                    data = json.loads(body_text)
+                    raw_models = data.get("data", [])
+                    models = [m["id"] for m in raw_models if isinstance(m, dict) and m.get("id")]
+                    return {
+                        "success": True,
+                        "latency_ms": latency,
+                        "model_count": len(models),
+                        "models": models[:60]
+                    }
+        except Exception as e:
+            latency = round((time.time() - t0) * 1000)
+            return {
+                "success": False,
+                "latency_ms": latency,
+                "error": str(e)
+            }
+
+    async def add_provider(self, name: str, url: str, key: str = "", type: str = "llm", api_format: str = "auto", is_image_provider: bool = False):
+        """Adds a new provider and queries its initial models."""
+        url_clean = str(url).strip().rstrip("/")
+        name_clean = str(name).strip() or urllib.parse.urlparse(url_clean).netloc or "provider"
+        pid = f"p_{str(ulid.ULID()).lower()[-8:]}"
+
+        new_provider = {
+            "id": pid,
+            "name": name_clean,
+            "url": url_clean,
+            "key": str(key).strip(),
+            "type": type or "llm",
+            "api_format": api_format or "auto",
+            "enabled": True,
+            "is_image_provider": bool(is_image_provider),
+            "models": []
+        }
+
+        providers = self.get_providers()
+        providers.append(new_provider)
+        self.save_providers(providers)
+
+        await self.refresh_provider_models(pid)
+        for p in self.get_providers():
+            if p["id"] == pid:
+                return p
+        return new_provider
+
+    async def refresh_provider_models(self, provider_id: str):
+        """Re-queries {url}/models and merges model customizations."""
+        providers = self.get_providers()
+        target = None
+        for p in providers:
+            if p["id"] == provider_id:
+                target = p
+                break
+        if not target:
+            return []
+
+        res = await self.test_provider_connection(target["url"], target.get("key", ""))
+        if not res.get("success"):
+            return target.get("models", [])
+
+        discovered_ids = res.get("models", [])
+        existing_map = {}
+        for m in target.get("models", []):
+            mid = m["id"] if isinstance(m, dict) else str(m)
+            existing_map[mid] = m if isinstance(m, dict) else {"id": mid}
+
+        merged = []
+        for mid in discovered_ids:
+            if mid in existing_map:
+                merged.append(existing_map[mid])
+            else:
+                is_img = any(k in mid.lower() for k in ("image", "flux", "dall-e", "stable-diffusion", "sdxl", "diffusion"))
+                merged.append({
+                    "id": mid,
+                    "enabled": True,
+                    "is_image": is_img,
+                    "context_length": "auto",
+                    "thinking_effort": "default"
+                })
+
+        target["models"] = merged
+        self.save_providers(providers)
+        return merged
+
+    def update_provider(self, provider_id: str, updates: dict):
+        providers = self.get_providers()
+        for p in providers:
+            if p["id"] == provider_id:
+                for k, v in updates.items():
+                    if k != "id":
+                        p[k] = v
+                self.save_providers(providers)
+                return p
+        return None
+
+    def delete_provider(self, provider_id: str):
+        providers = self.get_providers()
+        new_list = [p for p in providers if p["id"] != provider_id]
+        self.save_providers(new_list)
+        return True
+
+    def update_model_settings(self, provider_id: str, model_id: str, settings: dict):
+        providers = self.get_providers()
+        for p in providers:
+            if p["id"] == provider_id:
+                for m in p.get("models", []):
+                    if m.get("id") == model_id:
+                        for k, v in settings.items():
+                            if k != "id":
+                                m[k] = v
+                        if settings.get("is_image") is True:
+                            self.set_image_model(model_id)
+                        self.save_providers(providers)
+                        return m
+        return None
+
+    def detect_model_context(self, model_id: str):
+        """Heuristic context length detection."""
+        mid = str(model_id).lower()
+        if "deepresearch" in mid or "30b" in mid:
+            return 131072
+        if "qwen3.8-27b" in mid or "qwen3.8" in mid or "qwen2.5" in mid:
+            return 180000
+        if "gpt-4o" in mid or "o1" in mid or "o3" in mid:
+            return 128000
+        if "claude" in mid or "sonnet" in mid:
+            return 200000
+        if "gemini" in mid:
+            return 1000000
+        if "llama-3" in mid:
+            return 131072
+        if "mistral" in mid or "nemo" in mid:
+            return 128000
+        return 32768
 
     # -------------------
     # Requests
     # -------------------
-    async def _post_chat_completion(self, payload, stream=False):
+    async def _post_chat_completion(self, payload, stream=False, api_url=None, api_key=None):
         """
         sends the chat completions request over HTTP.
         returns a parsed JSON dict when not streaming,
         or an open aiohttp ClientResponse (to be consumed by _recv_stream) when streaming.
         """
-        url = f"{core.config.get('api', 'url')}/chat/completions"
+        base = api_url.rstrip("/") if api_url else core.config.get('api', 'url').rstrip("/")
+        url = f"{base}/chat/completions"
 
-        kwargs = {"json": payload, "headers": self._json_headers()}
+        headers = self._json_headers()
+        if api_key is not None:
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            else:
+                headers.pop("Authorization", None)
+
+        kwargs = {"json": payload, "headers": headers}
         if self._ssl_ctx is not None:
             kwargs["ssl"] = self._ssl_ctx
 
@@ -429,14 +693,17 @@ class APIClient():
             # allow switching tools off globally
             tools = None
 
+        target_model = kwargs.get("model") or core.config.get("model", "name")
+        provider, model_entry = self.find_provider_for_model(target_model)
+        api_url = provider.get("url") if provider else None
+        api_key = provider.get("key") if provider else None
+
         req = {
-            "model": core.config.get("model", "name"),
+            "model": target_model,
             "messages": context,
             "stream": stream,
-            "temperature": core.config.get("model", {}).get("temperature", 0.7),
+            "temperature": kwargs.get("temperature", core.config.get("model", {}).get("temperature", 0.7)),
             "max_completion_tokens": core.config.get("api", {}).get("max_output_tokens", 8192),
-            
-            # llamacpp-specific extras
             "chat_template_kwargs": {
                 "enable_thinking": core.config.get("model", "enable_thinking", default=use_thinking)
             },
@@ -451,9 +718,26 @@ class APIClient():
             if key in ("tools", "stream", "use_thinking"): continue
             req[key] = value
 
+        custom_effort = core.config.get("model", {}).get("custom_reasoning_effort")
         reasoning_effort = core.config.get("model", {}).get("reasoning_effort")
-        if reasoning_effort and reasoning_effort != "none":
-            req["reasoning_effort"] = reasoning_effort
+        effective_effort = custom_effort if (custom_effort and str(custom_effort).strip()) else reasoning_effort
+        if effective_effort and str(effective_effort).strip().lower() != "none":
+            eff_str = str(effective_effort).strip()
+            if eff_str.isdigit():
+                req["reasoning_effort"] = int(eff_str)
+            else:
+                req["reasoning_effort"] = eff_str
+        # Model-specific thinking effort overrides
+        if model_entry and model_entry.get("thinking_effort"):
+            m_effort = str(model_entry["thinking_effort"]).strip()
+            if m_effort and m_effort.lower() != "default":
+                if m_effort.lower() == "none":
+                    req.pop("reasoning_effort", None)
+                elif m_effort.isdigit():
+                    req["reasoning_effort"] = int(m_effort)
+                else:
+                    req["reasoning_effort"] = m_effort
+
 
         # allow inserting custom request fields
         custom_fields = core.config.get("api", {}).get("custom_fields", {})
@@ -516,7 +800,7 @@ class APIClient():
                     if self.cancel_request:
                         raise asyncio.CancelledError("Request cancelled")
 
-                    request_task = asyncio.create_task(self._post_chat_completion(req, stream=stream))
+                    request_task = asyncio.create_task(self._post_chat_completion(req, stream=stream, api_url=api_url, api_key=api_key))
                     # keep a reference so cancel() can abort a request that
                     # is still in-flight (before streaming started)
                     self._request_task = request_task

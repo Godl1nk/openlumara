@@ -1342,6 +1342,17 @@ ADMIN_ONLY_ENDPOINTS = [
     "/api/check_connection",
     "/api/models",
     "/api/model/set",
+    "/api/model/image/set",
+    "/api/model/effort/set",
+    "/api/model/toggle",
+    "/api/providers",
+    "/api/provider/add",
+    "/api/provider/test",
+    "/api/provider/update",
+    "/api/provider/delete",
+    "/api/provider/refresh",
+    "/api/provider/model/update",
+    "/api/provider/detect_context",
     "/api/reconnect",
     "/api/chat/prompt",
     "/api/system/logs",
@@ -2166,12 +2177,19 @@ async def create_fastapi(channel):
 
     @app.get("/api/models")
     async def models_get():
-        """Returns a list of all available AI models"""
+        """Returns a list of all available AI models along with current, image_model, and disabled status"""
         result = await channel.manager.API.list_models()
         if isinstance(result, core.api.APIError):
             return api_result(str(result), success=False)
 
-        return api_result(result)
+        return api_result({
+            "models": result,
+            "current": channel.manager.API.get_model(),
+            "image_model": channel.manager.API.get_image_model(),
+            "disabled_models": channel.manager.API.get_disabled_models(),
+            "reasoning_effort": core.config.get("model", "reasoning_effort", default="none"),
+            "custom_reasoning_effort": core.config.get("model", "custom_reasoning_effort", default="")
+        })
 
     # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
     # quick model switch from the header dropdown. set_model() writes to
@@ -2188,6 +2206,136 @@ async def create_fastapi(channel):
 
         channel.manager.API.set_model(name)
         return api_result({"name": name}, success=True)
+
+    @app.post("/api/model/image/set")
+    async def model_image_set(request: fastapi.Request):
+        """Sets the designated image model"""
+        data = await request.json()
+        name = (data.get("name") or "").strip()
+
+        if not name:
+            return api_result("Image model name cannot be empty", success=False)
+
+        channel.manager.API.set_image_model(name)
+        return api_result({"image_model": name}, success=True)
+
+    @app.post("/api/model/effort/set")
+    async def model_effort_set(request: fastapi.Request):
+        """Sets the reasoning effort (preset and/or custom)"""
+        data = await request.json()
+        effort = data.get("effort")
+        custom = data.get("custom")
+
+        channel.manager.API.set_reasoning_effort(effort=effort, custom=custom)
+        return api_result({
+            "reasoning_effort": core.config.get("model", "reasoning_effort", default="none"),
+            "custom_reasoning_effort": core.config.get("model", "custom_reasoning_effort", default="")
+        }, success=True)
+
+    @app.post("/api/model/toggle")
+    async def model_toggle(request: fastapi.Request):
+        """Enables or disables a model in the model switcher"""
+        data = await request.json()
+        name = (data.get("name") or "").strip()
+        disabled = bool(data.get("disabled", False))
+
+        if not name:
+            return api_result("Model name cannot be empty", success=False)
+
+        updated = channel.manager.API.set_model_disabled(name, disabled)
+        return api_result({
+            "name": name,
+            "disabled": disabled,
+            "disabled_models": updated
+        }, success=True)
+    @app.get("/api/providers")
+    async def providers_get():
+        """Returns all configured providers, models, active chat model, and image model."""
+        providers = channel.manager.API.get_providers()
+        return api_result({
+            "providers": providers,
+            "current_model": channel.manager.API.get_model(),
+            "image_model": channel.manager.API.get_image_model()
+        }, success=True)
+
+    @app.post("/api/provider/test")
+    async def provider_test(request: fastapi.Request):
+        """Tests an endpoint connection and measures latency."""
+        data = await request.json()
+        url = data.get("url", "")
+        key = data.get("key", "")
+        res = await channel.manager.API.test_provider_connection(url, key)
+        return api_result(res, success=res.get("success", False))
+
+    @app.post("/api/provider/add")
+    async def provider_add(request: fastapi.Request):
+        """Adds a new provider and queries its models."""
+        data = await request.json()
+        name = data.get("name", "")
+        url = data.get("url", "")
+        key = data.get("key", "")
+        type_ = data.get("type", "llm")
+        api_format = data.get("api_format", "auto")
+        is_image = bool(data.get("is_image_provider", False))
+
+        if not url:
+            return api_result("Base URL cannot be empty", success=False)
+
+        provider = await channel.manager.API.add_provider(
+            name=name, url=url, key=key, type=type_, api_format=api_format, is_image_provider=is_image
+        )
+        return api_result(provider, success=True)
+
+    @app.post("/api/provider/update")
+    async def provider_update(request: fastapi.Request):
+        """Updates provider fields (name, enabled, is_image_provider)."""
+        data = await request.json()
+        pid = data.get("id")
+        updates = data.get("updates", {})
+        if not pid:
+            return api_result("Missing provider ID", success=False)
+        p = channel.manager.API.update_provider(pid, updates)
+        return api_result(p, success=bool(p))
+
+    @app.post("/api/provider/delete")
+    async def provider_delete(request: fastapi.Request):
+        """Deletes a provider."""
+        data = await request.json()
+        pid = data.get("id")
+        if not pid:
+            return api_result("Missing provider ID", success=False)
+        channel.manager.API.delete_provider(pid)
+        return api_result("Deleted", success=True)
+
+    @app.post("/api/provider/refresh")
+    async def provider_refresh(request: fastapi.Request):
+        """Re-queries models for a provider."""
+        data = await request.json()
+        pid = data.get("id")
+        if not pid:
+            return api_result("Missing provider ID", success=False)
+        models = await channel.manager.API.refresh_provider_models(pid)
+        return api_result(models, success=True)
+
+    @app.post("/api/provider/model/update")
+    async def provider_model_update(request: fastapi.Request):
+        """Updates settings for a specific model under a provider."""
+        data = await request.json()
+        pid = data.get("provider_id")
+        mid = data.get("model_id")
+        settings = data.get("settings", {})
+        if not pid or not mid:
+            return api_result("Missing provider_id or model_id", success=False)
+        m = channel.manager.API.update_model_settings(pid, mid, settings)
+        return api_result(m, success=bool(m))
+
+    @app.post("/api/provider/detect_context")
+    async def provider_detect_context(request: fastapi.Request):
+        """Detects context length for a model."""
+        data = await request.json()
+        mid = data.get("model_id", "")
+        ctx = channel.manager.API.detect_model_context(mid)
+        return api_result({"context_length": ctx}, success=True)
 
     # -- POST
     @app.post("/api/settings/save")

@@ -1,0 +1,39 @@
+<div class="image-tools-panel" x-data="imageToolsComponent()" x-intersect.enter="refresh()">
+    <div class="image-tools-header">
+        <span class="image-tools-title">Gallery</span>
+        <div class="image-tools-header-actions">
+            <button type="button" class="image-tools-icon-btn" title="Refresh Gallery" @click="refresh(true)">
+                {% include 'svg/reload.svg' %}
+            </button>
+        </div>
+    </div>
+
+    <div class="image-tools-list">
+        <template x-if="loading">
+            <div class="image-tools-empty">Loading images...</div>
+        </template>
+
+        <template x-if="!loading && images.length === 0">
+            <div class="image-tools-empty">
+                <p>No images generated or edited yet.</p>
+                <small>Ask the AI to generate an image or edit one with ImageTools!</small>
+            </div>
+        </template>
+
+        <div class="image-tools-grid" x-show="!loading && images.length > 0">
+            <template x-for="img in images" :key="img.filename">
+                <div class="image-tools-card" @click="openImage(img)" :title="img.filename">
+                    <div class="image-tools-thumb-wrap">
+                        <img :src="'/api/ext/image_tools/view?file=' + encodeURIComponent(img.filename)" :alt="img.filename" loading="lazy">
+                    </div>
+                    <div class="image-tools-card-meta">
+                        <span class="image-tools-card-name" x-text="img.filename"></span>
+                        <span class="image-tools-card-date" x-text="img.modified"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <div class="image-tools-footer" x-show="error" x-text="error"></div>
+</div>

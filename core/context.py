@@ -353,9 +353,11 @@ Hard rules:
             if compress_context is None:
                 return False
 
+            comp_model = core.config.get("model", "compression_model") or None
             # request the stream
             stream = self.channel.manager.API.send_stream(
-                compress_context + [{"role": "user", "content": compress_prompt}]
+                compress_context + [{"role": "user", "content": compress_prompt}],
+                model=comp_model
             )
 
             # send the stream into the current channel

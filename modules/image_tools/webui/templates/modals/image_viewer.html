@@ -1,0 +1,47 @@
+<template x-if="$store.ui.currentModal === 'image_viewer' && $store.imageTools && $store.imageTools.activeImage" x-cloak>
+    <div class="modal image-viewer-modal" @keydown.escape.window="$store.imageTools.closeModal()">
+        <div class="header">
+            <span class="image-viewer-title" x-text="$store.imageTools.activeImage.filename"></span>
+            <div class="image-viewer-header-btns">
+                <a
+                    class="image-viewer-btn download"
+                    :href="'/api/ext/image_tools/view?file=' + encodeURIComponent($store.imageTools.activeImage.filename)"
+                    :download="$store.imageTools.activeImage.filename"
+                    title="Download"
+                >
+                    {% include 'svg/download.svg' %}
+                </a>
+                <button
+                    type="button"
+                    class="image-viewer-btn delete"
+                    @click="$store.imageTools.deleteActive()"
+                    title="Delete Image"
+                >
+                    {% include 'svg/trash.svg' %}
+                </button>
+                <button class="close" @click="$store.imageTools.closeModal()" aria-label="Close image viewer">&times;</button>
+            </div>
+        </div>
+
+        <div class="image-viewer-body">
+            <div class="image-viewer-preview-wrap">
+                <img
+                    :src="'/api/ext/image_tools/view?file=' + encodeURIComponent($store.imageTools.activeImage.filename)"
+                    :alt="$store.imageTools.activeImage.filename"
+                    class="image-viewer-img"
+                >
+            </div>
+
+            <div class="image-viewer-details">
+                <div class="image-viewer-detail-row">
+                    <span class="image-viewer-detail-label">File Path:</span>
+                    <code class="image-viewer-path" x-text="$store.imageTools.activeImage.path"></code>
+                </div>
+                <div class="image-viewer-detail-row">
+                    <span class="image-viewer-detail-label">Modified:</span>
+                    <span x-text="$store.imageTools.activeImage.modified"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>

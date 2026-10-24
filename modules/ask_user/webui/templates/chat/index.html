@@ -1,0 +1,12 @@
+{# -- Macro for above_input_bar extension slot: displays banner when an AI question is pending -- #}
+{% macro above_input_bar() %}
+<template x-if="$store.askUser && $store.askUser.current" x-cloak>
+    <div class="ask-user-banner" @click="$store.ui.openModal('ask_user')" title="Click to open answer dialog">
+        <span class="ask-user-banner-badge">Question</span>
+        <span class="ask-user-banner-text">
+            <strong>AI waiting for reply:</strong> <span x-text="$store.askUser.current.question"></span>
+        </span>
+        <button type="button" class="ask-user-banner-btn">Answer</button>
+    </div>
+</template>
+{% endmacro %}
