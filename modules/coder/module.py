@@ -7,6 +7,7 @@ import shutil
 import regex
 import glob
 import fnmatch
+import asyncio
 import subprocess
 import tree_sitter_language_pack as tslp
 
@@ -1254,11 +1255,19 @@ class Coder(core.module.Module):
         """runs git, returns (returncode, raw stdout bytes). no text mode,
         no stripping - for output that must be parsed byte-exactly."""
         try:
-            proc = subprocess.run(
+            # availability fix: same bug as host_shell had - subprocess.run inside
+            # an async def blocks the ENTIRE event loop while git runs (up to the
+            # full timeout). to_thread isolates the wait in a worker thread;
+            # stdin=DEVNULL prevents git from hanging on a credential prompt;
+            # start_new_session detaches the child from the app's process group.
+            proc = await asyncio.to_thread(
+                subprocess.run,
                 ["git", *args],
                 cwd=sandbox_root,
                 capture_output=True,
                 timeout=timeout,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
             )
         except FileNotFoundError:
             return 127, b"git executable not found"
@@ -1328,12 +1337,17 @@ class Coder(core.module.Module):
         """runs git in the sandbox root. returns (ok, output).
         accept lists return codes that count as success."""
         try:
-            proc = subprocess.run(
+            # availability fix: see _run_git_bytes - to_thread keeps the event
+            # loop free; DEVNULL/new_session guard against prompts and teardown.
+            proc = await asyncio.to_thread(
+                subprocess.run,
                 ["git", *args],
                 cwd=sandbox_root,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
             )
         except FileNotFoundError:
             return False, "git executable not found"
