@@ -1,0 +1,305 @@
+<!-- API & Model Providers Settings Section (Matches Screenshot 1 & 2) -->
+<template x-if="activeCategory === 'api' && !activeModule && !activeChannel">
+    <div class="settings-section api-settings-page" x-data="providerManagerComponent()" x-init="init()">
+        <!-- Section Header -->
+        <div class="api-page-header">
+            <div class="api-page-title-group">
+                <span class="api-page-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                </span>
+                <h3 class="section-title">API & Model Providers</h3>
+                <span class="model-mgr-active-chat-badge" x-show="currentChatModel" x-text="'Chat: ' + currentChatModel"></span>
+                <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Image: ' + imageModel"></span>
+            </div>
+            <p class="section-desc">Connect and manage model endpoints (OpenAI, Anthropic, DeepSeek, OpenRouter, llama-swap, Ollama, etc.) and customize per-model parameters.</p>
+        </div>
+
+        <!-- 1. ADD API MODELS (ENDPOINT) CARD - Matches Screenshot 1 -->
+        <div class="provider-add-card">
+            <div class="provider-add-header">
+                <div class="provider-add-title-group">
+                    <span class="provider-orange-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+                    </span>
+                    <span class="provider-add-title">Add API Models <span class="provider-add-subtag">(Endpoint)</span></span>
+                </div>
+                <div class="provider-add-actions">
+                    <button
+                        type="button"
+                        class="provider-btn-test"
+                        @click="testCurrentEndpoint()"
+                        :disabled="testing || !formUrl.trim()"
+                        title="Test connection to endpoint"
+                    >
+                        <span class="play-icon">▷</span>
+                        <span x-text="testing ? 'Testing...' : 'Test'"></span>
+                    </button>
+                    <span class="test-result-badge" x-show="testResult" :class="{ success: testResult && testResult.success, error: testResult && !testResult.success }">
+                        <span x-text="testResult ? (testResult.success ? (testResult.latency_ms + 'ms • ' + testResult.model_count + ' models') : testResult.error) : ''"></span>
+                    </span>
+                </div>
+            </div>
+
+            <div class="provider-add-caption">Connect a cloud provider (OpenAI, Anthropic, DeepSeek, OpenRouter, etc.) or a local server.</div>
+
+            <!-- Row 1: Provider Preset Select + Base URL -->
+            <div class="provider-form-row">
+                <div class="provider-preset-select-wrap">
+                    <span class="provider-dot"></span>
+                    <select class="provider-preset-select" x-model="preset" @change="applyPreset()">
+                        <option value="custom">Custom URL</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="llamacpp">vLLM / llama.cpp</option>
+                        <option value="groq">Groq</option>
+                        <option value="together">Together AI</option>
+                        <option value="mistral">Mistral AI</option>
+                    </select>
+                </div>
+                <input
+                    type="text"
+                    class="provider-input provider-url-input"
+                    x-model="formUrl"
+                    placeholder="Base URL or pick provider (e.g. http://localhost:11434/v1)"
+                >
+            </div>
+
+            <!-- Row 2: Tag, API Format, API Key, and Add Button -->
+            <div class="provider-form-row">
+                <div class="provider-badge-pill">LLM</div>
+                <div class="provider-format-select-wrap">
+                    <select class="provider-format-select" x-model="formFormat">
+                        <option value="auto">API: Auto</option>
+                        <option value="openai">API: OpenAI</option>
+                        <option value="anthropic">API: Anthropic</option>
+                    </select>
+                </div>
+                <div class="provider-key-wrap">
+                    <span class="key-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1.5-1.5L8 9 3 14a5 5 0 0 0 7 7l5-5 1.5 1.5L18 15l1.5-1.5L21 15l1-1-1-1 1-1-1-1 1-1z"/></svg>
+                    </span>
+                    <input
+                        type="password"
+                        class="provider-input provider-key-input"
+                        x-model="formKey"
+                        placeholder="API key (optional for local)"
+                    >
+                </div>
+                <button
+                    type="button"
+                    class="provider-btn-add"
+                    @click="submitAddProvider()"
+                    :disabled="adding || !formUrl.trim()"
+                >
+                    <span x-show="!adding">Add</span>
+                    <span x-show="adding">Adding...</span>
+                </button>
+            </div>
+
+            <div class="provider-error-msg" x-show="formError" x-text="formError"></div>
+        </div>
+
+        <!-- 2. CONFIGURED PROVIDERS LIST - Matches Screenshot 2 -->
+        <div class="configured-providers-container">
+            <template x-if="providersLoading">
+                <div class="provider-loading-state">Loading configured providers...</div>
+            </template>
+
+            <template x-for="prov in providers" :key="prov.id">
+                <div class="provider-card" :class="{ disabled: !prov.enabled }">
+                    <!-- Card Header -->
+                    <div class="provider-card-header">
+                        <div class="provider-card-header-left">
+                            <div class="provider-card-title-row">
+                                <span class="provider-card-globe">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg>
+                                </span>
+                                <span class="provider-card-name" x-text="prov.name"></span>
+                                <span class="badge-tag proxy" x-text="getProviderTypeBadge(prov)"></span>
+                                <span class="badge-tag responses">RESPONSES</span>
+                                <span class="badge-tag count" x-text="enabledModelCount(prov) + '/' + (prov.models || []).length + ' models enabled'"></span>
+                            </div>
+                            <div class="provider-card-subtitle">
+                                <span>Click to manage models</span>
+                                <span class="provider-card-endpoint" x-text="prov.url + (prov.key ? ' (key ' + maskKey(prov.key) + ')' : '')"></span>
+                            </div>
+                        </div>
+
+                        <div class="provider-card-header-right">
+                            <button
+                                type="button"
+                                class="provider-tool-btn"
+                                :class="{ active: prov.is_image_provider }"
+                                @click="toggleImageProvider(prov)"
+                                title="Mark this provider as the designated image provider"
+                            >
+                                <span x-text="prov.is_image_provider ? 'Image Provider ✓' : 'Mark image'"></span>
+                            </button>
+                            <button
+                                type="button"
+                                class="provider-tool-btn"
+                                @click="toggleProviderEnabled(prov)"
+                                x-text="prov.enabled ? 'Disable' : 'Enable'"
+                            ></button>
+                            <button
+                                type="button"
+                                class="provider-tool-btn delete"
+                                @click="removeProvider(prov)"
+                            >Delete</button>
+                            <button
+                                type="button"
+                                class="provider-collapse-btn"
+                                @click="toggleCollapse(prov.id)"
+                                :title="isCollapsed(prov.id) ? 'Expand models' : 'Collapse models'"
+                            >
+                                <span x-text="isCollapsed(prov.id) ? '▾' : '▴'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Models List Inside Provider (Expandable) -->
+                    <div class="provider-models-section" x-show="!isCollapsed(prov.id)">
+                        <!-- Models Bar: Title, Count, Actions -->
+                        <div class="provider-models-bar">
+                            <span class="models-bar-title">MODELS</span>
+                            <div class="models-bar-controls">
+                                <span class="models-bar-count" x-text="enabledModelCount(prov) + '/' + (prov.models || []).length + ' ENABLED'"></span>
+                                <button type="button" class="models-link-btn" @click="refreshProvider(prov)">Refresh</button>
+                                <button type="button" class="models-link-btn" @click="setAllModels(prov, true)">All</button>
+                                <button type="button" class="models-link-btn" @click="setAllModels(prov, false)">None</button>
+                            </div>
+                        </div>
+
+                        <!-- Search Box -->
+                        <div class="models-search-wrap">
+                            <input
+                                type="search"
+                                class="models-search-input"
+                                :placeholder="'Search ' + (prov.models || []).length + ' models...'"
+                                x-model="searchTerms[prov.id]"
+                            >
+                        </div>
+
+                        <!-- Scrollable Model Rows -->
+                        <div class="models-list-scroll">
+                            <template x-if="!prov.models || prov.models.length === 0">
+                                <div class="models-empty">No models detected on this endpoint. Click 'Refresh' to re-probe.</div>
+                            </template>
+
+                            <template x-for="m in filteredModels(prov)" :key="prov.id + '-' + m.id">
+                                <div class="model-item-row" :class="{ disabled: !m.enabled, active_chat: m.id === currentChatModel, active_image: m.id === imageModel }">
+                                    <!-- Checkbox + Model Name -->
+                                    <div class="model-item-left">
+                                        <button
+                                            type="button"
+                                            class="model-circle-check"
+                                            :class="{ checked: m.enabled }"
+                                            @click="toggleModelActive(prov, m)"
+                                            title="Toggle model enabled"
+                                        >
+                                            <span x-show="m.enabled">✓</span>
+                                        </button>
+                                        <span
+                                            class="model-name-text"
+                                            x-text="m.id"
+                                            @click="setAsActiveChat(m.id)"
+                                            title="Click to set as active chat model"
+                                        ></span>
+                                        <span class="model-role-badge chat" x-show="m.id === currentChatModel">Chat</span>
+                                        <span class="model-role-badge image" x-show="m.id === imageModel">Image</span>
+                                    </div>
+
+                                    <!-- Controls on Right: Context, Detect, Thinking, Image Icon -->
+                                    <div class="model-item-right">
+                                        <!-- Context Dropdown/Button -->
+                                        <div class="model-pill-select-wrap">
+                                            <select
+                                                class="model-pill-select"
+                                                :value="m.context_length || 'auto'"
+                                                @change="updateModelContext(prov, m, $event.target.value)"
+                                                title="Context length limit"
+                                            >
+                                                <option value="auto">Context: Auto</option>
+                                                <option value="8192">Context: 8k</option>
+                                                <option value="16384">Context: 16k</option>
+                                                <option value="32768">Context: 32k</option>
+                                                <option value="65536">Context: 64k</option>
+                                                <option value="128000">Context: 128k</option>
+                                                <option value="131072">Context: 131k</option>
+                                                <option value="180000">Context: 180,000</option>
+                                                <option value="200000">Context: 200k</option>
+                                                <option value="1000000">Context: 1M</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Detect Button -->
+                                        <button
+                                            type="button"
+                                            class="model-pill-btn detect"
+                                            @click="detectContext(prov, m)"
+                                            title="Detect context size for this model"
+                                        >Detect</button>
+
+                                        <!-- Thinking Effort Selector -->
+                                        <div class="model-pill-select-wrap">
+                                            <select
+                                                class="model-pill-select thinking"
+                                                :value="m.thinking_effort || 'default'"
+                                                @change="updateModelThinking(prov, m, $event.target.value)"
+                                                title="Thinking / reasoning effort"
+                                            >
+                                                <option value="default">Thinking: Default</option>
+                                                <option value="none">Thinking: None</option>
+                                                <option value="low">Thinking: Low</option>
+                                                <option value="medium">Thinking: Medium</option>
+                                                <option value="high">Thinking: High</option>
+                                                <option value="xhigh">Thinking: xhigh</option>
+                                                <option value="max">Thinking: Max</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Image Model Selector Button -->
+                                        <button
+                                            type="button"
+                                            class="model-image-icon-btn"
+                                            :class="{ active: m.id === imageModel || m.is_image }"
+                                            @click="toggleAsImageModel(prov, m)"
+                                            :title="m.id === imageModel ? 'Current image model' : 'Set as image model'"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                                <polyline points="21 15 16 10 5 21"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- 3. ADVANCED API SETTINGS (Hierarchical fields below) -->
+        <div class="api-advanced-settings-card" x-data="{ openAdvanced: false }">
+            <button type="button" class="api-advanced-toggle-btn" @click="openAdvanced = !openAdvanced">
+                <span class="chevron" x-text="openAdvanced ? '▾' : '▸'"></span>
+                <span>Advanced API Settings</span>
+            </button>
+
+            <div class="api-advanced-fields" x-show="openAdvanced">
+                <template x-for="hierarchyItem in getHierarchicalSettings()" :key="hierarchyItem.key">
+                    <template x-if="!['url', 'key', 'providers'].includes(hierarchyItem.key)">
+                        <div class="field-row">
+                            <label class="field-label" x-text="hierarchyItem.setting.title || hierarchyItem.key"></label>
+                            {% include 'modals/settings/fields.html' %}
+                        </div>
+                    </template>
+                </template>
+            </div>
+        </div>
+    </div>
+</template>
