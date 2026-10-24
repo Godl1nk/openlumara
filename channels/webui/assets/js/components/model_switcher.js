@@ -183,6 +183,14 @@ function providerManagerComponent() {
             }
         },
 
+        formatProviderName(prov) {
+            if (!prov || !prov.name) return "Provider";
+            if (prov.name === "API_URL_HERE") {
+                return "Default Endpoint (Setup needed)";
+            }
+            return prov.name;
+        },
+
         getProviderTypeBadge(prov) {
             const url = (prov.url || "").toLowerCase();
             if (url.includes("localhost") || url.includes("127.0.0.1") || url.includes("docker.internal")) {
