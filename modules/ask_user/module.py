@@ -92,6 +92,7 @@ class AskUser(core.module.Module):
             "timeout": t_limit,
             "default_choice": str(default_choice).strip() if default_choice is not None else None,
             "secret": bool(secret),
+            "chat_id": self._current_chat_id(),
         }
         self._pending[qid] = record
 
@@ -102,7 +103,10 @@ class AskUser(core.module.Module):
                 await self.channel.push(
                     f"❓ **Question from AI**:\n{record['question']}{opts_hint}\n\n"
                     f"*Answer in the prompt popup or reply with `/answer <your reply>` in chat.*",
-                    defer=False
+                    defer=False,
+                    # display immediately, but don't inject an assistant message
+                    # into the middle of the in-flight tool call chain
+                    add_to_context=False
                 )
             except Exception as e:
                 self.log("ask_user", f"Could not push question alert to channel: {e}")
@@ -156,14 +160,21 @@ class AskUser(core.module.Module):
             prompt += f" Details: {details}"
 
         res = await self.ask(question=prompt, options=["yes", "no"], timeout=timeout, default_choice=default_choice)
-        if not res.get("status") == "success" or not res.get("content", {}).get("answered"):
-            return res
+        content = res.get("content") or {}
+        if res.get("status") != "success":
+            return self.result({
+                "confirmed": False,
+                "answer": content.get("answer"),
+                "action": action,
+                "error": content.get("error") or "Confirmation failed or was cancelled."
+            }, success=False)
 
-        answer = str(res["content"].get("answer", "")).strip().lower()
-        confirmed = answer in ("yes", "y", "true", "confirm", "proceed", "ok", "sure")
+        answer = str(content.get("answer") or "").strip().lower()
+        confirmed = content.get("answered") is True and answer in ("yes", "y", "true", "confirm", "proceed", "ok", "sure")
         return self.result({
             "confirmed": confirmed,
-            "answer": res["content"].get("answer"),
+            "answer": content.get("answer"),
+            "timed_out": bool(content.get("timed_out")),
             "action": action
         }, success=True)
 
@@ -171,16 +182,60 @@ class AskUser(core.module.Module):
     # Internal Answer Resolution
     # -------------------------------------------------------------------------
 
-    def _resolve_answer(self, qid: str, answer: str) -> bool:
+    def _current_chat_id(self):
+        try:
+            if self.channel and getattr(self.channel, "context", None):
+                return self.channel.context.chat.get("id")
+        except Exception:
+            pass
+        return None
+
+    def try_intercept_chat_answer(self, message: str, chat_id: str = None):
+        """Resolve the pending question from a normal chat message or /answer.
+
+        Called by channels *before* they cancel/restart an active stream, so
+        answering a question doesn't kill the paused agent turn.
+
+        Returns the answer text that was delivered, or None.
+        """
+        if not self.config.get("intercept_chat_input", True):
+            return None
+        if not self._pending:
+            return None
+
+        text = str(message).strip()
+        answer = text
+        cmd_prefix = core.config.get("core", "cmd_prefix", default="/")
+        if text.startswith(cmd_prefix):
+            parts = text[len(cmd_prefix):].split(maxsplit=1)
+            if len(parts) < 2 or parts[0].lower() != "answer":
+                return None
+            answer = parts[1].strip()
+
+        if not answer:
+            return None
+
+        ok = self._resolve_answer("", answer, chat_id=chat_id or self._current_chat_id())
+        return answer if ok else None
+
+    def _resolve_answer(self, qid: str, answer: str, chat_id: str = None) -> bool:
         """Resolve a pending question by ID, or the oldest pending question (FIFO) if qid is empty."""
         target = None
         if qid and qid in self._pending:
             target = self._pending[qid]
         elif not qid and self._pending:
             # Pick the oldest pending question (FIFO order)
-            target = list(self._pending.values())[0]
+            candidates = [
+                q for q in self._pending.values()
+                if not chat_id or not q.get("chat_id") or q.get("chat_id") == chat_id
+            ]
+            target = candidates[0] if candidates else None
 
         if not target:
+            return False
+
+        # don't let a client in another chat answer this question
+        if chat_id and target.get("chat_id") and target["chat_id"] != chat_id:
             return False
 
         fut = target.get("future")
@@ -202,7 +257,7 @@ class AskUser(core.module.Module):
             return None
 
         # Resolve pending question with message content
-        ok = self._resolve_answer("", content)
+        ok = self._resolve_answer("", content, chat_id=self._current_chat_id())
         if ok:
             # Intercept: records user message in history and avoids spawning a second turn
             return False
@@ -216,8 +271,11 @@ class AskUser(core.module.Module):
     async def _route_pending(self, body=None, query=None):
         """Returns currently pending questions waiting for user answer."""
         now = time.time()
+        chat_id = self._current_chat_id()
         results = []
         for q in self._pending.values():
+            if chat_id and q.get("chat_id") and q["chat_id"] != chat_id:
+                continue
             elapsed = now - q["created_at"]
             remaining = max(0, int(q["timeout"] - elapsed))
             results.append({
@@ -241,7 +299,7 @@ class AskUser(core.module.Module):
         if not answer:
             return self.result("Answer cannot be empty.", success=False)
 
-        ok = self._resolve_answer(qid, answer)
+        ok = self._resolve_answer(qid, answer, chat_id=self._current_chat_id())
         if ok:
             return self.result({"message": "Answer submitted successfully.", "answer": answer}, success=True)
         return self.result("No active question matching that ID.", success=False)
@@ -251,8 +309,12 @@ class AskUser(core.module.Module):
         """Cancel a pending question."""
         body = body or {}
         qid = str(body.get("id", "")).strip()
-        if qid in self._pending:
-            fut = self._pending[qid].get("future")
+        chat_id = self._current_chat_id()
+        record = self._pending.get(qid)
+        if record and chat_id and record.get("chat_id") and record["chat_id"] != chat_id:
+            return self.result("No active question matching that ID.", success=False)
+        if record:
+            fut = record.get("future")
             if fut and not fut.done():
                 fut.cancel()
             self._pending.pop(qid, None)

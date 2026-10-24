@@ -1,7 +1,7 @@
 <!-- Model & Provider Manager Modal -->
 <template x-if="$store.ui.currentModal === 'model_manager'" x-cloak>
     <div @keydown.escape.window="$store.ui.closeModal()">
-        <div class="modal model-manager-modal" x-data="providerManagerComponent()" x-init="init()">
+        <div class="modal model-manager-modal" x-data="providerManagerComponent()">
             <!-- Modal Header -->
             <div class="header model-mgr-modal-header">
                 <div class="api-title-with-icon">
@@ -75,7 +75,6 @@
                         <select class="provider-format-select" x-model="formFormat">
                             <option value="auto">API: Auto</option>
                             <option value="openai">API: OpenAI</option>
-                            <option value="anthropic">API: Anthropic</option>
                         </select>
                         <div class="provider-key-field">
                             <span class="key-icon" aria-hidden="true">
@@ -97,9 +96,15 @@
                             @click="submitAddProvider()"
                             :disabled="adding || !formUrl.trim()"
                         >
-                            <span x-show="!adding">Add</span>
-                            <span x-show="adding">Adding...</span>
+                            <span x-show="!adding" x-text="editingProviderId ? 'Save' : 'Add'"></span>
+                            <span x-show="adding" x-text="editingProviderId ? 'Saving...' : 'Adding...'"></span>
                         </button>
+                        <button
+                            type="button"
+                            class="provider-tool-btn"
+                            x-show="editingProviderId"
+                            @click="cancelEditProvider()"
+                        >Cancel</button>
                     </div>
 
                     <div class="provider-error-msg" x-show="formError" x-text="formError"></div>
@@ -122,11 +127,9 @@
                                         </span>
                                         <span class="provider-card-name" x-text="formatProviderName(prov)"></span>
                                         <span class="badge-tag proxy" x-text="getProviderTypeBadge(prov)"></span>
-                                        <span class="badge-tag responses">RESPONSES</span>
                                         <span class="badge-tag count" x-text="enabledModelCount(prov) + '/' + (prov.models || []).length + ' models enabled'"></span>
                                     </div>
                                     <div class="provider-card-subtitle">
-                                        <span class="provider-card-hint">Click to manage models</span>
                                         <span class="provider-card-endpoint" x-text="prov.url + (prov.key ? ' (key ' + maskKey(prov.key) + ')' : '')"></span>
                                     </div>
                                 </div>
@@ -147,6 +150,11 @@
                                         @click="toggleProviderEnabled(prov)"
                                         x-text="prov.enabled ? 'Disable' : 'Enable'"
                                     ></button>
+                                    <button
+                                        type="button"
+                                        class="provider-tool-btn"
+                                        @click="beginEditProvider(prov)"
+                                    >Edit</button>
                                     <button
                                         type="button"
                                         class="provider-tool-btn delete"

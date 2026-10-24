@@ -18,9 +18,6 @@ function syncContextPill(maxContext) {
     if (maxContext && Alpine.store("system") && Alpine.store("system").data) {
         Alpine.store("system").data.max_context = Number(maxContext);
     }
-    if (Alpine.store("chat") && typeof Alpine.store("chat").loadContextSize === "function") {
-        Alpine.store("chat").loadContextSize();
-    }
 }
 
 
@@ -74,7 +71,8 @@ function modelQuickSwitch() {
             const store = Alpine.store("modelManager");
             let list = store?.enabledModelsList || [];
             if (list.length === 0) {
-                list = Alpine.store("settings")?.cachedModels || [];
+                const cached = Alpine.store("settings")?.cachedModels;
+                list = Array.isArray(cached) ? cached : [];
             }
             const current = this.currentModel;
             if (current && !list.includes(current)) {
@@ -85,7 +83,14 @@ function modelQuickSwitch() {
 
         lazyFetch() {
             const store = Alpine.store("modelManager");
-            if (store) store.fetchProviders();
+            if (!store) return;
+            store.fetchProviders().then(() => {
+                // legacy/seeded providers have no model list until refreshed;
+                // fall back to the endpoint model list so the dropdown isn't empty
+                if (!store.enabledModelsList.length) {
+                    Alpine.store("settings")?.fetchModels?.();
+                }
+            });
         },
 
         async setModel(name) {
@@ -121,6 +126,7 @@ function providerManagerComponent() {
         testResult: null,
         adding: false,
         formError: "",
+        editingProviderId: null,
         searchTerms: {},
         collapsedMap: {},
 
@@ -165,10 +171,30 @@ function providerManagerComponent() {
                 });
                 this.testResult = res;
             } catch (e) {
-                this.testResult = { success: false, error: (typeof e === "string" ? e : (e.message || "Connection failed")) };
+                this.testResult = { success: false, error: (typeof e === "string" ? e : (e?.error || e?.message || "Connection failed")) };
             } finally {
                 this.testing = false;
             }
+        },
+
+        beginEditProvider(prov) {
+            this.editingProviderId = prov.id;
+            this.formUrl = prov.url || "";
+            this.formKey = prov.key || "";
+            this.formFormat = prov.api_format || "auto";
+            this.preset = "custom";
+            this.testResult = null;
+            this.formError = "";
+        },
+
+        cancelEditProvider() {
+            this.editingProviderId = null;
+            this.formUrl = "";
+            this.formKey = "";
+            this.formFormat = "auto";
+            this.preset = "custom";
+            this.testResult = null;
+            this.formError = "";
         },
 
         async submitAddProvider() {
@@ -176,21 +202,33 @@ function providerManagerComponent() {
             this.adding = true;
             this.formError = "";
             try {
-                await simpleApiPost("/api/provider/add", {
-                    url: this.formUrl.trim(),
-                    key: this.formKey.trim(),
-                    name: this.preset !== "custom" ? this.preset.toUpperCase() : "",
-                    type: "llm",
-                    api_format: this.formFormat
-                });
-                // Reset form
-                this.formUrl = "";
-                this.formKey = "";
-                this.preset = "custom";
-                this.testResult = null;
+                if (this.editingProviderId) {
+                    await simpleApiPost("/api/provider/update", {
+                        id: this.editingProviderId,
+                        updates: {
+                            url: this.formUrl.trim(),
+                            key: this.formKey.trim(),
+                            api_format: this.formFormat
+                        }
+                    });
+                    this.cancelEditProvider();
+                } else {
+                    await simpleApiPost("/api/provider/add", {
+                        url: this.formUrl.trim(),
+                        key: this.formKey.trim(),
+                        name: this.preset !== "custom" ? this.preset.toUpperCase() : "",
+                        type: "llm",
+                        api_format: this.formFormat
+                    });
+                    // Reset form
+                    this.formUrl = "";
+                    this.formKey = "";
+                    this.preset = "custom";
+                    this.testResult = null;
+                }
                 await Alpine.store("modelManager").fetchProviders();
             } catch (e) {
-                this.formError = typeof e === "string" ? e : "Failed to add provider";
+                this.formError = typeof e === "string" ? e : (e?.error || e?.message || "Failed to save provider");
             } finally {
                 this.adding = false;
             }
@@ -285,14 +323,15 @@ function providerManagerComponent() {
         },
 
         async setAllModels(prov, enabled) {
-            for (const m of (prov.models || [])) {
+            const updates = (prov.models || []).map(m => {
                 m.enabled = enabled;
-                simpleApiPost("/api/provider/model/update", {
+                return simpleApiPost("/api/provider/model/update", {
                     provider_id: prov.id,
                     model_id: m.id,
                     settings: { enabled }
-                }).catch(() => {});
-            }
+                }).catch(() => null);
+            });
+            await Promise.all(updates);
         },
 
         async toggleModelActive(prov, model) {
@@ -348,7 +387,9 @@ function providerManagerComponent() {
                     model_id: model.id,
                     settings: { context_length: val }
                 });
-                if (res && res.max_context) {
+                // the response carries the active model's context; only apply it
+                // when the edited model is the one currently in use
+                if (res && res.max_context && model.id === this.currentChatModel) {
                     syncContextPill(res.max_context);
                 }
             } catch (e) {
@@ -368,7 +409,7 @@ function providerManagerComponent() {
                         model_id: model.id,
                         settings: { context_length: model.context_length }
                     });
-                    if (upd && upd.max_context) {
+                    if (upd && upd.max_context && model.id === this.currentChatModel) {
                         syncContextPill(upd.max_context);
                     }
                 }
@@ -398,12 +439,12 @@ function imageGenSettingsComponent() {
             ask_before_generate: false,
             endpoint: "auto",
             model: "Qwen-Image-2.1",
-            quality: "high",
-            edit_endpoint: "auto",
-            edit_model: "same"
+            quality: "high"
         },
         providers: [],
         saving: false,
+        pendingSave: false,
+        error: "",
 
         async init() {
             try {
@@ -414,11 +455,11 @@ function imageGenSettingsComponent() {
                     this.settings.endpoint = res.endpoint || "auto";
                     this.settings.model = res.model || "Qwen-Image-2.1";
                     this.settings.quality = res.quality || "high";
-                    this.settings.edit_endpoint = res.edit_endpoint || "auto";
-                    this.settings.edit_model = res.edit_model || "same";
                     this.providers = Array.isArray(res.providers) ? res.providers : [];
+                    this.error = "";
                 }
             } catch (e) {
+                this.error = "Could not load image settings: " + (typeof e === "string" ? e : (e?.error || e?.message || "unknown error"));
                 const mgr = Alpine.store("modelManager");
                 if (mgr) {
                     this.providers = (mgr.providers || []).map(p => ({
@@ -442,16 +483,24 @@ function imageGenSettingsComponent() {
         },
 
         async save() {
-            if (this.saving) return;
+            if (this.saving) {
+                // coalesce rapid toggle/select changes instead of dropping them
+                this.pendingSave = true;
+                return;
+            }
             this.saving = true;
             try {
-                await simpleApiPost("/api/ext/image_tools/settings", this.settings);
+                do {
+                    this.pendingSave = false;
+                    await simpleApiPost("/api/ext/image_tools/settings", this.settings);
+                    this.error = "";
+                } while (this.pendingSave);
                 const mgr = Alpine.store("modelManager");
                 if (mgr && this.settings.model) {
                     mgr.imageModel = this.settings.model;
                 }
             } catch (e) {
-                // Ignore silent save error
+                this.error = "Could not save image settings: " + (typeof e === "string" ? e : (e?.error || e?.message || "unknown error"));
             } finally {
                 this.saving = false;
             }

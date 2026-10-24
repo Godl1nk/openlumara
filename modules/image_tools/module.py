@@ -4,6 +4,7 @@ import time
 import base64
 import hashlib
 import asyncio
+import urllib.parse
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageEnhance
 import httpx
@@ -50,17 +51,7 @@ class ImageTools(core.module.Module):
                 "standard": "Standard",
                 "hd": "HD (Ultra)"
             },
-            "description": "Generation quality level."
-        },
-        "edit_endpoint": {
-            "type": "string",
-            "default": "auto",
-            "description": "Endpoint for image editing (auto uses generation endpoint)."
-        },
-        "edit_model": {
-            "type": "string",
-            "default": "same",
-            "description": "Model for image editing (same uses generation model)."
+            "description": "Generation quality level (applies to DALL-E 3; mapped to standard/hd)."
         },
         "backend": {
             "type": "select",
@@ -117,7 +108,46 @@ class ImageTools(core.module.Module):
         return core.get_path(configured, sandbox=False)
     def _get_image_model(self) -> str:
         """Resolve active image model from module config, global core config, or fallback."""
-        return self.config.get("model") or core.config.get("model", "image_model") or self.config.get("openai_model") or "Qwen-Image-2.1"
+        return self.config.get("model") or core.config.get("model", "image_model") or self.config.get("openai_model") or "dall-e-3"
+
+    def _provider_for_endpoint(self, endpoint: str):
+        """Resolve a configured provider by name/id for the image endpoint setting."""
+        endpoint = str(endpoint or "").strip()
+        if not endpoint or endpoint.lower() == "auto":
+            return None
+        try:
+            for p in self.manager.API.get_providers():
+                if p.get("id") == endpoint or p.get("name") == endpoint:
+                    return p
+        except Exception:
+            pass
+        return None
+
+    async def _approval_error(self, action: str, detail: str = ""):
+        """Return an error string when approval is required but missing; None if approved."""
+        if not self.config.get("ask_before_generate"):
+            return None
+
+        ask_mod = self.manager.modules.get("ask_user")
+        if not ask_mod or not hasattr(ask_mod, "ask"):
+            return ("Approval is required because 'ask before generate/edit' is enabled, "
+                    "but the ask_user module is not enabled. Enable ask_user or turn the toggle off.")
+
+        prompt = f"{action}\n{detail}" if detail else action
+        ack = await ask_mod.ask(
+            prompt,
+            options=["Proceed", "Cancel"],
+            timeout=60,
+            default_choice="Cancel",
+        )
+        content = (ack or {}).get("content") or {}
+        if ack.get("status") != "success":
+            return content.get("error") or "Image action was not approved."
+
+        answer = str(content.get("answer") or "").strip().lower()
+        if answer not in ("proceed", "yes", "y", "ok", "approve", "confirm"):
+            return "Image action cancelled by user."
+        return None
 
 
     def _safe_image_path(self, path_str: str) -> str:
@@ -152,21 +182,19 @@ class ImageTools(core.module.Module):
         if self.config.get("enabled") is False:
             return self.result("Image generation is currently disabled in settings.", success=False)
 
+        if not prompt or not str(prompt).strip():
+            return self.result("Prompt cannot be empty.", success=False)
+
         effective_model = self._get_image_model()
         configured_endpoint = self.config.get("endpoint") or "auto"
 
-        if self.config.get("ask_before_generate"):
-            ask_mod = self.manager.modules.get("ask_user")
-            if ask_mod and hasattr(ask_mod, "ask"):
-                q_text = f"🎨 Image generation requested:\n- Prompt: '{prompt}'\n- Model: {effective_model}\n- Endpoint: {configured_endpoint}\n\nProceed with generation?"
-                ack = await ask_mod.ask(q_text, options=["Proceed", "Cancel"], timeout=60, default_choice="Proceed")
-                if ack.get("status") == "success":
-                    ans = str(ack.get("content", {}).get("answer", "")).lower()
-                    if ans in ("cancel", "no", "stop", "abort"):
-                        return self.result("Image generation cancelled by user.", success=False)
+        approval_error = await self._approval_error(
+            "🎨 Image generation requested:",
+            f"- Prompt: '{prompt}'\n- Model: {effective_model}\n- Endpoint: {configured_endpoint}\n\nProceed with generation?"
+        )
+        if approval_error:
+            return self.result(approval_error, success=False)
 
-        if not prompt or not str(prompt).strip():
-            return self.result("Prompt cannot be empty.", success=False)
         backend = self.config.get("backend") or "mock"
         out_dir = self._get_output_dir()
         os.makedirs(out_dir, exist_ok=True)
@@ -222,7 +250,10 @@ class ImageTools(core.module.Module):
                     await self.channel.push(
                         f"🎨 **Generated Image**: `{result_data['filename']}`\n\n"
                         f"![{prompt}]({inline_url})\n\n*Prompt: {prompt}*",
-                        defer=False
+                        defer=False,
+                        # shown immediately, but the tool result already carries
+                        # this info; don't inject an assistant message mid tool call
+                        add_to_context=False
                     )
                 except Exception:
                     pass
@@ -260,11 +291,24 @@ class ImageTools(core.module.Module):
     async def _generate_openai(self, prompt: str, size: str, style: str, target_path: str, model: str = None):
         """Calls OpenAI DALL-E / compatible image generation endpoint."""
         prov_url, prov_key = None, None
-        if hasattr(self.manager.API, "get_image_model_provider"):
+
+        # explicit endpoint setting wins over model-based provider discovery
+        endpoint_name = str(self.config.get("endpoint") or "auto").strip()
+        provider = self._provider_for_endpoint(endpoint_name)
+        if endpoint_name.lower() != "auto" and not provider:
+            raise RuntimeError(f"Configured image endpoint '{endpoint_name}' was not found")
+        if not provider and hasattr(self.manager.API, "get_image_model_provider"):
             p, _ = self.manager.API.get_image_model_provider()
             if p:
-                prov_url = p.get("url")
-                prov_key = p.get("key")
+                provider = p
+        if provider:
+            prov_url = provider.get("url")
+            prov_key = provider.get("key")
+        elif endpoint_name.lower() == "auto":
+            # single-endpoint setups (e.g. llama-swap) serve images from the
+            # same base URL as chat, so fall back to the active API endpoint
+            prov_url = core.config.get("api", "url")
+            prov_key = core.config.get("api", "key")
 
         api_key = prov_key or self.config.get("openai_api_key") or core.config.get("api", "key", default="")
         api_url = (prov_url or self.config.get("openai_api_url") or "https://api.openai.com/v1").rstrip("/")
@@ -283,6 +327,9 @@ class ImageTools(core.module.Module):
         }
         if model == "dall-e-3" and style in ("vivid", "natural"):
             payload["style"] = style
+        if model == "dall-e-3":
+            quality = str(self.config.get("quality") or "high").lower()
+            payload["quality"] = "hd" if quality in ("high", "hd") else "standard"
 
         async with httpx.AsyncClient(timeout=90.0) as client:
             resp = await client.post(endpoint, json=payload, headers=headers)
@@ -300,9 +347,14 @@ class ImageTools(core.module.Module):
                 with open(target_path, "wb") as f:
                     f.write(raw_bytes)
             elif "url" in first_item:
-                img_resp = await client.get(first_item["url"])
+                img_url = str(first_item["url"])
+                if urllib.parse.urlparse(img_url).scheme not in ("http", "https"):
+                    raise RuntimeError("Image API returned a non-http(s) image URL")
+                img_resp = await client.get(img_url)
                 if img_resp.status_code != 200:
                     raise RuntimeError(f"Failed to download image URL: {img_resp.status_code}")
+                if len(img_resp.content) > 50 * 1024 * 1024:
+                    raise RuntimeError("Image download exceeded the 50 MB limit")
                 with open(target_path, "wb") as f:
                     f.write(img_resp.content)
             else:
@@ -370,7 +422,13 @@ class ImageTools(core.module.Module):
         if not os.path.isfile(src):
             return self.result(f"File not found: {image_path}", success=False)
 
+        approval_error = await self._approval_error("Image edit requested:", f"add_text on {image_path}")
+        if approval_error:
+            return self.result(approval_error, success=False)
+
         dest = self._resolve_dest(output_path, src, suffix="_caption")
+        if not dest:
+            return self.result("Output path must be inside the project or image output directory.", success=False)
         try:
             with Image.open(src) as img:
                 out = img.convert("RGB")
@@ -417,7 +475,13 @@ class ImageTools(core.module.Module):
         width = max(1, int(width))
         height = max(1, int(height))
 
+        approval_error = await self._approval_error("Image edit requested:", f"resize to {width}x{height}")
+        if approval_error:
+            return self.result(approval_error, success=False)
+
         dest = self._resolve_dest(output_path, src, suffix=f"_resize_{width}x{height}")
+        if not dest:
+            return self.result("Output path must be inside the project or image output directory.", success=False)
         try:
             with Image.open(src) as img:
                 out = img.resize((width, height), Image.Resampling.LANCZOS)
@@ -451,7 +515,13 @@ class ImageTools(core.module.Module):
         if right <= left or bottom <= top:
             return self.result("Invalid crop coordinates: right must be > left, and bottom must be > top.", success=False)
 
+        approval_error = await self._approval_error("Image edit requested:", f"crop {image_path}")
+        if approval_error:
+            return self.result(approval_error, success=False)
+
         dest = self._resolve_dest(output_path, src, suffix="_crop")
+        if not dest:
+            return self.result("Output path must be inside the project or image output directory.", success=False)
         try:
             with Image.open(src) as img:
                 w, h = img.size
@@ -487,7 +557,13 @@ class ImageTools(core.module.Module):
         if not os.path.isfile(src):
             return self.result(f"File not found: {image_path}", success=False)
 
+        approval_error = await self._approval_error("Image edit requested:", f"rotate by {angle} degrees")
+        if approval_error:
+            return self.result(approval_error, success=False)
+
         dest = self._resolve_dest(output_path, src, suffix=f"_rot_{int(angle)}")
+        if not dest:
+            return self.result("Output path must be inside the project or image output directory.", success=False)
         try:
             with Image.open(src) as img:
                 rotated = img.rotate(float(angle), expand=bool(expand), resample=Image.Resampling.BICUBIC)
@@ -517,7 +593,14 @@ class ImageTools(core.module.Module):
             return self.result(f"File not found: {image_path}", success=False)
 
         mode_clean = mode.lower().strip()
+
+        approval_error = await self._approval_error("Image edit requested:", f"flip {mode_clean}")
+        if approval_error:
+            return self.result(approval_error, success=False)
+
         dest = self._resolve_dest(output_path, src, suffix=f"_flip_{mode_clean}")
+        if not dest:
+            return self.result("Output path must be inside the project or image output directory.", success=False)
         try:
             with Image.open(src) as img:
                 if mode_clean in ("vertical", "v"):
@@ -549,7 +632,14 @@ class ImageTools(core.module.Module):
             return self.result(f"File not found: {image_path}", success=False)
 
         f_name = filter_type.lower().strip()
+
+        approval_error = await self._approval_error("Image edit requested:", f"apply {f_name} filter")
+        if approval_error:
+            return self.result(approval_error, success=False)
+
         dest = self._resolve_dest(output_path, src, suffix=f"_{f_name}")
+        if not dest:
+            return self.result("Output path must be inside the project or image output directory.", success=False)
 
         try:
             with Image.open(src) as img:
@@ -606,8 +696,16 @@ class ImageTools(core.module.Module):
         if fmt == "jpg":
             fmt = "jpeg"
 
-        dest = output_path or os.path.splitext(src)[0] + f".{fmt}"
-        dest = self._safe_image_path(dest)
+        approval_error = await self._approval_error("Image edit requested:", f"convert to {fmt}")
+        if approval_error:
+            return self.result(approval_error, success=False)
+
+        if output_path:
+            dest = self._safe_image_path(output_path)
+        else:
+            dest = os.path.join(self._get_output_dir(), f"{Path(src).stem}_converted.{fmt}")
+        if not dest or not self._is_allowed_dest(dest):
+            return self.result("Output path must be inside the project or image output directory.", success=False)
 
         try:
             with Image.open(src) as img:
@@ -689,10 +787,28 @@ class ImageTools(core.module.Module):
     # Helper Paths
     # -------------------------------------------------------------------------
 
+    def _is_allowed_dest(self, path: str) -> bool:
+        """Writes are only allowed under the project root or the image output dir."""
+        try:
+            target = Path(path).resolve()
+        except Exception:
+            return False
+        roots = []
+        try:
+            roots.append(Path(core.get_path()).resolve())
+        except Exception:
+            pass
+        try:
+            roots.append(Path(self._get_output_dir()).resolve())
+        except Exception:
+            pass
+        return any(target == root or root in target.parents for root in roots)
+
     def _resolve_dest(self, requested_dest: str, src_path: str, suffix: str = "") -> str:
         """Determines destination path for an edit operation."""
         if requested_dest:
-            return self._safe_image_path(requested_dest)
+            dest = self._safe_image_path(requested_dest)
+            return dest if dest and self._is_allowed_dest(dest) else None
 
         p = Path(src_path)
         out_dir = self._get_output_dir()
@@ -761,21 +877,19 @@ class ImageTools(core.module.Module):
                 })
 
         return {
-            "enabled": self.config.get("enabled", True),
-            "ask_before_generate": self.config.get("ask_before_generate", False),
-            "endpoint": self.config.get("endpoint", "auto"),
+            "enabled": self.config.get("enabled") is not False,
+            "ask_before_generate": bool(self.config.get("ask_before_generate")),
+            "endpoint": self.config.get("endpoint") or "auto",
             "model": self._get_image_model(),
-            "quality": self.config.get("quality", "high"),
-            "edit_endpoint": self.config.get("edit_endpoint", "auto"),
-            "edit_model": self.config.get("edit_model", "same"),
+            "quality": self.config.get("quality") or "high",
             "providers": providers
         }
 
-    @webui.route("settings", method="POST")
+    @webui.route("settings", method="POST", admin_only=True)
     async def _route_save_settings(self, body=None, query=None):
-        """Saves image generation & editing settings."""
+        """Saves image generation settings."""
         body = body or {}
-        for key in ("enabled", "ask_before_generate", "endpoint", "model", "quality", "edit_endpoint", "edit_model"):
+        for key in ("enabled", "ask_before_generate", "endpoint", "model", "quality"):
             if key in body:
                 self.config.set(key, body[key])
         if "model" in body and body["model"]:

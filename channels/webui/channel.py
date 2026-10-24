@@ -2205,7 +2205,9 @@ async def create_fastapi(channel):
             return api_result("Model name cannot be empty", success=False)
 
         channel.manager.API.set_model(name)
-        await channel.manager.API.connect(silent=True)
+        connected = await channel.manager.API.connect(silent=True)
+        if isinstance(connected, core.api.APIError):
+            return api_result(str(connected), success=False)
         return api_result({
             "name": name,
             "max_context": channel.manager.API.get_max_context(name)
@@ -2269,6 +2271,9 @@ async def create_fastapi(channel):
         url = data.get("url", "")
         key = data.get("key", "")
         res = await channel.manager.API.test_provider_connection(url, key)
+        # keep the internal/refresh model list complete, but only echo a slice to the UI
+        if isinstance(res.get("models"), list) and len(res["models"]) > 60:
+            res["models"] = res["models"][:60]
         return api_result(res, success=res.get("success", False))
 
     @app.post("/api/provider/add")
@@ -2320,6 +2325,8 @@ async def create_fastapi(channel):
         if not pid:
             return api_result("Missing provider ID", success=False)
         models = await channel.manager.API.refresh_provider_models(pid)
+        if models is None:
+            return api_result("Could not fetch models from the provider. Check the URL and API key.", success=False)
         return api_result(models, success=True)
 
     @app.post("/api/provider/model/update")
@@ -2355,6 +2362,17 @@ async def create_fastapi(channel):
         # the frontend sends the category tree it got from settings/load,
         # with edited values; rebuild the raw config dict from it
         flattened = flatten_categories(data.get("categories", {}))
+
+        # api.url / api.key / api.providers are managed by the provider manager
+        # and are hidden from the settings form. keep the live values instead of
+        # writing back the snapshot taken when settings were opened, otherwise a
+        # save of any unrelated setting reverts provider changes.
+        live_api = core.config.config.get("api") or {}
+        flat_api = flattened.get("api")
+        if isinstance(flat_api, dict):
+            for live_key in ("url", "key", "providers"):
+                if live_key in live_api:
+                    flat_api[live_key] = copy.deepcopy(live_api[live_key])
 
         # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         # snapshot the pre-save config so we can tell the frontend whether
@@ -3063,6 +3081,20 @@ class WebSocketManager:
             await self.set_stream_state("idle")
 
     async def start_stream(self, channel, chat_id: str, message: str, files: list = None):
+        # if the AI is waiting on an ask_user question, treat this message as the
+        # answer instead of cancelling the paused turn (which would lose it)
+        ask_mod = (getattr(channel.manager, "modules", None) or {}).get("ask_user")
+        if not files and message and ask_mod and hasattr(ask_mod, "try_intercept_chat_answer"):
+            try:
+                answer_text = ask_mod.try_intercept_chat_answer(message, chat_id)
+                if answer_text:
+                    # deferred: lands in history after the resumed turn's final
+                    # message, keeping the tool-call chain valid and the answer visible
+                    await channel.push({"role": "user", "content": answer_text})
+                    return
+            except Exception as e:
+                channel.log(channel.name, f"ask_user intercept failed: {core.detail_error(e)}")
+
         if self.active_stream_task and not self.active_stream_task.done():
             self.active_stream_task.cancel()
 

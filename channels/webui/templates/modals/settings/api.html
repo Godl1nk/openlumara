@@ -1,6 +1,6 @@
 <!-- API & Model Providers Settings Section -->
 <template x-if="activeCategory === 'api' && !activeModule && !activeChannel">
-    <div class="settings-section api-settings-page" x-data="providerManagerComponent()" x-init="init()">
+    <div class="settings-section api-settings-page" x-data="providerManagerComponent()">
         <!-- Section Header -->
         <div class="api-page-header">
             <div class="api-page-title-group">
@@ -75,7 +75,6 @@
                 <select class="provider-format-select" x-model="formFormat">
                     <option value="auto">API: Auto</option>
                     <option value="openai">API: OpenAI</option>
-                    <option value="anthropic">API: Anthropic</option>
                 </select>
                 <div class="provider-key-field">
                     <span class="key-icon" aria-hidden="true">
@@ -97,9 +96,15 @@
                     @click="submitAddProvider()"
                     :disabled="adding || !formUrl.trim()"
                 >
-                    <span x-show="!adding">Add</span>
-                    <span x-show="adding">Adding...</span>
+                    <span x-show="!adding" x-text="editingProviderId ? 'Save' : 'Add'"></span>
+                    <span x-show="adding" x-text="editingProviderId ? 'Saving...' : 'Adding...'"></span>
                 </button>
+                <button
+                    type="button"
+                    class="provider-tool-btn"
+                    x-show="editingProviderId"
+                    @click="cancelEditProvider()"
+                >Cancel</button>
             </div>
 
             <div class="provider-error-msg" x-show="formError" x-text="formError"></div>
@@ -122,11 +127,9 @@
                                 </span>
                                 <span class="provider-card-name" x-text="formatProviderName(prov)"></span>
                                 <span class="badge-tag proxy" x-text="getProviderTypeBadge(prov)"></span>
-                                <span class="badge-tag responses">RESPONSES</span>
                                 <span class="badge-tag count" x-text="enabledModelCount(prov) + '/' + (prov.models || []).length + ' models enabled'"></span>
                             </div>
                             <div class="provider-card-subtitle">
-                                <span class="provider-card-hint">Click to manage models</span>
                                 <span class="provider-card-endpoint" x-text="prov.url + (prov.key ? ' (key ' + maskKey(prov.key) + ')' : '')"></span>
                             </div>
                         </div>
@@ -147,6 +150,11 @@
                                 @click="toggleProviderEnabled(prov)"
                                 x-text="prov.enabled ? 'Disable' : 'Enable'"
                             ></button>
+                            <button
+                                type="button"
+                                class="provider-tool-btn"
+                                @click="beginEditProvider(prov)"
+                            >Edit</button>
                             <button
                                 type="button"
                                 class="provider-tool-btn delete"
@@ -288,8 +296,10 @@
             </template>
         </div>
 
-        <!-- 3. IMAGE GENERATION & EDITING SETTINGS (Matches user screenshot) -->
-        <div class="image-gen-card" x-data="imageGenSettingsComponent()" x-init="init()">
+        <!-- 2. IMAGE GENERATION -->
+        {% set img_cfg = core_config.get('modules', 'settings', 'image_tools', {}) or {} %}
+        {% if 'image_tools' in (core_config.get('modules', 'enabled', []) or []) and img_cfg.get('enable_webui_extension', True) %}
+        <div class="image-gen-card" x-data="imageGenSettingsComponent()">
             <!-- Header Row with Master Toggle -->
             <div class="image-gen-header">
                 <div class="image-gen-title-group">
@@ -308,6 +318,7 @@
                 </label>
             </div>
             <div class="image-gen-subtext">Configure which model to use for image generation.</div>
+            <div class="provider-error-msg" x-show="error" x-text="error"></div>
 
             <!-- Ask Before Generate / Edit Row with Toggle -->
             <div class="image-gen-toggle-row">
@@ -360,37 +371,9 @@
                         <option value="hd">HD (Ultra)</option>
                     </select>
                 </div>
-
-                <!-- Subheading: Image Editing -->
-                <div class="image-edit-section-header">Image Editing</div>
-
-                <!-- Editing Endpoint -->
-                <div class="image-gen-field-row">
-                    <label class="field-label" for="image-edit-endpoint-select">Endpoint</label>
-                    <select id="image-edit-endpoint-select" class="image-gen-select" x-model="settings.edit_endpoint" @change="save()">
-                        <option value="auto">Auto-detect</option>
-                        <template x-for="p in providers" :key="'img-edit-prov-' + p.id">
-                            <option :value="p.name" x-text="p.name" :selected="settings.edit_endpoint === p.name"></option>
-                        </template>
-                    </select>
-                </div>
-
-                <!-- Editing Model -->
-                <div class="image-gen-field-row">
-                    <label class="field-label" for="image-edit-model-select">Model</label>
-                    <select id="image-edit-model-select" class="image-gen-select" x-model="settings.edit_model" @change="save()">
-                        <option value="same">Same as generation</option>
-                        <option value="Qwen-Image-2.1">Qwen-Image-2.1</option>
-                        <option value="FLUX.2-klein">FLUX.2-klein</option>
-                        <option value="dall-e-2">dall-e-2</option>
-                        <template x-for="m in availableModels" :key="'img-edit-m-' + m">
-                            <option :value="m" x-text="m" :selected="settings.edit_model === m"></option>
-                        </template>
-                    </select>
-                </div>
             </div>
         </div>
-
+        {% endif %}
 
         <!-- 3. ADVANCED API SETTINGS -->
         <div class="api-advanced-settings-card" x-data="{ openAdvanced: false }">
@@ -403,7 +386,7 @@
             <div class="api-advanced-fields" x-show="openAdvanced">
                 <template x-for="hierarchyItem in getHierarchicalSettings()" :key="hierarchyItem.key">
                     <template x-if="!['url', 'key', 'providers'].includes(hierarchyItem.key)">
-                        <div class="field-row">
+                        <div class="field-row" x-data="{ setting: hierarchyItem.setting }">
                             <label class="field-label" x-text="hierarchyItem.setting.title || hierarchyItem.key"></label>
                             {% include 'modals/settings/fields.html' %}
                         </div>

@@ -234,7 +234,7 @@ class Channel:
         """
         pass
 
-    async def push(self, message, defer=True):
+    async def push(self, message, defer=True, add_to_context=True):
         """push a message to the push queue, which will instantly display it in all channels"""
 
         if not hasattr(self, "push_queue"):
@@ -248,8 +248,9 @@ class Channel:
 
         # deferred messages are added to context by _push_consumer() once the
         # turn is done, so they can't end up between the toolcall chain and
-        # the final message
-        if not defer:
+        # the final message. non-persisted pushes (add_to_context=False) are
+        # display-only; used for UI notices that must not become history.
+        if not defer and add_to_context:
             await self.context.chat.messages.add(message)
 
         await self.push_queue.put((message, defer))

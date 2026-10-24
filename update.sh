@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# work from the repo this script lives in, even when invoked from elsewhere
+cd "$(dirname "$0")" || exit 1
+
 # Ensure origin points to Godl1nk repository
 git remote set-url origin https://github.com/Godl1nk/openlumara.git 2>/dev/null
 
@@ -22,6 +25,7 @@ else
     echo "warning: git fetch failed. skipping update check."
 fi
 
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 if [ ! -d "venv" ]; then
     echo "setting up virtual environment with $PYTHON_BIN..."
     $PYTHON_BIN -m venv venv

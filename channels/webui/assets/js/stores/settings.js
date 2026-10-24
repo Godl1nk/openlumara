@@ -132,7 +132,10 @@ SETTINGS_STORE = {
         this.loading = true;
 
         try {
-            this.cachedModels = await simpleApiFetch('/api/models');
+            const res = await simpleApiFetch('/api/models');
+            // the endpoint returns {models, current, image_model, ...}; keep the
+            // store's cachedModels an array for every existing consumer
+            this.cachedModels = Array.isArray(res?.models) ? res.models : [];
             this.modelsLoadError = null;
         } catch (err) {
             console.error('Failed to fetch models:', err);

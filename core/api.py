@@ -169,17 +169,21 @@ class APIClient():
         target_model = core.config.get("model", "name")
         prov, _ = self.find_provider_for_model(target_model)
         if not prov:
-            for p in self.get_providers():
-                if p.get("enabled", True) and p.get("url") and p.get("url") != "http://API_URL_HERE/v1":
-                    prov = p
-                    break
+            # only fall back to another provider when the API is still unconfigured,
+            # so a manually configured api.url is never clobbered
+            current_url = core.config.get("api", "url")
+            if not current_url or current_url == "http://API_URL_HERE/v1":
+                for p in self.get_providers():
+                    if p.get("enabled", True) and p.get("url") and p.get("url") != "http://API_URL_HERE/v1":
+                        prov = p
+                        break
 
         if prov and prov.get("url"):
             if "api" not in core.config.config:
                 core.config.config["api"] = {}
             core.config.config["api"]["url"] = prov["url"]
-            if prov.get("key"):
-                core.config.config["api"]["key"] = prov["key"]
+            # always assign, so a key from a previous provider can never leak to this one
+            core.config.config["api"]["key"] = prov.get("key") or ""
             # Sync max_context for the active model
             core.config.config["api"]["max_context"] = self.get_max_context(target_model)
             core.config.config.save()
@@ -384,8 +388,8 @@ class APIClient():
             if "api" not in core.config.config:
                 core.config.config["api"] = {}
             core.config.config["api"]["url"] = p["url"]
-            if p.get("key"):
-                core.config.config["api"]["key"] = p["key"]
+            # always assign, so a key from a previous provider can never leak to this one
+            core.config.config["api"]["key"] = p.get("key") or ""
             self._router_origin = None
             self.connected = False
 
@@ -394,10 +398,6 @@ class APIClient():
         if "api" not in core.config.config:
             core.config.config["api"] = {}
         core.config.config["api"]["max_context"] = eff_ctx
-
-        # Sync model's thinking effort if defined
-        if m and m.get("thinking_effort") and m["thinking_effort"] != "default":
-            core.config.config["model"]["reasoning_effort"] = m["thinking_effort"]
 
         core.config.config.save()
         return True
@@ -413,14 +413,20 @@ class APIClient():
                     return int(ctx_val)
                 except (ValueError, TypeError):
                     pass
-            detected = self.detect_model_context(target)
-            if detected:
-                return int(detected)
 
+        # an explicitly configured window wins over the heuristic; "auto" means
+        # "use the global api.max_context" instead of guessing a different value
         try:
-            return int(core.config.get("api", "max_context", default=16768))
+            configured = int(core.config.get("api", "max_context", default=0) or 0)
+            if configured > 0:
+                return configured
         except (ValueError, TypeError):
-            return 16768
+            pass
+
+        detected = self.detect_model_context(target)
+        if detected:
+            return int(detected)
+        return 16768
     def get_image_model(self):
         return core.config.get("model", "image_model", default="dall-e-3")
 
@@ -429,6 +435,15 @@ class APIClient():
             core.config.config["model"] = {}
         core.config.config["model"]["image_model"] = str(name).strip()
         core.config.config.save()
+
+        # keep modules that resolve their own image model in sync with the
+        # global setting, so the model manager and the settings card agree
+        image_module = (getattr(self.manager, "modules", None) or {}).get("image_tools")
+        if image_module is not None and getattr(image_module, "config", None) is not None:
+            try:
+                image_module.config.set("model", str(name).strip())
+            except Exception:
+                pass
         return True
 
     def get_disabled_models(self) -> list:
@@ -463,6 +478,12 @@ class APIClient():
         """Returns all configured API providers, auto-seeding a default provider if empty."""
         providers = core.config.get("api", "providers", default=[])
         if not providers and core.config.get("api", "url"):
+            # only seed legacy configs that never had a providers list. an
+            # explicitly emptied list must stay empty (deleting the last
+            # provider should not resurrect a ghost provider on the next read)
+            api_section = core.config.config.get("api") or {}
+            if "providers" in api_section:
+                return []
             default_url = core.config.get("api", "url")
             parsed = urllib.parse.urlparse(default_url)
             host_label = parsed.netloc or "default-provider"
@@ -522,6 +543,10 @@ class APIClient():
         if not url_clean:
             return {"success": False, "error": "URL cannot be empty"}
 
+        parsed = urllib.parse.urlparse(url_clean)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return {"success": False, "error": "URL must be a valid http:// or https:// endpoint"}
+
         endpoint = f"{url_clean}/models"
         headers = {"Authorization": f"Bearer {key}"} if key else {}
         headers["Accept"] = "application/json"
@@ -549,7 +574,7 @@ class APIClient():
                         "success": True,
                         "latency_ms": latency,
                         "model_count": len(models),
-                        "models": models[:60]
+                        "models": models
                     }
         except Exception as e:
             latency = round((time.time() - t0) * 1000)
@@ -608,7 +633,7 @@ class APIClient():
 
         res = await self.test_provider_connection(target["url"], target.get("key", ""))
         if not res.get("success"):
-            return target.get("models", [])
+            return None
 
         discovered_ids = res.get("models", [])
         existing_map = {}
@@ -642,6 +667,18 @@ class APIClient():
                     if k != "id":
                         p[k] = v
                 self.save_providers(providers)
+
+                # if this provider serves the active model, keep the connection
+                # config in sync so an edited url/key takes effect immediately
+                active_model = core.config.get("model", "name")
+                active_provider, _ = self.find_provider_for_model(active_model)
+                if active_provider and active_provider.get("id") == provider_id:
+                    core.config.config.setdefault("api", {})
+                    core.config.config["api"]["url"] = p.get("url") or ""
+                    core.config.config["api"]["key"] = p.get("key") or ""
+                    core.config.config.save()
+                    self._router_origin = None
+                    self.connected = False
                 return p
         return None
 
@@ -671,8 +708,6 @@ class APIClient():
                                 if "api" not in core.config.config:
                                     core.config.config["api"] = {}
                                 core.config.config["api"]["max_context"] = eff_ctx
-                            if "thinking_effort" in settings and settings["thinking_effort"] != "default":
-                                core.config.config["model"]["reasoning_effort"] = settings["thinking_effort"]
 
                         if "enabled" in settings:
                             self.set_model_disabled(model_id, not settings["enabled"])
@@ -798,6 +833,9 @@ class APIClient():
         # add kwargs to the request
         for key, value in kwargs.items():
             if key in ("tools", "stream", "use_thinking"): continue
+            # None means "not set": never let it overwrite a resolved default
+            # (e.g. compression passes model=None when no compression model is configured)
+            if value is None: continue
             req[key] = value
 
         custom_effort = core.config.get("model", {}).get("custom_reasoning_effort")
