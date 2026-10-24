@@ -1168,6 +1168,11 @@ class APIClient():
         total_completion_tokens = 0
         last_token_time = 0
 
+        # llama.cpp router load-banner detection (see the reasoning branch below)
+        loader_probe = ""
+        loader_stream = False
+        content_seen = False
+
         if not response:
             return
 
@@ -1224,6 +1229,19 @@ class APIClient():
 
                     content_part = streamed_token.get("content")
                     reason_part = streamed_token.get("reasoning_content") or streamed_token.get("reasoning")
+
+                    # llama.cpp routers stream their own "loading model" banner as
+                    # reasoning tokens while swapping a model in (e.g. after an
+                    # image tool used another model). it is not model output, so
+                    # detect it once and drop the reasoning for that response
+                    if reason_part and not loader_stream and not content_seen:
+                        loader_probe = (loader_probe + reason_part)[:200]
+                        if loader_probe.lstrip().startswith("━") or "llama-swap loading model" in loader_probe:
+                            loader_stream = True
+                    if reason_part and loader_stream:
+                        reason_part = None
+                    if content_part:
+                        content_seen = True
 
                     # a single chunk can carry both (servers often batch the last
                     # reasoning delta with the first content delta), so emit each
