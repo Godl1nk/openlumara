@@ -402,6 +402,11 @@ class Manager:
                 except Exception as e:
                     self.log_error(f"Error shutting down {channel_name}", e)
 
+        try:
+            await self.API.disconnect()
+        except Exception as e:
+            self.log_error("Error disconnecting from the API", e)
+
         # remove the global instance
         global global_instance
         global_instance = None

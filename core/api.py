@@ -1,4 +1,5 @@
 import core
+import core.http_sse as http_sse
 import aiohttp
 import asyncio
 import copy
@@ -29,7 +30,7 @@ class APIError:
         return err_str
 
 class APIHTTPError(Exception):
-    """replaces the openai library's APIStatusError: an HTTP response with a non-200 status"""
+    """a HTTP response with a non-200 status"""
     def __init__(self, status: int, body: str = ""):
         self.status = status
         self.body = body or ""
@@ -39,6 +40,11 @@ class APIClient():
     """
     wrapper around an OpenAI-compatible chat completions API
     """
+
+    MAX_API_ATTEMPTS = 3
+    RETRY_BASE_DELAY = 0.5
+    RETRYABLE_STATUS_CODES = (408, 409, 425, 429, 500, 502, 503, 504)
+
     def __init__(self, manager):
         # store a reference to the manager
         self.manager = manager
@@ -49,11 +55,9 @@ class APIClient():
         self._messages = []
 
         self.cancel_request = False
-        # self.prompt_warming_up = False
-        # self.cancel_prompt_warmup = False
-        # self._warmup_task = None
-        # self._warmup_queue = asyncio.Queue()
-        # self._warmup_done = asyncio.Event()
+
+        # active low-level HTTP request task, used for reliable cancellation
+        self._request_task = None
 
         # the aiohttp session is the one HTTP client for everything
         self._session = None
@@ -96,33 +100,29 @@ class APIClient():
         async with self._session.get(url, **kwargs) as resp:
             return resp.status, await resp.text()
 
-    async def _iter_sse(self, response):
-        """
-        parses a text/event-stream response body into JSON objects
-        """
-        buffer = ""
-        async for raw in response.content.iter_any():
-            buffer += raw.decode("utf-8", errors="replace")
+    async def _probe_chat_completions(self):
+        """validate the API with a minimal chat completion request"""
+        api_config = core.config.get("api", {})
+        
+        probe_body = {
+            "messages": [{"role": "user", "content": "ping"}],
+            "stream": False,
+            "max_completion_tokens": 1,
+        }
+        model_name = core.config.get("model", "name")
+        if model_name:
+            probe_body["model"] = model_name
 
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                line = line.rstrip("\r")
+        kwargs = {"headers": self._json_headers(), "json": probe_body}
+        if self._ssl_ctx is not None:
+            kwargs["ssl"] = self._ssl_ctx
 
-                if not line.startswith("data:"):
-                    # skip comments (":") and event:/id: fields
-                    continue
-
-                data_str = line[5:].strip()
-                if not data_str:
-                    continue
-
-                if data_str == "[DONE]":
-                    return
-
-                try:
-                    yield json.loads(data_str)
-                except json.JSONDecodeError:
-                    continue
+        async with self._session.post(
+            f"{api_config.get('url')}/chat/completions",
+            timeout=aiohttp.ClientTimeout(total=60, connect=15),
+            **kwargs,
+        ) as resp:
+            return resp.status, await resp.text()
 
     def _error_for_status(self, status, body, prefix=""):
         """maps an HTTP error response onto a APIError"""
@@ -170,19 +170,25 @@ class APIClient():
                 self._ssl_ctx.check_hostname = False
                 self._ssl_ctx.verify_mode = ssl.CERT_NONE
 
-            # validate the connection by listing models
-            status, body = await self._http_get(f"{api_config.get('url')}/models")
+            # validate the connection with a minimal chat-completions request
+            status, body = await self._probe_chat_completions()
 
-            if status == 400:
+            if status in (400, 404):
                 error_str = body.lower()
                 if "model" in error_str and ("not found" in error_str or "missing" in error_str):
                     return APIError("Model not found.")
-                return APIError("Bad request", APIHTTPError(status, body))
+                if status == 400:
+                    pass
+                else:
+                    return APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
 
-            if status in (401, 403):
+            elif status in (401, 403):
                 return APIError("Authentication failed. Check if your API key is valid.", APIHTTPError(status, body))
 
-            if status != 200:
+            elif status == 405:
+                return APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
+
+            elif status != 200:
                 return APIError("Failed to connect to the API", APIHTTPError(status, body))
 
         except aiohttp.ClientError as e:
@@ -204,12 +210,6 @@ class APIClient():
 
         if not silent:
             self.manager.log("API", "Successfully connected to AI")
-
-        # send the system prompt in the background,
-        # so that the AI is ready to respond right away when the user has finished
-        # typing their message
-        # (thanks to https://www.reddit.com/r/LocalLLaMA/comments/1uskb1g/speculative_cache_warming_warms_your_cache_while/ for the idea)
-        
 
         return True
     
@@ -238,6 +238,10 @@ class APIClient():
     async def disconnect(self):
         """disconnect from the API"""
         await self._close_session()
+
+        # clear per-session state
+        self._ssl_ctx = None
+        self._router_origin = None
 
         self.connected = False
         return True
@@ -289,13 +293,17 @@ class APIClient():
                 kwargs["ssl"] = self._ssl_ctx
 
             async with self._session.get(url, **kwargs) as feed:
-                async for event in self._iter_sse(feed):
+                async for event in http_sse.iter_events(feed):
+                    # the SSE parser merges the event/id fields into the
+                    # parsed data payload
                     if event.get("event") not in ("status_change", "model_status"):
                         continue
 
-                    data = event.get("data") or {}
+                    # the payload IS the event data (status/model/progress live
+                    # at the top level of the parsed JSON)
+                    data = event
                     status = data.get("status") or ""
-                    name = event.get("model") or ""
+                    name = data.get("model") or ""
 
                     if status in ("loaded", "unloaded"):
                         # let the prompt/content tokens take over the progress indicator
@@ -366,6 +374,20 @@ class APIClient():
 
             return json.loads(body)
 
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara status:reviewed
+	# ROSE22: i mean, this is just an exception parser.
+    def _is_retryable_error(self, exc):
+        """whether a failed request may be retried"""
+        if isinstance(exc, APIHTTPError):
+            return exc.status in self.RETRYABLE_STATUS_CODES
+        if isinstance(exc, aiohttp.ClientSSLError):
+            return False
+        if isinstance(exc, aiohttp.ClientConnectionError):
+            return True
+        if isinstance(exc, asyncio.TimeoutError):
+            return True
+        return False
+
     async def _request(self, context, tools=None, stream=False, use_thinking=True, **kwargs):
         """send a request to the LLM and return the response (dict, or an open SSE response when streaming)"""
 
@@ -392,8 +414,8 @@ class APIClient():
             "stream": stream,
             "temperature": core.config.get("model", {}).get("temperature", 0.7),
             "max_completion_tokens": core.config.get("api", {}).get("max_output_tokens", 8192),
-            # extra_body fields are flattened into the JSON body by the openai library
-            # anyway, so we just put them at the top level ourselves
+            
+            # llamacpp-specific extras
             "chat_template_kwargs": {
                 "enable_thinking": core.config.get("model", "enable_thinking", default=use_thinking)
             },
@@ -463,30 +485,58 @@ class APIClient():
 #             )
 
         response = None
+        attempt = 1
         try:
-            # if at this point a cancel was already requested,
-            # it was likely from a toolcalling chain, so abort EVERYTHING
-            if self.cancel_request:
-                raise asyncio.CancelledError("Request cancelled")
+            # retry loop
+            while True:
+                try:
+                    # if at this point a cancel was already requested,
+                    # it was likely from a toolcalling chain, so abort EVERYTHING
+                    if self.cancel_request:
+                        raise asyncio.CancelledError("Request cancelled")
 
-            request_task = asyncio.create_task(self._post_chat_completion(req, stream=stream))
+                    request_task = asyncio.create_task(self._post_chat_completion(req, stream=stream))
+                    # keep a reference so cancel() can abort a request that
+                    # is still in-flight (before streaming started)
+                    self._request_task = request_task
 
-            # wrap the request in a task that we can poll for cancellation,
-            # so a cancel (e.g. from the toolcalling chain or the UI's stop button)
-            # aborts even while a llama.cpp router is busy swapping a model in
-            # (against an openai-compatible router, the POST blocks while a model
-            #  is being loaded, which can take a while)
+                    # wrap the request in a task that we can poll for cancellation,
+                    # so a cancel aborts no matter what
+                    try:
+                        while not request_task.done():
+                            if self.cancel_request:
+                                request_task.cancel()
+                            await asyncio.sleep(0.1)
 
-            while not request_task.done():
-                if self.cancel_request:
-                    request_task.cancel()
-                await asyncio.sleep(0.1)
+                        response = await request_task
+                    except asyncio.CancelledError:
+                        if not request_task.done():
+                            request_task.cancel()
+                        raise
+                    finally:
+                        self._request_task = None
 
-            try:
-                response = await request_task
-            except asyncio.CancelledError:
-                self.cancel_request = False
-                raise asyncio.CancelledError("Request cancelled")
+                    break
+
+                except (APIHTTPError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt >= self.MAX_API_ATTEMPTS or not self._is_retryable_error(e) or self.cancel_request:
+                        raise
+
+                    delay = self.RETRY_BASE_DELAY * attempt
+                    self.manager.log(
+                        "API",
+                        f"request failed ({type(e).__name__}), retrying in {delay:.1f}s "
+                        f"(attempt {attempt + 1}/{self.MAX_API_ATTEMPTS})"
+                    )
+
+                    # wait with backoff, while staying responsive to cancellation
+                    waited = 0.0
+                    while waited < delay:
+                        if self.cancel_request:
+                            raise asyncio.CancelledError("Request cancelled")
+                        await asyncio.sleep(0.1)
+                        waited += 0.1
+                    attempt += 1
 
         except asyncio.CancelledError as e:
             self.cancel_request = False
@@ -505,34 +555,12 @@ class APIClient():
 
         finally:
             self.cancel_request = False
+            self._request_task = None
 
 #         if core.debug:
 #             self.manager.log("debug:response", str(response))
 
         return response
-
-    async def stop_prompt_warmup(self):
-        if self._warmup_task and not self._warmup_task.done():
-            self.cancel_prompt_warmup = True
-            self._warmup_task.cancel()
-            try:
-                await self._warmup_task
-            except asyncio.CancelledError:
-                return
-            except Exception as e:
-                self.manager.log_error("Warmup task failed", e)
-            finally:
-                self.cancel_prompt_warmup = False
-
-        # clear the queue completely
-        while not self._warmup_queue.empty():
-            try:
-                self._warmup_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-
-        self._warmup_task = None
-        self.prompt_warming_up = False
 
     async def send(self, context: list, system_prompt=True, use_tools=True, tools=None, use_thinking=True, **kwargs):
         """send a message to the LLM. returns a dict or APIError"""
@@ -589,6 +617,7 @@ class APIClient():
 
         request_task = asyncio.create_task(self._request(context, tools=(tools if use_tools else None), stream=True, use_thinking=use_thinking, **kwargs))
 
+        response = None
         try:
             while True:
                 while load_queue and not load_queue.empty():
@@ -604,6 +633,11 @@ class APIClient():
         finally:
             if load_task and not load_task.done():
                 load_task.cancel()
+
+            # if we bailed out before the request resolved (cancel, generator
+            # closed early, etc.), make sure the request itself is aborted too
+            if response is None and not request_task.done():
+                request_task.cancel()
 
         # return errors if applicable
         if isinstance(response, APIError):
@@ -636,11 +670,21 @@ class APIClient():
                 response.close()
 
     async def cancel(self):
-        """cancel a request that's been sent to the AI"""
-        if not self.is_streaming:
-            return False
-
+        """
+        cancel a request that's been sent to the AI.
+        safe to call at any time, also when nothing is active.
+        """
         self.cancel_request = True
+
+        request_task = self._request_task
+        if request_task and not request_task.done():
+            # request is in-flight but not streaming yet
+            request_task.cancel()
+
+        if not self.is_streaming and not (request_task and not request_task.done()):
+            # nothing was active, so clear the flag
+            self.cancel_request = False
+            return False
 
         # wait for the cancellation to complete
         while self.cancel_request:
@@ -704,7 +748,7 @@ class APIClient():
 
         response_started = False
         try:
-            async for chunk in self._iter_sse(response):
+            async for chunk in http_sse.iter_events(response):
                 if not response_started:
                     # mark it as started so that we can detect if the API has returned a blank message
                     # (for example due to an error the inference server, i.e. llamacpp, failed to send)
@@ -714,6 +758,27 @@ class APIClient():
                     # closing the response severs the HTTP connection immediately
                     response.close()
                     raise asyncio.CancelledError("Request cancelled")
+
+                if chunk.get("error") is not None or chunk.get("event") == "error":
+					# surface errors if they appear
+                    err = chunk.get("error")
+                    message = None
+                    if isinstance(err, dict):
+                        inner = err.get("error")
+                        message = err.get("message")
+                        if message is None and isinstance(inner, dict):
+                            message = inner.get("message")
+                        elif message is None and isinstance(inner, str):
+                            message = inner
+                        if message is None:
+                            message = json.dumps(err)
+                    elif err is not None:
+                        message = str(err)
+                    if not message:
+                        message = "The API reported an error while streaming the response."
+
+                    yield {"type": "error", "content": str(message)}
+                    return
 
                 # uncomment if trying to see token stream chunks
                 #print(chunk)
@@ -856,7 +921,8 @@ class APIClient():
     async def list_models(self):
         if not self.connected:
             result = await self.attempt_connect()
-            return result
+            if result is not True:
+                return result
 
         try:
             # get alphabetically sorted model list
