@@ -39,6 +39,7 @@ import core.channel
 
 import core.modules
 import core.module_manager
+import core.http_sse
 import core.api
 
 # handle first run
