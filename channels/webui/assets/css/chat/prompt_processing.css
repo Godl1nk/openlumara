@@ -180,3 +180,22 @@
 .pp-prompt .prompt-progress-bar-fill::after {
     display: none;
 }
+
+/* no progress figures yet (e.g. the router is swapping the model in and
+   reports nothing): slide the bar instead of parking at a literal 0% ETA */
+.prompt-progress-bar.is-indeterminate .prompt-progress-bar-fill {
+    width: 35% !important;
+    animation: pp-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes pp-indeterminate {
+    0% { transform: translateX(-110%); }
+    100% { transform: translateX(310%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .prompt-progress-bar.is-indeterminate .prompt-progress-bar-fill {
+        width: 100% !important;
+        animation: none;
+    }
+}

@@ -266,3 +266,17 @@
         }
     }
 }
+
+/* markdown images in assistant replies (e.g. generated pictures) render at
+   their native size by default, which blows up the whole conversation: cap
+   them to a card-sized preview that follows the theme */
+.message.assistant .content img {
+    display: block;
+    max-width: min(360px, 100%);
+    max-height: 360px;
+    width: auto;
+    height: auto;
+    margin: 8px 0;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+}

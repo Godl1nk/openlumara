@@ -1009,7 +1009,8 @@ CHAT_STORE = {
                 percent,
                 percent_str: `${percent}%`,
                 remaining_str: `(${label}${stage})`,
-                show_eta: false
+                show_eta: false,
+                has_progress: true
             };
         }
 
@@ -1025,17 +1026,24 @@ CHAT_STORE = {
         const percent = progressData.percent ?? 0;
         const remaining = progressData.eta_seconds || 0;
 
+        // no data yet (e.g. the router is swapping the model in and reports
+        // nothing): show a neutral wait instead of a stuck 0% ETA
+        const has_progress = processed > 0 && total > 0;
+
         return {
             cache,
             processed,
             total,
             percent,
-            percent_str: `${percent}%`,
+            has_progress,
+            percent_str: has_progress ? `${percent}%` : "",
             elapsed: ((progressData.time_ms || 0) / 1000).toFixed(1),
             remaining,
-            show_eta: processed > 0 && remaining > 0,
+            show_eta: has_progress && remaining > 0,
             // placeholder instead of hiding ETA so pill width stays stable
-            remaining_str: (processed > 0 && remaining > 0) ? `(ETA: ${Math.ceil(remaining)}s)` : `(ETA: ...)`
+            remaining_str: has_progress
+                ? (remaining > 0 ? `(ETA: ${Math.ceil(remaining)}s)` : "(ETA: ...)")
+                : "Waiting for model…"
         };
     }
 }
