@@ -4,6 +4,7 @@ import core
 import inspect
 import sys
 import subprocess
+import asyncio
 import importlib
 import importlib.util
 
@@ -233,7 +234,10 @@ async def install_module_deps(package, module_name, manager):
 
     missing = _check_missing_deps(deps)
     if missing:
-        _install_deps(module_name, missing, manager)
+        # availability fix: pip install can take minutes - running it inline
+        # froze the whole event loop (same bug class as host_shell's
+        # subprocess.run fix). to_thread keeps it off the loop.
+        await asyncio.to_thread(_install_deps, module_name, missing, manager)
         return True
 
     return False
@@ -328,7 +332,7 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
                 if hasattr(instance, 'on_uninstall'):
                     await instance.on_uninstall()
 
-        _uninstall_deps(module_name, installed, manager)
+        await asyncio.to_thread(_uninstall_deps, module_name, installed, manager)
         return True
 
 
