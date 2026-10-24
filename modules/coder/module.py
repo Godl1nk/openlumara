@@ -261,7 +261,8 @@ class Coder(core.module.Module):
 
         for path in paths:
             if os.path.basename(path.rstrip(os.path.sep)) == requested_path.rstrip(os.path.sep):
-                return os.path.expanduser(path).rstrip(os.path.sep)
+                full_path = os.path.abspath(os.path.expanduser(path))
+                return full_path.rstrip(os.path.sep)
 
         raise Exception("That sandbox does not exist")
 
@@ -474,7 +475,10 @@ class Coder(core.module.Module):
                         # filter by extensions if specified
                         if file_extensions:
                             _, ext = os.path.splitext(file)
-                            if ext[1:] not in file_extensions:
+                            # remove dot from the extension
+                            ext = ext.lstrip('.')
+
+                            if ext not in file_extensions:
                                 continue
 
                         with _nofollow_open(filepath, "r") as f:
@@ -1356,14 +1360,13 @@ class Coder(core.module.Module):
         return core.sandbox_path(full, subpath)
 
     def _check_git_paths(self, root: str, paths: list):
-        """ensures repo-relative paths passed to git resolve inside the
-        sandbox. without a subpath the repo root IS the sandbox root, so
-        this only bites for repos nested inside a sandbox."""
-        sandbox_root = os.path.dirname(root)
+        """ensures repo-relative paths passed to git resolve inside THE
+        REPOSITORY itself."""
+        root = os.path.normpath(root)
         for p in paths:
             full = os.path.normpath(os.path.join(root, p))
-            if full != sandbox_root and not full.startswith(sandbox_root + os.sep):
-                raise Exception(f"path escapes the sandbox: {p}")
+            if full != root and not full.startswith(root + os.sep):
+                raise Exception(f"path escapes the repository: {p}")
 
     @webui.route("git_repos")
     async def _route_git_repos(self, body=None, query=None):
