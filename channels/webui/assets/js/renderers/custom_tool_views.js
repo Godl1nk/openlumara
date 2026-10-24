@@ -718,10 +718,14 @@ document.addEventListener('alpine:init', () => {
 
 // true when a step contains an image generation/editing call. those steps
 // start expanded so the picture is visible without opening the process block.
+// steps expose grouped actions ("Image": "tools_generate"), not tool calls.
+const IMAGE_TOOL_ACTION = /^(tools_)?(generate|resize|crop|rotate|flip|apply_filter|add_text|convert_format)$/;
+
 function stepHasImageResult(step) {
-    for (const msg of (step?.messages ?? [])) {
-        for (const tool of (msg?.tool_calls ?? [])) {
-            if (toolDisplayView(tool) === 'image-result') return true;
+    for (const group of (step?.modules ?? [])) {
+        if (String(group?.module || '').toLowerCase() !== 'image') continue;
+        for (const action of (group?.actions ?? [])) {
+            if (IMAGE_TOOL_ACTION.test(action?.name || '')) return true;
         }
     }
     return false;
