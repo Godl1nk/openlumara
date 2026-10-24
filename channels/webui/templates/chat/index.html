@@ -115,9 +115,9 @@
                                      // starting from the next turn)
                                      // reasoning display disabled: locked collapsed
                                      {% if config.get('enable_chain_expansion') %}
-                                     collapsed: localStorage.getItem('collapseChainDefault') === 'true',
+                                     collapsed: turnHasImageResult(turn) ? false : localStorage.getItem('collapseChainDefault') === 'true',
                                      {% else %}
-                                     collapsed: true,
+                                     collapsed: turnHasImageResult(turn) ? false : true,
                                      {% endif %}
                                      get processing() { return $store.stream.state !== 'idle' },
                                      get lastLabel() {
@@ -208,7 +208,7 @@
                                  the body persists and x-show just hides it - so
                                  re-expanding is instant instead of rebuilding the
                                  whole chain (the jump). -->
-                            <div class="agent-chain" x-data="{ collapsed: true, mounted: false,
+                            <div class="agent-chain" x-data="{ collapsed: !turnHasImageResult(turn), mounted: turnHasImageResult(turn),
                                      // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                                      // tool-less chain (just reasoning/content):
                                      // the header reads standalone Thoughts

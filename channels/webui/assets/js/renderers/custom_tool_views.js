@@ -730,3 +730,15 @@ function stepHasImageResult(step) {
     }
     return false;
 }
+
+// true when a turn contains an image generation/editing result. history turns
+// expose steps with grouped modules; a live turn still has raw tool calls.
+function turnHasImageResult(turn) {
+    if ((turn?.steps ?? []).some(stepHasImageResult)) return true;
+    for (const segment of (turn?.messages ?? [])) {
+        for (const tool of (segment?.tool_calls ?? [])) {
+            if (toolDisplayView(tool) === 'image-result') return true;
+        }
+    }
+    return false;
+}
