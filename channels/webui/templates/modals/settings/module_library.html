@@ -119,7 +119,7 @@
                     </div>
 
                     <p class="library-audit-lead" x-show="audit.m.type === 'module' || audit.m.type === 'channel'">
-                        Modules are Python code that runs with <strong>full access to your OpenLumara</strong>.
+                        Modules are Python code that runs with <strong>full access to your host system</strong>.
                         Read through the source below first - the buttons under this text jump straight to the parts that matter.
                     </p>
                     <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
@@ -177,12 +177,17 @@
                         <pre class="audit-code hljs" x-html="auditHighlighted"></pre>
                     </div>
 
+                    <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+                         data kinds (themes/skills) get a calm single-step
+                         install: no native confirm popup, no danger button -->
                     <div class="library-audit-footer">
-                        <span class="library-audit-footnote">Only install code you have read and trust.</span>
+                        <span class="library-audit-footnote" x-show="!auditIsData">Only install code you have read and trust.</span>
+                        <span class="library-audit-footnote" x-show="auditIsData && audit.m.type === 'skill'" x-cloak>Skills tell your AI what to do - give it a quick skim first.</span>
+                        <span class="library-audit-footnote" x-show="auditIsData && audit.m.type === 'theme'" x-cloak>Themes are just colors and CSS. Enjoy! 💖</span>
                         <div class="library-audit-actions">
                             <button type="button" class="library-btn" @click="closeAudit()">Reject</button>
-                            <button type="button" class="library-btn danger" @click="confirmAudit()"
-                                    :disabled="audit.loading || Boolean(audit.error)">Confirm</button>
+                            <button type="button" :class="['library-btn', auditIsData ? 'primary' : 'danger']" @click="confirmAudit()"
+                                    :disabled="audit.loading || Boolean(audit.error)" x-text="auditConfirmLabel"></button>
                         </div>
                     </div>
                 </div>

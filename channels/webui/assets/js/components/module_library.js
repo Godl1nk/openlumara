@@ -241,20 +241,31 @@ function moduleLibrary() {
             this.audit = null;
         },
 
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+        // themes and skills are data, not executed code: the review dialog is
+        // already a deliberate step, so no extra native confirm popup, no red
+        // confirm button, and friendlier footer wording for them.
+        get auditIsData() {
+            return Boolean(this.audit) && (this.audit.m.type === 'theme' || this.audit.m.type === 'skill');
+        },
+
+        get auditConfirmLabel() {
+            if (!this.audit) return 'Confirm';
+            if (!this.auditIsData) return 'Confirm';
+            return this.audit.mode === 'update' ? 'Update' : 'Install';
+        },
+
         confirmAudit() {
             const a = this.audit;
             if (!a || a.loading || a.error) return;
-            const verb = a.mode === 'update' ? 'update' : 'install';
-            // themes and skills are data, not executed code - different trust note
-            const trust = a.m.type === 'theme'
-                ? 'Themes are color data + CSS rendered by the WebUI - only continue if you trust this source.'
-                : a.m.type === 'skill'
-                    ? 'Skills are instruction files your AI will follow - only continue if you trust this source.'
-                    : 'Installed code runs with full access to your OpenLumara - only continue if you trust this source.';
-            const extra = a.warnings.length
-                ? '\n\nHeads up: this module uses shell/exec-style APIs (see the red warnings).'
-                : '';
-            if (!confirm('Really ' + verb + ' "' + a.m.name + '"?\n\n' + trust + extra)) return;
+            if (!this.auditIsData) {
+                // modules and channels run with full access: two-step confirm
+                const verb = a.mode === 'update' ? 'update' : 'install';
+                const extra = a.warnings.length
+                    ? '\n\nHeads up: this module uses shell/exec-style APIs (see the red warnings).'
+                    : '';
+                if (!confirm('Really ' + verb + ' "' + a.m.name + '"?\n\nInstalled code runs with full access to your host system - only continue if you trust this source.' + extra)) return;
+            }
             const m = a.m;
             const action = a.mode;
             this.audit = null;
