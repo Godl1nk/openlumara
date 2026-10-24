@@ -848,7 +848,20 @@ def detect_field_type(value, key=""):
 
 
 def build_field_settings(obj, schema, prefix=""):
-    if not obj or not isinstance(obj, dict):
+    if not isinstance(obj, dict):
+        return {}
+
+    # settings added to a schema after the config was written exist only in the
+    # schema, so merge their defaults in: new options then show up in the UI
+    # without a manual config edit
+    schema_defaults = {
+        key: field["default"]
+        for key, field in schema.items()
+        if isinstance(field, dict) and "default" in field
+    }
+    obj = {**schema_defaults, **obj}
+
+    if not obj:
         return {}
 
     settings = {}

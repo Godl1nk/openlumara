@@ -10,9 +10,15 @@ const ASK_USER_STORE = {
     error: "",
     _pollTimer: null,
     _countdownTimer: null,
+    // absolute time the server-side question expires, in ms
+    _deadline: null,
 
     init() {
         this.startPolling();
+        // background tabs throttle timers, so resync the moment the tab returns
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) this.checkPending();
+        });
     },
 
     startPolling() {
@@ -37,6 +43,7 @@ const ASK_USER_STORE = {
                     this.current = target;
                     this.textInput = "";
                     this.error = "";
+                    this._deadline = Date.now() + (Number(target.remaining_seconds) || 0) * 1000;
 
                     // Open the modal if not already open. Polls for a question
                     // we already hold land in the else branch, so dismissing the
@@ -46,12 +53,14 @@ const ASK_USER_STORE = {
                     }
                     this.startCountdown();
                 } else {
-                    // Update remaining time
+                    // Update remaining time and the deadline it is derived from
                     this.current.remaining_seconds = target.remaining_seconds;
+                    this._deadline = Date.now() + (Number(target.remaining_seconds) || 0) * 1000;
                 }
             } else if (this.current) {
                 // No more pending questions
                 this.current = null;
+                this._deadline = null;
                 this.stopCountdown();
                 if (Alpine.store("ui") && Alpine.store("ui").currentModal === "ask_user") {
                     Alpine.store("ui").closeModal();
@@ -65,9 +74,15 @@ const ASK_USER_STORE = {
     startCountdown() {
         clearInterval(this._countdownTimer);
         this._countdownTimer = setInterval(() => {
-            if (this.current && this.current.remaining_seconds > 0) {
-                this.current.remaining_seconds--;
-            } else if (this.current && this.current.remaining_seconds <= 0) {
+            if (!this.current) return;
+            if (this._deadline == null) {
+                this._deadline = Date.now() + (Number(this.current.remaining_seconds) || 0) * 1000;
+            }
+            // recompute from the wall clock: background tabs throttle this timer,
+            // so decrementing a counter would drift past the server-side deadline
+            const remaining = Math.max(0, Math.round((this._deadline - Date.now()) / 1000));
+            this.current.remaining_seconds = remaining;
+            if (remaining <= 0) {
                 this.stopCountdown();
                 this.checkPending();
             }
@@ -91,6 +106,7 @@ const ASK_USER_STORE = {
             });
 
             this.current = null;
+            this._deadline = null;
             this.stopCountdown();
             if (Alpine.store("ui")) {
                 Alpine.store("ui").closeModal();
@@ -137,6 +153,7 @@ const ASK_USER_STORE = {
         }
 
         this.current = null;
+        this._deadline = null;
         this.stopCountdown();
         if (Alpine.store("ui")) {
             Alpine.store("ui").closeModal();

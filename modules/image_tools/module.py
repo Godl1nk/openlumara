@@ -33,6 +33,11 @@ class ImageTools(core.module.Module):
             "default": False,
             "description": "Pause image requests and pick the model in chat each time."
         },
+        "approval_timeout": {
+            "type": "number",
+            "default": 60,
+            "description": "Seconds to wait for an approval answer before cancelling the action. Capped by core.tool_timeout minus 2 seconds."
+        },
         "endpoint": {
             "type": "string",
             "default": "auto",
@@ -123,6 +128,33 @@ class ImageTools(core.module.Module):
             pass
         return None
 
+    _APPROVAL_WORDS = {
+        "proceed", "yes", "y", "yep", "yeah", "ok", "okay", "sure",
+        "approve", "approved", "confirm", "confirmed", "allow", "allowed",
+        "accept", "accepted",
+    }
+    _DENIAL_WORDS = {
+        "cancel", "no", "nope", "stop", "abort", "deny", "reject",
+        "rejected", "decline", "don't", "dont", "not", "never", "wait",
+    }
+    _APPROVAL_PHRASES = ("go ahead", "go for it", "do it", "please do", "looks good", "that's fine")
+
+    def _answer_is_approval(self, answer: str) -> bool:
+        """True when a free-text answer clearly approves the action.
+
+        Accepts natural replies like "yes, approve the resize" (answering in chat
+        sends the raw message, not an option label) while failing closed: any
+        negative wording wins, and anything ambiguous counts as a denial.
+        """
+        text = "".join(ch if (ch.isalnum() or ch in "' ") else " " for ch in str(answer or "").lower())
+        text = " ".join(text.split())
+        words = set(text.split())
+        if words & self._DENIAL_WORDS:
+            return False
+        if words & self._APPROVAL_WORDS:
+            return True
+        return any(phrase in text for phrase in self._APPROVAL_PHRASES)
+
     async def _approval_error(self, action: str, detail: str = ""):
         """Return an error string when approval is required but missing; None if approved."""
         if not self.config.get("ask_before_generate"):
@@ -137,15 +169,14 @@ class ImageTools(core.module.Module):
         ack = await ask_mod.ask(
             prompt,
             options=["Proceed", "Cancel"],
-            timeout=60,
+            timeout=int(self.config.get("approval_timeout") or 60),
             default_choice="Cancel",
         )
         content = (ack or {}).get("content") or {}
         if ack.get("status") != "success":
             return content.get("error") or "Image action was not approved."
 
-        answer = str(content.get("answer") or "").strip().lower()
-        if answer not in ("proceed", "yes", "y", "ok", "approve", "confirm"):
+        if not self._answer_is_approval(content.get("answer")):
             return "Image action cancelled by user."
         return None
 

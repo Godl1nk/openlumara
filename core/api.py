@@ -1222,36 +1222,36 @@ class APIClient():
                 if chunk.get("choices"):
                     streamed_token = chunk["choices"][0].get("delta") or {}
 
-                    content_yield = None
-
-                    # handle content token streaming
-                    if streamed_token.get("content"):
-                        content_yield = {"type": "content", "content": streamed_token["content"]}
-
-                    # handle reasoning content streaming
+                    content_part = streamed_token.get("content")
                     reason_part = streamed_token.get("reasoning_content") or streamed_token.get("reasoning")
 
+                    # a single chunk can carry both (servers often batch the last
+                    # reasoning delta with the first content delta), so emit each
+                    # separately instead of letting reasoning overwrite content
+                    emitted = []
+                    if content_part:
+                        emitted.append({"type": "content", "content": content_part})
                     if reason_part:
-                        content_yield = {"type": "reasoning", "content": reason_part}
+                        emitted.append({"type": "reasoning", "content": reason_part})
 
                     # add timing data to the yielded token
-                    if streamed_token.get("content") or reason_part:
+                    if emitted:
                         # Send timing data: Use native if available, otherwise calculate
                         native_timings = chunk.get("timings")
                         if native_timings:
-                            content_yield["timings"] = native_timings
+                            emitted[0]["timings"] = native_timings
 
                         else:
                             # Fallback: Calculate tokens/s based on time between chunks
                             if delta_ms > 1: # Only yield if significant time passed
-                                content_yield["timings"] = {
+                                emitted[0]["timings"] = {
                                     "predicted_ms": delta_ms,
                                     "predicted_n": 1
                                 }
 
                     # and finally, yield the content token
-                    if content_yield:
-                        yield content_yield
+                    for token in emitted:
+                        yield token
 
                     # extract tool calls, if any
                     if streamed_token.get("tool_calls") and use_tools:
