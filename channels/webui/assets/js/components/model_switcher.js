@@ -14,6 +14,15 @@ const PRESET_URLS = {
     together: "https://api.together.xyz/v1",
     mistral: "https://api.mistral.ai/v1"
 };
+function syncContextPill(maxContext) {
+    if (maxContext && Alpine.store("system") && Alpine.store("system").data) {
+        Alpine.store("system").data.max_context = Number(maxContext);
+    }
+    if (Alpine.store("chat") && typeof Alpine.store("chat").loadContextSize === "function") {
+        Alpine.store("chat").loadContextSize();
+    }
+}
+
 
 const MODEL_MANAGER_STORE = {
     providers: [],
@@ -83,12 +92,16 @@ function modelQuickSwitch() {
             if (!name || name === this.currentModel || this.saving) return;
             this.saving = true;
             try {
-                await simpleApiPost("/api/model/set", { name });
+                const res = await simpleApiPost("/api/model/set", { name });
                 const store = Alpine.store("modelManager");
                 if (store) store.currentChatModel = name;
 
                 const field = Alpine.store("settings")?.categories?.model?.settings?.name;
                 if (field) field.value = name;
+
+                if (res && res.max_context) {
+                    syncContextPill(res.max_context);
+                }
             } catch (err) {
                 alert("Failed to switch model: " + err);
             } finally {
@@ -299,10 +312,14 @@ function providerManagerComponent() {
 
         async setAsActiveChat(modelId) {
             try {
-                await simpleApiPost("/api/model/set", { name: modelId });
+                const res = await simpleApiPost("/api/model/set", { name: modelId });
                 Alpine.store("modelManager").currentChatModel = modelId;
                 const field = Alpine.store("settings")?.categories?.model?.settings?.name;
                 if (field) field.value = modelId;
+
+                if (res && res.max_context) {
+                    syncContextPill(res.max_context);
+                }
             } catch (e) {
                 alert("Failed to switch chat model: " + e);
             }
@@ -326,11 +343,14 @@ function providerManagerComponent() {
         async updateModelContext(prov, model, val) {
             model.context_length = val;
             try {
-                await simpleApiPost("/api/provider/model/update", {
+                const res = await simpleApiPost("/api/provider/model/update", {
                     provider_id: prov.id,
                     model_id: model.id,
                     settings: { context_length: val }
                 });
+                if (res && res.max_context) {
+                    syncContextPill(res.max_context);
+                }
             } catch (e) {
                 alert("Failed to update context length: " + e);
             }
@@ -343,11 +363,14 @@ function providerManagerComponent() {
                 });
                 if (res && res.context_length) {
                     model.context_length = String(res.context_length);
-                    await simpleApiPost("/api/provider/model/update", {
+                    const upd = await simpleApiPost("/api/provider/model/update", {
                         provider_id: prov.id,
                         model_id: model.id,
                         settings: { context_length: model.context_length }
                     });
+                    if (upd && upd.max_context) {
+                        syncContextPill(upd.max_context);
+                    }
                 }
             } catch (e) {
                 alert("Failed to detect context: " + e);

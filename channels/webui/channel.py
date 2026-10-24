@@ -2206,7 +2206,10 @@ async def create_fastapi(channel):
 
         channel.manager.API.set_model(name)
         await channel.manager.API.connect(silent=True)
-        return api_result({"name": name}, success=True)
+        return api_result({
+            "name": name,
+            "max_context": channel.manager.API.get_max_context(name)
+        }, success=True)
 
     @app.post("/api/model/image/set")
     async def model_image_set(request: fastapi.Request):
@@ -2329,8 +2332,10 @@ async def create_fastapi(channel):
         if not pid or not mid:
             return api_result("Missing provider_id or model_id", success=False)
         m = channel.manager.API.update_model_settings(pid, mid, settings)
-        return api_result(m, success=bool(m))
-
+        return api_result({
+            "model": m,
+            "max_context": channel.manager.API.get_max_context()
+        }, success=bool(m))
     @app.post("/api/provider/detect_context")
     async def provider_detect_context(request: fastapi.Request):
         """Detects context length for a model."""
@@ -2559,9 +2564,8 @@ async def create_fastapi(channel):
     async def get_data():
         """returns any relevant data for the webUI to use"""
         data = {
-            "max_context": core.config.get("api", "max_context")
+            "max_context": channel.manager.API.get_max_context()
         }
-
         return api_result(data)
 
     # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)

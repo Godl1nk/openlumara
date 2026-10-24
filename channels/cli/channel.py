@@ -170,7 +170,7 @@ class Cli(core.channel.Channel):
 
         chat_title = self.context.chat.get('title') or "New chat"
         model = self.manager.API.get_model() or "model not set"
-        max_tokens = core.config.get('api', 'max_context')
+        max_tokens = self.manager.API.get_max_context() if hasattr(self.manager.API, 'get_max_context') else core.config.get('api', 'max_context')
         api_url = core.config.get('api', 'url')
 
         tokens_percent = self._token_usage / max_tokens

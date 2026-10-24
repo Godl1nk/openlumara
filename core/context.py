@@ -37,7 +37,7 @@ class Context:
 
         # Configuration
         max_messages = int(core.config.get("api").get("max_messages", 200))
-        max_tokens = int(core.config.get("api").get("max_context", 16768))
+        max_tokens = self.channel.manager.API.get_max_context() if (hasattr(self.channel, 'manager') and hasattr(self.channel.manager, 'API') and hasattr(self.channel.manager.API, 'get_max_context')) else int(core.config.get("api", "max_context", default=16768))
         system_role = "system" if not self.channel.manager.API.supports_developer_role else "developer"
         dev_role = "developer" if self.channel.manager.API.supports_developer_role else "user"
 
@@ -260,8 +260,8 @@ class Context:
         if not core.config.get("model", "automatically_compress_context"):
             return False
 
-        max_tokens = core.config.get("api", "max_context")
-        if not max_tokens:
+        max_tokens = self.channel.manager.API.get_max_context() if (hasattr(self.channel, 'manager') and hasattr(self.channel.manager, 'API') and hasattr(self.channel.manager.API, 'get_max_context')) else int(core.config.get("api", "max_context", default=16768))
+        if not max_tokens or max_tokens <= 0:
             return False
 
         threshold = core.config.get("model", "context_compression_threshold")
@@ -395,10 +395,10 @@ Hard rules:
         """basically just a fancy display of current token use, used by the `/status` command, and can optionally be used by other parts of the framework"""
 
         # measure all parts from a single trimmed context build so the breakdown sums to what is actually sent to the API.
-        max_context = int(core.config.get("api", "max_context"))
+        max_context = self.channel.manager.API.get_max_context() if (hasattr(self.channel, 'manager') and hasattr(self.channel.manager, 'API') and hasattr(self.channel.manager.API, 'get_max_context')) else int(core.config.get("api", "max_context", default=16768))
 
         full = await self.get()
-        if not full:
+        if not isinstance(full, list):
             full = []
 
         # determine whether the system prompt and end prompt parts exist within the built context,

@@ -325,12 +325,7 @@ class Qt6Channel(core.channel.Channel):
         if count is None:
             return ""
 
-        max_context = None
-        try:
-            max_context = core.config.get("api", "max_context")
-        except Exception:
-            max_context = None
-
+        max_context = self.manager.API.get_max_context() if hasattr(self.manager.API, 'get_max_context') else core.config.get("api", "max_context")
         try:
             if max_context:
                 pct = round((int(count) / int(max_context)) * 100)
@@ -347,12 +342,7 @@ class Qt6Channel(core.channel.Channel):
             return None
 
     def _token_percent(self, count):
-        max_context = None
-        try:
-            max_context = core.config.get("api", "max_context")
-        except Exception:
-            max_context = None
-
+        max_context = self.manager.API.get_max_context() if hasattr(self.manager.API, 'get_max_context') else core.config.get("api", "max_context")
         if not max_context or count is None:
             return None
         try:

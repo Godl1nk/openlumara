@@ -180,6 +180,8 @@ class APIClient():
             core.config.config["api"]["url"] = prov["url"]
             if prov.get("key"):
                 core.config.config["api"]["key"] = prov["key"]
+            # Sync max_context for the active model
+            core.config.config["api"]["max_context"] = self.get_max_context(target_model)
             core.config.config.save()
 
         api_config = core.config.get("api", {})
@@ -377,7 +379,7 @@ class APIClient():
         core.config.config["model"]["name"] = name
 
         # Sync api.url and api.key with the provider hosting this model
-        p, _ = self.find_provider_for_model(name)
+        p, m = self.find_provider_for_model(name)
         if p and p.get("url"):
             if "api" not in core.config.config:
                 core.config.config["api"] = {}
@@ -387,8 +389,38 @@ class APIClient():
             self._router_origin = None
             self.connected = False
 
+        # Sync effective max context for this model into api.max_context
+        eff_ctx = self.get_max_context(name)
+        if "api" not in core.config.config:
+            core.config.config["api"] = {}
+        core.config.config["api"]["max_context"] = eff_ctx
+
+        # Sync model's thinking effort if defined
+        if m and m.get("thinking_effort") and m["thinking_effort"] != "default":
+            core.config.config["model"]["reasoning_effort"] = m["thinking_effort"]
+
         core.config.config.save()
         return True
+
+    def get_max_context(self, model_name: str = None) -> int:
+        """Returns the effective max context length for the given model (or currently active model)."""
+        target = model_name or core.config.get("model", "name")
+        p, m = self.find_provider_for_model(target)
+        if m:
+            ctx_val = m.get("context_length")
+            if ctx_val and str(ctx_val).strip().lower() != "auto":
+                try:
+                    return int(ctx_val)
+                except (ValueError, TypeError):
+                    pass
+            detected = self.detect_model_context(target)
+            if detected:
+                return int(detected)
+
+        try:
+            return int(core.config.get("api", "max_context", default=16768))
+        except (ValueError, TypeError):
+            return 16768
     def get_image_model(self):
         return core.config.get("model", "image_model", default="dall-e-3")
 
@@ -630,6 +662,21 @@ class APIClient():
                                 m[k] = v
                         if settings.get("is_image") is True:
                             self.set_image_model(model_id)
+
+                        # Sync active model parameters immediately
+                        active_model = core.config.get("model", "name")
+                        if model_id == active_model:
+                            if "context_length" in settings:
+                                eff_ctx = self.get_max_context(model_id)
+                                if "api" not in core.config.config:
+                                    core.config.config["api"] = {}
+                                core.config.config["api"]["max_context"] = eff_ctx
+                            if "thinking_effort" in settings and settings["thinking_effort"] != "default":
+                                core.config.config["model"]["reasoning_effort"] = settings["thinking_effort"]
+
+                        if "enabled" in settings:
+                            self.set_model_disabled(model_id, not settings["enabled"])
+
                         self.save_providers(providers)
                         return m
         return None
