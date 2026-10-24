@@ -169,6 +169,8 @@ async function handleWebSocketMessage(data) {
         // on websocket connect, so reconnects and page reloads mid-stream
         // resync automatically instead of guessing.
         case "stream_state":
+            // a new turn starts: drop the previous turn's speed samples
+            if (data.state === "message_sending") stream.resetTokenRate();
             stream.state = data.state;
             break;
 
@@ -397,6 +399,10 @@ async function handleWebSocketMessage(data) {
                     break;
                 case "token_usage":
                     chat.currentTokenUsage = token_content;
+                    break;
+                case "content":
+                case "reasoning":
+                    stream.recordToken(token);
                     break;
                 case "tool_call_delta":
                     stream.processing = {};

@@ -150,6 +150,12 @@
                 cursor: not-allowed;
                 transform: none;
             }
+
+            /* shown beside #stop while an ask_user question awaits an answer */
+            &.mid-row {
+                border-radius: 0;
+                border-right: 1px solid var(--border-color);
+            }
         }
 
         #stop {

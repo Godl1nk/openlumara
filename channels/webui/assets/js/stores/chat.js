@@ -793,7 +793,11 @@ CHAT_STORE = {
 
     async send(text) {
         stream = Alpine.store('stream');
-        if (stream.state !== 'idle') {
+        // a pending ask_user question is answered by sending a normal chat
+        // message: the backend intercepts it before cancelling the paused
+        // turn, so allow sending while that question is open
+        const pendingQuestion = Alpine.store('askUser')?.current;
+        if (stream.state !== 'idle' && !pendingQuestion) {
             // don't allow sending during a stream
             // (TODO: allow nudging (interrupting the stream and sending a new message))
             return;

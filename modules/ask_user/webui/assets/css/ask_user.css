@@ -186,3 +186,20 @@
     font-weight: 600;
     cursor: pointer;
 }
+
+.ask-user-chat-link {
+    align-self: flex-start;
+    margin-top: 10px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--accent, #6366f1);
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: underline;
+    opacity: 0.85;
+}
+
+.ask-user-chat-link:hover {
+    opacity: 1;
+}

@@ -3084,9 +3084,9 @@ class WebSocketManager:
         # if the AI is waiting on an ask_user question, treat this message as the
         # answer instead of cancelling the paused turn (which would lose it)
         ask_mod = (getattr(channel.manager, "modules", None) or {}).get("ask_user")
-        if not files and message and ask_mod and hasattr(ask_mod, "try_intercept_chat_answer"):
+        if not files and message and ask_mod and hasattr(ask_mod, "_try_intercept_chat_answer"):
             try:
-                answer_text = ask_mod.try_intercept_chat_answer(message, chat_id)
+                answer_text = ask_mod._try_intercept_chat_answer(message, chat_id)
                 if answer_text:
                     # deferred: lands in history after the resumed turn's final
                     # message, keeping the tool-call chain valid and the answer visible

@@ -190,7 +190,7 @@ class AskUser(core.module.Module):
             pass
         return None
 
-    def try_intercept_chat_answer(self, message: str, chat_id: str = None):
+    def _try_intercept_chat_answer(self, message: str, chat_id: str = None):
         """Resolve the pending question from a normal chat message or /answer.
 
         Called by channels *before* they cancel/restart an active stream, so

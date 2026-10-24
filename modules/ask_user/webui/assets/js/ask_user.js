@@ -38,7 +38,9 @@ const ASK_USER_STORE = {
                     this.textInput = "";
                     this.error = "";
 
-                    // Open the modal if not already open
+                    // Open the modal if not already open. Polls for a question
+                    // we already hold land in the else branch, so dismissing the
+                    // modal to answer in chat doesn't get it re-opened.
                     if (Alpine.store("ui") && Alpine.store("ui").currentModal !== "ask_user") {
                         Alpine.store("ui").openModal("ask_user");
                     }
@@ -98,6 +100,19 @@ const ASK_USER_STORE = {
         } finally {
             this.submitting = false;
         }
+    },
+
+    replyInChat() {
+        // leave the question pending, close the popup, and let the user answer
+        // with a normal chat message (the backend intercepts it before
+        // cancelling the paused agent turn)
+        if (Alpine.store("ui") && Alpine.store("ui").currentModal === "ask_user") {
+            Alpine.store("ui").closeModal();
+        }
+        setTimeout(() => {
+            const input = document.getElementById("user-input");
+            if (input) input.focus();
+        }, 60);
     },
 
     async submitText() {

@@ -329,3 +329,37 @@
         }
     }
 }
+
+/* live generation speed pill: sits between the context pill and send button */
+#tok-rate {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28em;
+    flex-shrink: 0;
+    z-index: 30;
+    margin-right: 6px;
+    padding: 0.45em 0.8em;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    font-size: 0.78rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--text-secondary);
+
+    .tok-rate-value {
+        color: var(--accent);
+        font-weight: 600;
+    }
+
+    .tok-rate-unit {
+        color: var(--text-secondary);
+    }
+}
+
+/* narrow screens: the input row is tight, and the header state is hidden too */
+@media (max-width: 700px) {
+    #tok-rate {
+        display: none;
+    }
+}
