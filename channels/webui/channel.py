@@ -1627,6 +1627,11 @@ async def create_fastapi(channel):
             channel.log("webui", f"ext api error {module_name}/{route_path}: {core.detail_error(e)}")
             return api_result(core.detail_error(e), success=False)
 
+        # handlers may return a raw response (FileResponse, StreamingResponse,
+        # RedirectResponse...) to serve bytes; those must bypass the envelope
+        if isinstance(outcome, fastapi.Response):
+            return outcome
+
         # unwrap the module-side self.result() convention into the api envelope
         if isinstance(outcome, dict) and "status" in outcome and "content" in outcome:
             return api_result(outcome["content"], outcome["status"] == "success")
