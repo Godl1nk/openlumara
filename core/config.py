@@ -68,6 +68,10 @@ core_settings_schema = {
             "default": 200,
             "description": "Maximum number of messages to keep in conversation history. If this amount of messages is exceeded, it will trim the context window even if the token limit hasn't been reached!"
         },
+        "evict_block": {
+            "default": 32,
+            "description": "When the message history exceeds max_messages, messages are removed in blocks of this size. (example: if set to 32, it'll remove 32 messages from history to make space for the next 32 messages)"
+        },
         "use_developer_role": {
             "default": False,
             "description": "Enables the `developer` role for system prompts (see [this page](https://developers.openai.com/api/docs/guides/text#message-roles-and-instruction-following)). This helps the model distinguish between openlumara's instructions and your messages. Note: Not all models support this; unsupported models may crash if enabled.",
