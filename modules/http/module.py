@@ -734,8 +734,6 @@ class Http(core.module.Module):
 
     category = "web"
 
-    dependencies = ["aiohttp"]
-
     # ==================== Security constants ====================
     ALLOWED_SCHEMES = {'http', 'https'}
     MAX_REDIRECTS = 5
