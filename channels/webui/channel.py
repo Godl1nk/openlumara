@@ -1278,7 +1278,7 @@ async def op_chat_delete(channel, chat_id):
 # single source of truth for category name validation. returns
 # (error, normalized_name).
 def validate_category_format(name):
-    name = (name or "").strip().lower()
+    name = (name or "").strip()
 
     if not name:
         return "category name cannot be empty", None
@@ -1296,7 +1296,7 @@ def validate_category_name(name, chat_store):
         return error, None
 
     existing = [
-        (chat.get("category") or "general").lower()
+        (chat.get("category") or "general")
         for chat in chat_store.data
     ]
     if name in existing:
@@ -2049,10 +2049,7 @@ async def create_fastapi(channel):
         except Exception:
             pass
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # category name format validation lives here now. duplicates are
-        # fine on this path (creating a chat inside the current category
-        # is the normal flow); the create-category endpoint rejects those.
+        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) status:reviewed
         if category != "general":
             error, category = validate_category_format(category)
             if error:
