@@ -729,3 +729,21 @@
         animation: none;
     }
 }
+
+/* a tool call with no result (the turn was cancelled mid-call): show it as
+   interrupted instead of animating the waiting card forever */
+.image-wait-aborted {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+
+    .image-wait-title {
+        margin-bottom: 0;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+}

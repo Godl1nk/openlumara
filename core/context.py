@@ -162,6 +162,40 @@ class Context:
             cleaned.append(msg)
         messages = cleaned
 
+        # every assistant tool_call needs a matching tool result: a turn that was
+        # cancelled mid-call leaves an orphan, and providers reject the whole
+        # conversation from then on. fill the gaps with an error result.
+        repaired = []
+        pending_ids = []
+        for msg in messages:
+            if pending_ids and msg.get("role") != "tool":
+                for tool_call_id in pending_ids:
+                    repaired.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": json.dumps({"status": "error", "content": "Tool call was interrupted."})
+                    })
+                pending_ids = []
+
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                pending_ids = [
+                    tc.get("id") for tc in msg["tool_calls"]
+                    if isinstance(tc, dict) and tc.get("id")
+                ]
+            elif msg.get("role") == "tool" and msg.get("tool_call_id") in pending_ids:
+                pending_ids.remove(msg.get("tool_call_id"))
+
+            repaired.append(msg)
+
+        for tool_call_id in pending_ids:
+            repaired.append({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": json.dumps({"status": "error", "content": "Tool call was interrupted."})
+            })
+
+        messages = repaired
+
         # enforce correct turn order
         # system -> user -> assistant -> user -> assistant -> ...
         # assistant -> tool -> assistant is VALID (tool use flow)

@@ -198,7 +198,11 @@ class Commands:
         if args:
             args_display += " "
             args_display += " ".join(args)
-        await self.channel.context.chat.messages.add({"role": "user", "content": f"{cmd_prefix}{cmd}{args_display}"}, cmd=True, ghost=use_temporary)
+
+        # /new switches to a fresh chat, so recording the command in the current
+        # one would leave a dangling user turn behind with no reply
+        if cmd.lower().strip() != "new":
+            await self.channel.context.chat.messages.add({"role": "user", "content": f"{cmd_prefix}{cmd}{args_display}"}, cmd=True, ghost=use_temporary)
 
         if len(cmd) <= 0:
             raise core.exceptions.UnauthorizedException("Command was somehow zero length. Aborting for security reasons.")

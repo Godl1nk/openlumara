@@ -263,11 +263,12 @@
                     get args() { return toolArgs(tool, cacheKey) },
                     get result() { const r = this.response; return (r && r.status === 'success' && r.content) ? r.content : null },
                     get running() { return !this.response },
+                    get aborted() { return !this.response && $store.stream.state === 'idle' },
                     get isGenerate() { return /generate/.test(toolDisplayName(tool) || '') },
                     get title() { return this.isGenerate ? 'Creating image' : 'Editing image' },
                     get subject() { return this.args.prompt || this.args.image_path || '' } }">
     <div class="image-result">
-        <div class="image-wait" x-show="running">
+        <div class="image-wait" x-show="running && !aborted">
             <div class="image-wait-title" x-text="title"></div>
             <div class="image-wait-canvas">
                 <div class="image-wait-glow"></div>
@@ -275,6 +276,11 @@
                      x-show="$store.stream.modelLoad && $store.stream.modelLoad.percent != null"
                      x-text="($store.stream.modelLoad?.percent ?? 0) + '%'"></div>
             </div>
+            <div class="image-wait-prompt" x-show="subject" x-text="subject"></div>
+        </div>
+
+        <div class="image-wait-aborted" x-show="aborted">
+            <span class="image-wait-title">Image call was interrupted</span>
             <div class="image-wait-prompt" x-show="subject" x-text="subject"></div>
         </div>
 
