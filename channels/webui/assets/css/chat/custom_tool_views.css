@@ -610,3 +610,122 @@
         }
     }
 }
+
+/* =============================================================================
+ *  Image generation / editing
+ *  shows an animated placeholder while the request runs, then the image.
+ *  colours come from the theme variables, so it follows the active theme.
+ * ============================================================================= */
+
+.image-result {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.image-wait-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.image-wait-canvas {
+    position: relative;
+    width: min(260px, 100%);
+    aspect-ratio: 1 / 1;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-secondary);
+    background-image: radial-gradient(circle, var(--border-color) 1.3px, transparent 1.8px);
+    background-size: 16px 16px;
+    background-position: center;
+    overflow: hidden;
+    animation: image-wait-pulse 2.8s ease-in-out infinite;
+}
+
+.image-wait-glow {
+    position: absolute;
+    width: 55%;
+    height: 55%;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+    opacity: 0.5;
+    filter: blur(6px);
+    mix-blend-mode: screen;
+    animation: image-wait-drift 3.4s ease-in-out infinite alternate;
+}
+
+.image-wait-pct {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+.image-wait-prompt {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: min(420px, 100%);
+}
+
+.image-done {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    img {
+        display: block;
+        max-width: min(420px, 100%);
+        height: auto;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-color);
+    }
+
+    figcaption {
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+        max-width: min(420px, 100%);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+@keyframes image-wait-pulse {
+    0%, 100% {
+        border-color: var(--border-color);
+        box-shadow: 0 0 0 0 transparent;
+    }
+    50% {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+    }
+}
+
+@keyframes image-wait-drift {
+    0% { transform: translate(-15%, -15%); }
+    30% { transform: translate(55%, 5%); }
+    60% { transform: translate(35%, 60%); }
+    100% { transform: translate(-10%, 40%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .image-wait-canvas,
+    .image-wait-glow {
+        animation: none;
+    }
+}

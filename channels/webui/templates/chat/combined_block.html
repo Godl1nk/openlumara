@@ -9,7 +9,7 @@
      segment, auto-collapse once done (mirrors reasoning.html). -->
 <div class="combined-block" :class="{collapsed: collapsed, expanded: !collapsed}"
     {% if combined_stream %}
-     x-data="{ collapsed: $store.stream.state === 'idle' || localStorage.getItem('collapseStepsDefault') === 'true' || (localStorage.getItem('collapseThinkingDefault') === 'true' && stepIsThinkingLive(message)), autoCollapsed: false, done: $store.stream.state === 'idle',
+     x-data="{ collapsed: stepHasImageResult(message) ? false : ($store.stream.state === 'idle' || localStorage.getItem('collapseStepsDefault') === 'true' || (localStorage.getItem('collapseThinkingDefault') === 'true' && stepIsThinkingLive(message))), autoCollapsed: false, done: $store.stream.state === 'idle',
                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                // reasoning is live only while the newest stream segment is
                // this step's reasoning: once content/tools arrive the
@@ -24,9 +24,9 @@
                // finished tool step at the end of the chain (waiting for
                // the model's next step) must not keep pulsing
                get active() { return !this.done && (message.status === 'thinking' || message.status === 'running') } }"
-     x-effect="const msgs = $store.stream.turn?.messages ?? []; const hasNewerStep = msgs.some(m => m.step != null && m.step > message.step); done = $store.stream.state === 'idle' || hasNewerStep || message.status === 'done' || message.status === 'failed' || message.status === 'thoughts'; if (done && !autoCollapsed) { autoCollapsed = true; if (localStorage.getItem('collapseStepsDefault') !== 'true') collapsed = true }"
+     x-effect="const msgs = $store.stream.turn?.messages ?? []; const hasNewerStep = msgs.some(m => m.step != null && m.step > message.step); done = $store.stream.state === 'idle' || hasNewerStep || message.status === 'done' || message.status === 'failed' || message.status === 'thoughts'; if (done && !autoCollapsed && !stepHasImageResult(message)) { autoCollapsed = true; if (localStorage.getItem('collapseStepsDefault') !== 'true') collapsed = true }"
     {% else %}
-     x-data="{ collapsed: true }"
+     x-data="{ collapsed: !stepHasImageResult(message) }"
     {% endif %}>
     <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
          timeline node = status light: green when done, accent glow while

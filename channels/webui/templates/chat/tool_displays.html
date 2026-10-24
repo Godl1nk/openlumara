@@ -254,3 +254,34 @@
         <div class="display-footer" x-show="args.sandbox || args.path" x-text="coderFooterText(args)"></div>
     </div>
 </template>
+
+<!-- image generation / editing: animated wait card while the request runs,
+     then the finished image with its prompt. theme colours come from the
+     usual css variables so it follows the active theme. -->
+<template x-if="toolDisplayView(tool) === 'image-result'"
+          x-data="{ get response() { return toolResponse(tool) },
+                    get args() { return toolArgs(tool, cacheKey) },
+                    get result() { const r = this.response; return (r && r.status === 'success' && r.content) ? r.content : null },
+                    get running() { return !this.response },
+                    get isGenerate() { return /generate/.test(toolDisplayName(tool) || '') },
+                    get title() { return this.isGenerate ? 'Creating image' : 'Editing image' },
+                    get subject() { return this.args.prompt || this.args.image_path || '' } }">
+    <div class="image-result">
+        <div class="image-wait" x-show="running">
+            <div class="image-wait-title" x-text="title"></div>
+            <div class="image-wait-canvas">
+                <div class="image-wait-glow"></div>
+                <div class="image-wait-pct"
+                     x-show="$store.stream.modelLoad && $store.stream.modelLoad.percent != null"
+                     x-text="($store.stream.modelLoad?.percent ?? 0) + '%'"></div>
+            </div>
+            <div class="image-wait-prompt" x-show="subject" x-text="subject"></div>
+        </div>
+
+        <figure class="image-done" x-show="!running && result && result.url">
+            <img :src="result?.url" :alt="result?.prompt || result?.filename || 'image'"
+                 loading="lazy" decoding="async">
+            <figcaption x-show="result?.prompt" x-text="result?.prompt"></figcaption>
+        </figure>
+    </div>
+</template>

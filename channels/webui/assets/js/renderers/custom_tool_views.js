@@ -698,6 +698,14 @@ document.addEventListener('alpine:init', () => {
         summary: (res, tool, cacheKey) => schedulerInfo(toolArgs(tool, cacheKey)).when
     });
 
+    // image generation/editing: animated wait card while the request runs,
+    // then the finished image with its prompt
+    registerToolDisplay({
+        match: /^image_tools_(generate|resize|crop|rotate|flip|apply_filter|add_text|convert_format)$/,
+        view: 'image-result',
+        summary: res => res?.content?.filename || ''
+    });
+
     // tools_load: which modules' tools just got loaded
     // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
     // summary dropped: the module chips in the view tell the whole story,
@@ -707,3 +715,14 @@ document.addEventListener('alpine:init', () => {
         view: 'tools-load'
     });
 });
+
+// true when a step contains an image generation/editing call. those steps
+// start expanded so the picture is visible without opening the process block.
+function stepHasImageResult(step) {
+    for (const msg of (step?.messages ?? [])) {
+        for (const tool of (msg?.tool_calls ?? [])) {
+            if (toolDisplayView(tool) === 'image-result') return true;
+        }
+    }
+    return false;
+}
