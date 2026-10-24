@@ -333,10 +333,12 @@ Use tools if needed. For simple reminders, do not use tools.
                     tools=tools
                 )
 
-                if response:
+                if isinstance(response, core.api.APIError):
+                    self.log("scheduler", f"job {job_id}: API error: {response}, retrying in {base_delay}s")
+                elif response:
                     break  # Success
-
-                self.log("scheduler", f"job {job_id}: empty response, retrying in {base_delay}s")
+                else:
+                    self.log("scheduler", f"job {job_id}: empty response, retrying in {base_delay}s")
 
             except Exception as e:
                 self.log("scheduler", f"job {job_id}: failed: {e}, retrying in {base_delay}s")

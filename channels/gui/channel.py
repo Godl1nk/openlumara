@@ -469,6 +469,13 @@ class Qt6Channel(core.channel.Channel):
             self._emit_ui("append_error", core.detail_error(e))
             return
 
+        # list_models returns an APIError object (truthy, non-iterable) when
+        # the connection itself fails, instead of raising
+        if isinstance(models, core.api.APIError):
+            self._emit_ui("set_status", "model list failed")
+            self._emit_ui("append_error", str(models))
+            return
+
         try:
             current = self.manager.API.get_model()
         except Exception:

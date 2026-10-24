@@ -158,6 +158,9 @@ class APIClient():
         if api_config.get("url") == "http://API_URL_HERE/v1":
             return APIError("The API connection has not been set up yet! Please set up your API connection by either using the WebUI, the /config command, or editing the config file")
 
+        # close any session left over from a previous failed connect attempt
+        await self._close_session()
+
         use_secure_connection = not self.manager.args.insecure_tls
         if not use_secure_connection:
             self.manager.log("API", "WARNING: TLS certificate and hostname verification are disabled")
@@ -172,24 +175,28 @@ class APIClient():
 
             # validate the connection with a minimal chat-completions request
             status, body = await self._probe_chat_completions()
+            connection_error = None
 
             if status in (400, 404):
                 error_str = body.lower()
                 if "model" in error_str and ("not found" in error_str or "missing" in error_str):
-                    return APIError("Model not found.")
-                if status == 400:
-                    pass
-                else:
-                    return APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
+                    connection_error = APIError("Model not found.")
+                elif status != 400:
+                    connection_error = APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
+                # status 400 without a model complaint: accept the connection
 
             elif status in (401, 403):
-                return APIError("Authentication failed. Check if your API key is valid.", APIHTTPError(status, body))
+                connection_error = APIError("Authentication failed. Check if your API key is valid.", APIHTTPError(status, body))
 
             elif status == 405:
-                return APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
+                connection_error = APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
 
             elif status != 200:
-                return APIError("Failed to connect to the API", APIHTTPError(status, body))
+                connection_error = APIError("Failed to connect to the API", APIHTTPError(status, body))
+
+            if connection_error is not None:
+                await self._close_session()
+                return connection_error
 
         except aiohttp.ClientError as e:
             await self._close_session()
