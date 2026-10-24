@@ -5,7 +5,7 @@
 <template x-if="activeCategory === 'module_library'">
     <div class="module-library" x-data="moduleLibrary()">
         <h3 class="section-title">Get Modules</h3>
-        <p class="section-desc">Install modules and channels from the git repositories configured under Core settings (Module Libraries).</p>
+        <p class="section-desc">Install modules, channels, skills and themes from the git repositories configured under Core settings (Module Libraries).</p>
 
         <div class="library-message" x-show="message" x-cloak :class="messageKind" x-text="message"></div>
 
@@ -14,7 +14,7 @@
             <button type="button" class="library-btn primary" @click="restart()">Restart Now</button>
         </div>
 
-        <!-- horizontal Modules | Channels switcher -->
+        <!-- horizontal Modules | Channels | Themes | Skills switcher -->
         <div class="library-type-tabs">
             <button type="button" class="library-type-tab" :class="{ active: activeType === 'module' }"
                     @click="activeType = 'module'">
@@ -25,6 +25,19 @@
                     @click="activeType = 'channel'">
                 <span>Channels</span>
                 <span class="tab-count" x-text="typeCounts.channel"></span>
+            </button>
+            <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+                 library repos also ship themes (themes/<name>.json) and skills
+                 (skills/<name>/SKILL.md) -->
+            <button type="button" class="library-type-tab" :class="{ active: activeType === 'theme' }"
+                    @click="activeType = 'theme'">
+                <span>Themes</span>
+                <span class="tab-count" x-text="typeCounts.theme"></span>
+            </button>
+            <button type="button" class="library-type-tab" :class="{ active: activeType === 'skill' }"
+                    @click="activeType = 'skill'">
+                <span>Skills</span>
+                <span class="tab-count" x-text="typeCounts.skill"></span>
             </button>
             <button type="button" class="library-btn primary library-sync-btn" @click="sync()" :disabled="syncing">
                 <span class="library-sync-icon" :class="{ spinning: syncing }">{% include 'svg/reload.svg' %}</span>
@@ -105,9 +118,20 @@
                            x-text="audit.url" :title="audit.url"></a>
                     </div>
 
-                    <p class="library-audit-lead">
+                    <p class="library-audit-lead" x-show="audit.m.type === 'module' || audit.m.type === 'channel'">
                         Modules are Python code that runs with <strong>full access to your OpenLumara</strong>.
                         Read through the source below first - the buttons under this text jump straight to the parts that matter.
+                    </p>
+                    <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+                         skills and themes are data, not executed code - but a
+                         skill still tells your AI what to do, so review it too -->
+                    <p class="library-audit-lead" x-show="audit.m.type === 'skill'" x-cloak>
+                        Skills are instruction files that get loaded into <strong>your AI's context</strong>.
+                        Read through it below first - a skill tells your AI what to do.
+                    </p>
+                    <p class="library-audit-lead" x-show="audit.m.type === 'theme'" x-cloak>
+                        Themes are <strong>color data and CSS</strong> rendered by the WebUI (no code runs).
+                        Skim it below to make sure it does nothing sketchy.
                     </p>
 
                     <div class="library-audit-flags" x-show="audit.flags.length > 0">
