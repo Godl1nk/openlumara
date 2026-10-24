@@ -62,6 +62,9 @@ class APIClient():
         # guards session lifecycle against concurrent connect/disconnect calls
         self._connect_lock = asyncio.Lock()
 
+        # active streamed HTTP response, so cancel() can sever the SSE connection immediately
+        self._stream_response = None
+
         # the aiohttp session is the one HTTP client for everything
         self._session = None
         self._ssl_ctx = None # only set when TLS verification is disabled
@@ -667,6 +670,8 @@ class APIClient():
 
         try:
             self.is_streaming = True
+            # expose the live SSE response so cancel() can abort the blocked read
+            self._stream_response = response
 
             async for token in self._recv_stream(response):
                 if self.cancel_request:
@@ -682,9 +687,13 @@ class APIClient():
             self.cancel_request = False
             raise  # let callers handle cancellation
         except Exception as e:
+            if self.cancel_request:
+                self.cancel_request = False
+                raise asyncio.CancelledError("Request cancelled")
             yield {"type": "error", "content": f"While sending request to AI: {core.detail_error(e)}"}
         finally:
             self.is_streaming = False
+            self._stream_response = None
 
             # make sure the SSE connection is always released
             if response is not None and not isinstance(response, APIError) and hasattr(response, "close"):
@@ -701,6 +710,12 @@ class APIClient():
         if request_task and not request_task.done():
             # request is in-flight but not streaming yet
             request_task.cancel()
+
+        if self._stream_response is not None:
+            try:
+                self._stream_response.close()
+            except Exception:
+                pass
 
         if not self.is_streaming and not (request_task and not request_task.done()):
             # nothing was active, so clear the flag

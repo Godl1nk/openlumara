@@ -7,6 +7,7 @@ import shutil
 import regex
 import glob
 import fnmatch
+import asyncio
 import subprocess
 import tree_sitter_language_pack as tslp
 
@@ -1254,11 +1255,15 @@ class Coder(core.module.Module):
         """runs git, returns (returncode, raw stdout bytes). no text mode,
         no stripping - for output that must be parsed byte-exactly."""
         try:
-            proc = subprocess.run(
+            # spawn the process in a seperate thread so the entire harness process doesnt block
+            proc = await asyncio.to_thread(
+                subprocess.run,
                 ["git", *args],
                 cwd=sandbox_root,
                 capture_output=True,
                 timeout=timeout,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
             )
         except FileNotFoundError:
             return 127, b"git executable not found"
@@ -1328,12 +1333,16 @@ class Coder(core.module.Module):
         """runs git in the sandbox root. returns (ok, output).
         accept lists return codes that count as success."""
         try:
-            proc = subprocess.run(
+            # spawn git in a seperate thread
+            proc = await asyncio.to_thread(
+                subprocess.run,
                 ["git", *args],
                 cwd=sandbox_root,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
             )
         except FileNotFoundError:
             return False, "git executable not found"
