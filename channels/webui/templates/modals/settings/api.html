@@ -4,12 +4,11 @@
         <!-- Section Header -->
         <div class="api-page-header">
             <div class="api-page-title-group">
-                <span class="api-page-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                </span>
                 <h3 class="section-title">API & Model Providers</h3>
-                <span class="model-mgr-active-chat-badge" x-show="currentChatModel" x-text="'Chat: ' + currentChatModel"></span>
-                <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Image: ' + imageModel"></span>
+                <div class="api-page-role-badges">
+                    <span class="model-mgr-active-chat-badge" x-show="currentChatModel" x-text="'Chat: ' + currentChatModel"></span>
+                    <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Image: ' + imageModel"></span>
+                </div>
             </div>
             <p class="section-desc">Connect and manage model endpoints (OpenAI, Anthropic, DeepSeek, OpenRouter, llama-swap, Ollama, etc.) and customize per-model parameters.</p>
         </div>
