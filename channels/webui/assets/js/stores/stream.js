@@ -29,25 +29,22 @@ let STREAM_STORE = {
     recordToken(token) {
         if (!token) return;
 
-        // tokens in this chunk: ~4 chars per token, or the server's own count.
-        // clamp the reported count because a cumulative timing (the whole
-        // generation) arrives once and would otherwise spike the window
+        // servers batch several tokens per SSE chunk, so counting one token per
+        // chunk under-reports by 3-4x; instead measure streamed text over a
+        // rolling window and convert with ~4 chars per token
         const text = token.content || "";
-        let n = Math.max(1, Math.round(text.length / 4));
-        const reported = Number(token.timings && token.timings.predicted_n);
-        if (reported > 0 && reported <= 8) n = Math.max(n, reported);
+        if (!text) return;
 
         const now = performance.now();
-        this._tokSamples.push({ t: now, n });
-        // rolling 1.5s window: per-chunk timings jitter too much to show raw
-        while (this._tokSamples.length > 2 && now - this._tokSamples[0].t > 1500) {
+        this._tokSamples.push({ t: now, c: text.length });
+        while (this._tokSamples.length > 2 && now - this._tokSamples[0].t > 2000) {
             this._tokSamples.shift();
         }
         const first = this._tokSamples[0];
         const span = (now - first.t) / 1000;
-        if (span >= 0.5) {
-            const total = this._tokSamples.reduce((sum, s) => sum + s.n, 0);
-            this.tokens_per_second = Math.max(1, Math.round(total / span));
+        if (span >= 0.8) {
+            const chars = this._tokSamples.reduce((sum, s) => sum + s.c, 0);
+            this.tokens_per_second = Math.max(1, Math.round((chars / 4) / span));
         }
     },
 
