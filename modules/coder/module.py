@@ -1255,11 +1255,7 @@ class Coder(core.module.Module):
         """runs git, returns (returncode, raw stdout bytes). no text mode,
         no stripping - for output that must be parsed byte-exactly."""
         try:
-            # availability fix: same bug as host_shell had - subprocess.run inside
-            # an async def blocks the ENTIRE event loop while git runs (up to the
-            # full timeout). to_thread isolates the wait in a worker thread;
-            # stdin=DEVNULL prevents git from hanging on a credential prompt;
-            # start_new_session detaches the child from the app's process group.
+            # spawn the process in a seperate thread so the entire harness process doesnt block
             proc = await asyncio.to_thread(
                 subprocess.run,
                 ["git", *args],
@@ -1337,8 +1333,7 @@ class Coder(core.module.Module):
         """runs git in the sandbox root. returns (ok, output).
         accept lists return codes that count as success."""
         try:
-            # availability fix: see _run_git_bytes - to_thread keeps the event
-            # loop free; DEVNULL/new_session guard against prompts and teardown.
+            # spawn git in a seperate thread
             proc = await asyncio.to_thread(
                 subprocess.run,
                 ["git", *args],

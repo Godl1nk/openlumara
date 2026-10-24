@@ -70,7 +70,7 @@ core_settings_schema = {
         },
         "evict_block": {
             "default": 32,
-            "description": "When the message history exceeds max_messages, messages are evicted in blocks of this size."
+            "description": "When the message history exceeds max_messages, messages are removed in blocks of this size. (example: if set to 32, it'll remove 32 messages from history to make space for the next 32 messages)"
         },
         "use_developer_role": {
             "default": False,
