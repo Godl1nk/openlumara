@@ -14,23 +14,25 @@ THEME_STORE = {
     // false = 404'd already, don't request again this session)
     themeCssStatus: {},
 
-    init() {
+    async init() {
         // a renamed theme must not silently fall back to the base palette
         if (THEME_ALIASES[this.family]) {
             this.family = THEME_ALIASES[this.family];
             localStorage.setItem('themeFamily', this.family);
         }
 
-        // Load theme list (just names and modes) - async, doesn't block
-        this.refreshThemeList();
+        const list = await this.refreshThemeList();
 
-        // Load base theme and current theme family - async, will apply when ready
-        this.loadThemeFamily('base').then(() => {
-            this.loadThemeFamily(this.family).then(() => {
-                this.apply(this.family, this.mode);
-            });
-        });
+        // the saved family may have been removed by an update: fall back
+        // instead of leaving the page on bare base variables
+        if (list && list.length && !list.some((t) => t.name === this.family)) {
+            this.family = 'monochrome';
+            localStorage.setItem('themeFamily', this.family);
+        }
 
+        await this.loadThemeFamily('base');
+        await this.loadThemeFamily(this.family);
+        this.apply(this.family, this.mode);
     },
 
     // Re-fetch the available families. The settings modal calls this on open so
@@ -38,8 +40,9 @@ THEME_STORE = {
     async refreshThemeList() {
         try {
             const response = await fetch('/api/themes', { cache: 'no-store' });
-            if (!response.ok) return;
+            if (!response.ok) return this.themeList;
             this.themeList = await response.json();
+            return this.themeList;
         } catch (e) {
             console.error('Failed to load themes:', e);
         }
