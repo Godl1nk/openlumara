@@ -10,10 +10,7 @@ THEME_STORE = {
 
     init() {
         // Load theme list (just names and modes) - async, doesn't block
-        fetch('/api/themes')
-            .then(r => r.json())
-            .then(data => { this.themeList = data; })
-            .catch(e => console.error('Failed to load themes:', e));
+        this.refreshThemeList();
 
         // Load base theme and current theme family - async, will apply when ready
         this.loadThemeFamily('base').then(() => {
@@ -24,9 +21,20 @@ THEME_STORE = {
 
     },
 
+    // Re-fetch the available families. The settings modal calls this on open so
+    // themes added by an update show up without a full page reload.
+    async refreshThemeList() {
+        try {
+            const response = await fetch('/api/themes', { cache: 'no-store' });
+            if (!response.ok) return;
+            this.themeList = await response.json();
+        } catch (e) {
+            console.error('Failed to load themes:', e);
+        }
+    },
+
     // Load a specific theme family if not already cached
-    async loadThemeFamily(family) {
-        if (this.themeCache[family]) {
+    async loadThemeFamily(family) {        if (this.themeCache[family]) {
             return this.themeCache[family];
         }
 

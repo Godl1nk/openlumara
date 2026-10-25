@@ -2720,8 +2720,10 @@ async def create_fastapi(channel):
         return [user_themes_dir(), builtin_themes_dir()]
 
     @app.get("/api/themes")
-    async def get_themes():
+    async def get_themes(response: fastapi.Response):
         """Returns a list of available theme families with their supported modes (dark/light)"""
+        # theme files change on update: never let the picker serve a stale list
+        response.headers["Cache-Control"] = "no-store"
         families = {}
 
         # built-ins first, user themes override same-name families afterwards
@@ -2747,8 +2749,9 @@ async def create_fastapi(channel):
         return theme_list
 
     @app.get("/api/themes/{family_name}")
-    async def get_theme(family_name: str):
+    async def get_theme(family_name: str, response: fastapi.Response):
         """Returns full theme data for a specific family"""
+        response.headers["Cache-Control"] = "no-store"
         if family_name != os.path.basename(family_name) or ".." in family_name:
             return api_result(f"Theme family '{family_name}' not found", success=False)
 

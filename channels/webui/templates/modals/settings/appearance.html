@@ -1,5 +1,5 @@
 <template x-if="activeCategory === 'appearance' && !activeModule && !activeChannel">
-    <div class="settings-section">
+    <div class="settings-section" x-init="$store.theme.refreshThemeList()">
         <h3 class="section-title" x-text="$store.settings.categories.appearance.title"></h3>
         <p class="section-desc" x-text="$store.settings.categories.appearance.description"></p>
 
