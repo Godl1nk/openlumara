@@ -1529,7 +1529,7 @@ async def create_fastapi(channel):
         public_paths = [
             "/login", "/logout",
             "/favicon.ico", "/favicon.svg", "/icon-192.png", "/icon-512.png",
-            "/manifest.json",
+            "/icon-maskable-512.png", "/manifest.json",
         ]
         if request.url.path in public_paths or str(request.url.path).startswith("/assets/"):
             return await call_next(request)
@@ -2872,6 +2872,11 @@ async def create_fastapi(channel):
     async def icon_512():
         """Serve the 512x512 icon for PWA."""
         return fastapi.responses.FileResponse(os.path.join(channel.path, "icon-512.png"))
+
+    @app.get('/icon-maskable-512.png')
+    async def icon_maskable_512():
+        """Serve the maskable 512x512 icon for PWA installs."""
+        return fastapi.responses.FileResponse(os.path.join(channel.path, "icon-maskable-512.png"))
 
     @app.get('/favicon.svg')
     async def favicon_svg():
