@@ -1319,11 +1319,15 @@ class APIClient():
                     # a single chunk can carry both (servers often batch the last
                     # reasoning delta with the first content delta), so emit each
                     # separately instead of letting reasoning overwrite content
+                    # reasoning logically precedes content: servers batch the
+                    # last reasoning delta with the first content delta, and
+                    # emitting content first would split the reply's first
+                    # token into a separate segment
                     emitted = []
-                    if content_part:
-                        emitted.append({"type": "content", "content": content_part})
                     if reason_part:
                         emitted.append({"type": "reasoning", "content": reason_part})
+                    if content_part:
+                        emitted.append({"type": "content", "content": content_part})
 
                     # add timing data to the yielded token
                     if emitted:

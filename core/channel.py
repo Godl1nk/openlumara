@@ -515,7 +515,7 @@ class Channel:
     # -------------------------
     # The actual sending logic
     # -------------------------
-    async def _send_preprocess(self, message: str, files: list = None, commands_authorized = False):
+    async def _send_preprocess(self, message: str, files: list = None, commands_authorized = False, prepare_only: bool = False):
         """
         internal helper function so that send() and send_stream()
         both use many of the same code paths and i don't have to keep maintaining each one individually
@@ -580,6 +580,19 @@ class Channel:
         # mark the start of the current agentic loop
         self.agentic_loop_start = len(await self.context.chat.messages.get()) - 1
 
+        # stream callers announce the message before paying for the connection
+        if prepare_only:
+            return {"type": "prepared", "user_message": user_message_processed.get("content")}
+
+        finished = await self._send_finish_preprocess()
+        if finished["type"] == "error":
+            return finished
+
+        # and return the results for use in send() and send_stream()
+        return {"type": "ready", "user_message": user_message_processed.get("content"), "context": finished["context"]}
+
+    async def _send_finish_preprocess(self):
+        """Connect to the API and build the context window (can block on a model swap)."""
         # reconnect if needed
         result = await self.manager.API.attempt_connect()
         if result is not True:
@@ -587,9 +600,7 @@ class Channel:
 
         # build the context window
         context = await self.context.get(system_prompt=True, end_prompt=True)
-
-        # and return the results for use in send() and send_stream()
-        return {"type": "ready", "user_message": user_message_processed.get("content"), "context": context}
+        return {"type": "ready", "context": context}
 
     async def _send_postprocess(self, assistant_message, add_to_context=True):
         if add_to_context:
@@ -705,9 +716,10 @@ class Channel:
             self._chain_idle.set()
 
     async def _send_stream_inner(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
-        # preprocessing (API connection logic, command processing, user message module hooks, etc)
-        # this also adds the user's message to context, so we don't need to do that in this function
-        processed = await self._send_preprocess(message, files, commands_authorized)
+        # preprocess in two stages: commands/hooks/persist first, then connect.
+        # the user's message is announced between them so the bubble doesn't
+        # wait on the API connection (which can block on a model swap)
+        processed = await self._send_preprocess(message, files, commands_authorized, prepare_only=True)
 
         match processed["type"]:
             case "cmd_response":
@@ -730,8 +742,16 @@ class Channel:
 
         user_message = processed.get("user_message") #alias for readability
 
-        # yield user message as a special token for display in UI's (because user message can be modified by module hooks)
+        # yield user message as a special token for display in UI's (because user message can be modified by module hooks).
+        # it is already persisted at this point, so UI reloads see it too;
+        # connecting to the API happens afterwards on purpose
         yield {"type": "user_message", "content": user_message}
+
+        finished = await self._send_finish_preprocess()
+        if finished["type"] == "error":
+            yield await self.throw_stream_error(finished["content"])
+            return
+        processed = {**processed, **finished}
         
         # estimate tokens used for user message
         user_message_token_estimation = 0
