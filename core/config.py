@@ -43,7 +43,7 @@ core_settings_schema = {
             "description": "Timeout in seconds for tool execution. This applies per individual tool, and is used to forcefully kill off tools that run too long."
         },
         "module_libraries": {
-            "description": "A list of github urls that contain modules you want to be able to download and update in openlumara *(currently not implemented yet - stay tuned, this is the dev branch after all, lol)*",
+            "description": "A list of git repo urls containing modules, channels, skills and themes you want to be able to download and update in openlumara.",
             "default": []
         }
     },
@@ -67,6 +67,10 @@ core_settings_schema = {
         "max_messages": {
             "default": 200,
             "description": "Maximum number of messages to keep in conversation history. If this amount of messages is exceeded, it will trim the context window even if the token limit hasn't been reached!"
+        },
+        "evict_block": {
+            "default": 32,
+            "description": "When the message history exceeds max_messages, messages are removed in blocks of this size. (example: if set to 32, it'll remove 32 messages from history to make space for the next 32 messages)"
         },
         "use_developer_role": {
             "default": False,

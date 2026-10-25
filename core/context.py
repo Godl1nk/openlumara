@@ -105,8 +105,21 @@ class Context:
                 ]
 
             # Apply max_messages limit to history first
+            # prompt-cache optimization: evict in chunks instead of one
+            # message per append. 
+            EVICT_BLOCK = int(core.config.get("api").get("evict_block", 32))
             if len(messages) > max_messages:
-                messages = messages[-max_messages:]
+                overflow = len(messages) - max_messages
+                drop = ((overflow - 1) // EVICT_BLOCK + 1) * EVICT_BLOCK
+
+                # never cut inside an assistant(tool_calls) -> tool(...) group
+                while drop < len(messages) and messages[drop].get("role") == "tool":
+                    drop += 1
+                if summary_ref is not None:
+                    # keep the pinned summary at the front
+                    messages = [summary_ref] + messages[drop:]
+                else:
+                    messages = messages[drop:]
 
         end_msg = []
         if end_prompt:

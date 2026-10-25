@@ -498,7 +498,7 @@ class Commands:
         return f"channel {'enabled' if new_state else 'disabled'}\nrestart required - run /restart"
 
     async def cmd_library(self, args: list):
-        """manage external module libraries: sync repos, browse, install, update and remove modules/channels"""
+        """manage external module libraries: sync repos, browse, install, update and remove modules, channels, skills and themes"""
         mm = self.channel.manager.module_manager
 
         if not args:
@@ -595,6 +595,17 @@ class Commands:
             core.config.config.save()
             return f"added {url} - run /library sync to clone it"
 
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+        # install/update/remove are kind-aware now: mm returns (success, message, kind)
+        # and skills/themes install into the skills/ and themes/ folders (no pip deps,
+        # no restart needed beyond a /skills reload or a page refresh).
+        def _kind_done_note(kind, target):
+            if kind == "theme":
+                return f"{target}\nit appears in Settings -> Appearance after a page reload"
+            if kind == "skill":
+                return f"{target}\nrun /skills reload (or restart) to load it"
+            return f"{target}\nrestart required - run /restart"
+
         if subcmd == "install":
             if len(args) < 2:
                 return "usage: /library install <name> [library]"
@@ -610,17 +621,18 @@ class Commands:
                     return f"'{name}' exists in multiple libraries ({', '.join(matches)}) - add the library name to disambiguate"
                 library = matches[0]
 
-            success, message = mm.install(library, name)
+            success, message, kind = mm.install(library, name)
             if not success:
                 return message
 
-            try:
-                kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
-                await core.modules.install_module_deps(__import__(kind), name, self.channel.manager)
-            except Exception as e:
-                self.channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+            if kind in ("module", "channel"):
+                pkg = "user_channels" if kind == "channel" else "user_modules"
+                try:
+                    await core.modules.install_module_deps(__import__(pkg), name, self.channel.manager)
+                except Exception as e:
+                    self.channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
 
-            return f"installed {name} to {message}\nrestart required - run /restart"
+            return f"installed {kind} '{name}' - {_kind_done_note(kind, message)}"
 
         if subcmd == "update":
             if len(args) < 2:
@@ -637,17 +649,22 @@ class Commands:
                     return f"'{name}' exists in multiple libraries ({', '.join(matches)}) - add the library name to disambiguate"
                 library = matches[0]
 
-            success, message = await mm.update(library, name)
+            success, message, kind = await mm.update(library, name)
             if not success:
                 return message
 
-            try:
-                kind = "user_channels" if os.path.isfile(os.path.join(message, "channel.py")) else "user_modules"
-                await core.modules.install_module_deps(__import__(kind), name, self.channel.manager)
-            except Exception as e:
-                self.channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
+            if kind in ("module", "channel"):
+                pkg = "user_channels" if kind == "channel" else "user_modules"
+                try:
+                    await core.modules.install_module_deps(__import__(pkg), name, self.channel.manager)
+                except Exception as e:
+                    self.channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
 
-            return f"updated {name} from library '{library}'\nrestart required - run /restart"
+            return f"updated {kind} '{name}' from library '{library}'\n{message}\n" + (
+                "restart required - run /restart" if kind in ("module", "channel")
+                else "run /skills reload (or restart) to load it" if kind == "skill"
+                else "it appears in Settings -> Appearance after a page reload"
+            )
 
         if subcmd in ("remove", "uninstall"):
             if len(args) < 2:
@@ -675,11 +692,14 @@ class Commands:
                 except Exception as e:
                     self.channel.log("libraries", f"dependency cleanup failed for {name}: {core.detail_error(e)}")
 
-            success, message = mm.uninstall(name)
+            success, message, kind = mm.uninstall(name)
             if not success:
                 return message
 
-            return f"removed {name} from {message}\nrestart required - run /restart"
+            if kind in ("theme", "skill"):
+                return f"removed {kind} '{name}' from {message}"
+
+            return f"removed {kind} '{name}' from {message}\nrestart required - run /restart"
 
         return f"unknown subcommand: {subcmd}. use sync | list | install | update | remove"
 
