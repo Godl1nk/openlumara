@@ -1,0 +1,59 @@
+{
+  "effects": { "type": "aurora" },
+  "dark": {
+    "--bg-primary": "rgba(6, 16, 18, 0.58)",
+    "--bg-secondary": "rgba(10, 24, 26, 0.62)",
+    "--bg-tertiary": "rgba(14, 32, 34, 0.66)",
+    "--bg-message-user": "linear-gradient(135deg, rgba(18, 54, 52, 0.86) 0%, rgba(14, 40, 40, 0.86) 100%)",
+    "--bg-message-ai": "rgba(10, 28, 30, 0.74)",
+    "--bg-message-command": "linear-gradient(135deg, rgba(14, 40, 28, 0.86) 0%, rgba(10, 30, 20, 0.86) 100%)",
+    "--bg-message-command-response": "linear-gradient(135deg, rgba(14, 30, 44, 0.86) 0%, rgba(10, 22, 34, 0.86) 100%)",
+    "--bg-input": "rgba(8, 22, 24, 0.76)",
+    "--bg-code": "rgba(5, 14, 15, 0.82)",
+    "--bg-sidebar": "rgba(4, 12, 13, 0.80)",
+
+    "--border-color": "#14383a",
+    "--border-message": "#1c4a4a",
+    "--border-user": "#265a56",
+    "--border-sidebar": "#0e2a2b",
+
+    "--text-primary": "#e6fbf5",
+    "--text-secondary": "#9ad8c8",
+    "--text-muted": "#5f9188",
+    "--text-code": "#b8f0e2",
+
+    "--accent": "#35e0b0",
+    "--accent-secondary": "#7af0d0",
+    "--accent-glow": "rgba(53, 224, 176, 0.35)",
+    "--effect-color": "#35e0b0",
+
+    "--error": "#f87171",
+    "--error-bg": "linear-gradient(135deg, rgba(52, 22, 22, 0.85) 0%, rgba(38, 12, 12, 0.85) 100%)",
+    "--error-border": "#5a2828",
+    "--important": "#fbbf24",
+    "--important-bg": "linear-gradient(135deg, rgba(52, 44, 16, 0.85) 0%, rgba(38, 30, 8, 0.85) 100%)",
+    "--important-border": "#5a4820",
+    "--info": "#7dd3fc",
+    "--info-bg": "linear-gradient(135deg, rgba(18, 34, 52, 0.85) 0%, rgba(12, 24, 38, 0.85) 100%)",
+    "--info-border": "#1e4a5a",
+
+    "--button-bg": "linear-gradient(135deg, #14383a 0%, #0c2628 100%)",
+    "--button-hover": "linear-gradient(135deg, #1c4a4a 0%, #14383a 100%)",
+    "--button-stop": "linear-gradient(135deg, #4a1a1a 0%, #3a1010 100%)",
+
+    "--scrollbar": "#14383a",
+    "--scrollbar-hover": "#1c4a4a",
+
+    "--shadow-soft": "0 2px 8px rgba(0, 0, 0, 0.5)",
+    "--shadow-glow": "0 0 26px rgba(53, 224, 176, 0.2)",
+
+    "--tool-bg": "rgba(10, 28, 30, 0.76)",
+    "--tool-bg-secondary": "rgba(8, 20, 22, 0.78)",
+    "--tool-border": "#14383a",
+    "--tool-border-hover": "#1c4a4a",
+    "--tool-pending-bg": "rgba(53, 224, 176, 0.12)",
+    "--tool-pending-color": "#35e0b0",
+    "--tool-completed-bg": "rgba(122, 240, 208, 0.12)",
+    "--tool-completed-color": "#7af0d0"
+  }
+}

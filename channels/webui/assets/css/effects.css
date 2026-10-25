@@ -1,0 +1,17 @@
+/* Canvas background layer for themes that declare animated effects
+   (see js/effects/theme_effects.js). Sits above the root background and
+   below all content; themes make their surfaces translucent so it shows. */
+#theme-effect-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #theme-effect-canvas {
+        display: none;
+    }
+}

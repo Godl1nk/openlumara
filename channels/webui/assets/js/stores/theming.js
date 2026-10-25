@@ -101,9 +101,25 @@ THEME_STORE = {
         // Apply theme vars on top of base
         if (finalTheme) {
             for (const [varName, value] of Object.entries(finalTheme)) {
+                if (!varName.startsWith('--')) continue;
                 root.style.setProperty(varName, value);
             }
         }
+
+        // optional family-level effects (animated background layers). Themes
+        // without them keep the plain background and the effect layer is torn
+        // down by js/effects/theme_effects.js on the change event below.
+        const effects = (themeData.effects && themeData.effects.type && themeData.effects.type !== 'none')
+            ? themeData.effects
+            : null;
+        if (effects) {
+            root.dataset.themeEffect = String(effects.type);
+            root.dataset.themeEffectIntensity = String(effects.intensity ?? 1);
+        } else {
+            delete root.dataset.themeEffect;
+            delete root.dataset.themeEffectIntensity;
+        }
+        window.dispatchEvent(new CustomEvent('theme-effect-changed', { detail: effects }));
 
         // Switch code syntax highlighting theme based on mode
         const codeThemeLink = document.getElementById('code-theme');

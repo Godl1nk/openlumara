@@ -1,0 +1,55 @@
+/* Aurora: two slow polar-light ribbons behind the app. Pure CSS, animated on
+   transform only and disabled under prefers-reduced-motion. */
+html {
+    background: #04100f;
+}
+
+body {
+    background-color: transparent;
+}
+
+html::before,
+html::after {
+    content: "";
+    position: fixed;
+    inset: -25% -35%;
+    z-index: -1;
+    pointer-events: none;
+    will-change: transform;
+    transform: translate3d(-8%, -2%, 0) rotate(-8deg);
+}
+
+html::before {
+    background: linear-gradient(115deg,
+        transparent 18%,
+        rgba(53, 224, 176, 0.22) 36%,
+        rgba(110, 200, 255, 0.16) 52%,
+        transparent 72%);
+    animation: aurora-drift-a 18s ease-in-out infinite alternate;
+}
+
+html::after {
+    background: linear-gradient(72deg,
+        transparent 24%,
+        rgba(122, 240, 208, 0.14) 44%,
+        rgba(60, 150, 255, 0.12) 60%,
+        transparent 82%);
+    animation: aurora-drift-b 27s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-drift-a {
+    from { transform: translate3d(-8%, -2%, 0) rotate(-8deg) scale(1.05); }
+    to   { transform: translate3d(8%, 3%, 0) rotate(-4deg) scale(1.16); }
+}
+
+@keyframes aurora-drift-b {
+    from { transform: translate3d(7%, 2%, 0) rotate(-5deg) scale(1.12); }
+    to   { transform: translate3d(-9%, -3%, 0) rotate(-9deg) scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html::before,
+    html::after {
+        animation: none;
+    }
+}

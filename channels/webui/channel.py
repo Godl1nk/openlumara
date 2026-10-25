@@ -757,6 +757,29 @@ def serialize_for_json(obj):
     else:
         return str(obj)
 
+_asset_version_cache = None
+
+
+def _asset_version(assets_path):
+    """Cache-bust token for static assets.
+
+    Newest mtime under the assets tree, computed once per process: a restart
+    after an update is enough to invalidate browser caches, without hashing
+    every file on each page load.
+    """
+    global _asset_version_cache
+    if _asset_version_cache is None:
+        latest = 0.0
+        for root, _dirs, files in os.walk(assets_path):
+            for name in files:
+                try:
+                    latest = max(latest, os.path.getmtime(os.path.join(root, name)))
+                except OSError:
+                    pass
+        _asset_version_cache = str(int(latest))
+    return _asset_version_cache
+
+
 def get_recursive_assets(assets_path, ext, skip: list = []):
     """Recursively list asset files with paths relative to server root."""
     files = []
@@ -1657,6 +1680,7 @@ async def create_fastapi(channel):
 
         return channel.templates.TemplateResponse(request, "index.html", {
             "version": channel.version,
+            "asset_version": _asset_version(channel.assets_path),
             "config": channel.config,
             "css_files": css_files,
             "alpine_stores": alpine_stores,
@@ -1677,6 +1701,7 @@ async def create_fastapi(channel):
             return channel.templates.TemplateResponse(request, "login.html", {
                 "error": None,
                 "ext_css_files": channel._ui_asset_urls("css"),
+                "asset_version": _asset_version(channel.assets_path),
             })
         else:
             return fastapi.responses.RedirectResponse(url="/", status_code=303)
@@ -1724,6 +1749,7 @@ async def create_fastapi(channel):
         return channel.templates.TemplateResponse(request, "login.html", {
             "error": "Invalid credentials",
             "ext_css_files": channel._ui_asset_urls("css"),
+            "asset_version": _asset_version(channel.assets_path),
         })
 
     # ---- logout

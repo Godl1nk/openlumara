@@ -1,0 +1,13 @@
+/* Stardust: deep space with two soft nebulae. The twinkling stars are drawn on
+   #theme-effect-canvas by js/effects/theme_effects.js. */
+html {
+    background:
+        radial-gradient(90% 70% at 18% 0%, #1a1440 0%, transparent 62%),
+        radial-gradient(75% 60% at 85% 18%, #0f2a44 0%, transparent 58%),
+        radial-gradient(60% 50% at 50% 100%, #1b1030 0%, transparent 60%),
+        #06060f;
+}
+
+body {
+    background-color: transparent;
+}
