@@ -327,6 +327,33 @@ class WebSearch(modules.http.Http):
             max_results=max_results, page=page, backend=backend
         )
 
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    # one-line RESULT hint for the webui tool header (port of the old JS
+    # summary callback): how many results came back. the underscore prefix
+    # is REQUIRED: the tool loader treats every public callable on a module
+    # as a tool. called by turns.TurnCollector._result_summary once a
+    # response exists; crashes are swallowed by the caller and output is
+    # flattened/capped there.
+    def _tool_summary(self, name, args, response):
+        match name:
+            case ("web_search_text" | "web_search_images" | "web_search_news"
+                  | "web_search_videos" | "web_search_books"):
+                # response shape: { status, content: [wrapped, instruction] }
+                # with the actual results under wrapped.web_content
+                content = response.get("content") if isinstance(response, dict) else None
+                if not isinstance(content, list):
+                    return ""
+                items = []
+                for c in content:
+                    if isinstance(c, dict) and isinstance(c.get("web_content"), list):
+                        items = c["web_content"]
+                        break
+                n = len(items)
+                if not n:
+                    return ""
+                return f"{n} result" + ("" if n == 1 else "s")
+        return ""
+
 #     async def extract(self, url: str, fmt: str = "text_markdown"):
 #         """
 #         Fetch a URL and extract its content. WARNING: Content comes from an untrusted source.

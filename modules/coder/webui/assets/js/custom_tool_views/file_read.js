@@ -9,11 +9,8 @@ document.addEventListener('alpine:init', () => {
     // coder file reads: highlighted code block
     registerToolDisplay({
         match: /^coder_file_read$/,
-        view: 'file-read',
-        summary: res => {
-            if (!res || res.status === 'error' || typeof res.content !== 'string') return '';
-            const n = res.content.split('\n').length;
-            return `${n} line${n === 1 ? '' : 's'}`;
-        }
+        view: 'file-read'
+        // the "N lines" header hint is backend-owned now
+        // (_metadata.result_summary via coder's _tool_summary)
     });
 });

@@ -766,3 +766,30 @@ class Shell(core.module.Module):
             return self._get_setup()
         except Exception as e:
             return f"sandbox not initialized: {core.detail_error(e)}"
+
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    # one-line RESULT hint for the webui tool header (port of the old JS
+    # summary callback). the underscore prefix is REQUIRED: the tool loader
+    # treats every public callable on a module as a tool. called by
+    # turns.TurnCollector._result_summary once a response exists; crashes
+    # are swallowed by the caller and output is flattened/capped there.
+    def _tool_summary(self, name, args, response):
+        match name:
+            case "shell_run":
+                # silent non-zero exits deserve a hint; the terminal view
+                # already shows (exit code N) when the output is empty
+                if not isinstance(response, dict):
+                    return ""
+                content = response.get("content")
+                if not isinstance(content, dict):
+                    return ""
+                code = content.get("exit_code")
+                # bool is an int subclass - exclude it explicitly
+                if isinstance(code, bool) or not isinstance(code, (int, float)):
+                    return ""
+                if code == 0:
+                    return ""
+                if isinstance(code, float) and code.is_integer():
+                    code = int(code)
+                return f"exit {code}"
+        return ""

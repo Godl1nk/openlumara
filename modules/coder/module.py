@@ -7,6 +7,7 @@ import shutil
 import regex
 import glob
 import fnmatch
+import difflib
 import asyncio
 import subprocess
 import tree_sitter_language_pack as tslp
@@ -2385,3 +2386,105 @@ class Coder(core.module.Module):
 
         flush_buffers()
         return rows
+
+    def _tool_summary(self, name, args, response):
+        match name:
+            case "coder_file_edit":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                original = args.get("original_code") or ""
+                replacement = args.get("replacement_code") or ""
+                if not original or not replacement:
+                    return ""
+                
+                added = deleted = 0
+                matcher = difflib.SequenceMatcher(
+                    None, original.splitlines(), replacement.splitlines()
+                )
+                
+                for op, i1, i2, j1, j2 in matcher.get_opcodes():
+                    if op in ("insert", "replace"):
+                        added += j2 - j1
+                    if op in ("delete", "replace"):
+                        deleted += i2 - i1
+                        
+                return f"+{added} \u2212{deleted}"
+
+            case "coder_file_read":
+                if not isinstance(response, dict) or response.get("status") == "error":
+                    return ""
+                
+                content = response.get("content")
+                if not isinstance(content, str):
+                    return ""
+                
+                n = len(content.split("\n"))
+                return f"{n} line" + ("" if n == 1 else "s")
+
+            case "coder_file_create":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                content = args.get("content") or ""
+                if not content:
+                    return ""
+                
+                if content.endswith("\n"):
+                    content = content[:-1]
+                    
+                n = len(content.split("\n"))
+                return f"{n} line" + ("" if n == 1 else "s")
+
+            case "coder_folder_grep" | "coder_file_grep":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                c = response.get("content")
+                if isinstance(c, list):
+                    items = c
+                elif isinstance(c, dict) and isinstance(c.get("matches"), list):
+                    items = c["matches"]
+                else:
+                    items = []
+                    
+                fallback = args.get("file_path")
+                if fallback is None:
+                    fallback = args.get("sub_path")
+                if fallback is None:
+                    fallback = "matches"
+                    
+                files = set()
+                n = 0
+                for m in items:
+                    if not isinstance(m, dict):
+                        continue
+                    files.add(m.get("file") or fallback)
+                    n += 1
+                    
+                if not n:
+                    return ""
+                if len(files) > 1:
+                    return f"{n} matches \u00b7 {len(files)} files"
+                
+                return f"{n} match" + ("" if n == 1 else "es")
+
+            case "coder_glob":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                c = response.get("content")
+                if isinstance(c, list):
+                    items = c
+                elif isinstance(c, dict) and isinstance(c.get("results"), list):
+                    items = c["results"]
+                else:
+                    items = []
+                    
+                n = sum(1 for f in items if isinstance(f, str))
+                if not n:
+                    return ""
+                
+                return f"{n} file" + ("" if n == 1 else "s")
+
+        return ""

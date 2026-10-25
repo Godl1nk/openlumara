@@ -22,7 +22,8 @@ document.addEventListener('alpine:init', () => {
     // scheduler jobs: card with clock, when + action
     registerToolDisplay({
         match: /^scheduler_add_job$/,
-        view: 'scheduler-job',
-        summary: (res, tool, cacheKey) => schedulerInfo(toolArgs(tool, cacheKey)).when
+        view: 'scheduler-job'
+        // the "when" header hint is backend-owned now
+        // (_metadata.result_summary via scheduler's _tool_summary)
     });
 });

@@ -14,8 +14,6 @@
 // registry entry shape (registered by the views file):
 //   match:   RegExp tested against the tool function name
 //   view:    name of the template branch in tool_displays.html to render
-//   summary: (optional) (response) => short one-liner for the collapsed
-//            header. default (no summary fn, or empty return) = show nothing.
 
 const TOOL_DISPLAYS = [];
 
@@ -42,25 +40,15 @@ function toolDisplayView(tool) {
     return toolDisplayFor(toolDisplayName(tool))?.view ?? null;
 }
 
-// one-line result hint for the completed tool call header; by default
-// nothing is shown (Rosie's call) - displays can opt in via summary().
-// summaries get (parsedResponse, tool) - many stats (diff sizes, glob
-// counts) live in the ARGS, so they need the tool itself as well.
-function toolCallResultSummary(tool, cacheKey) {
-    const display = toolDisplayFor(toolDisplayName(tool));
-    if (!display || typeof display.summary !== 'function') return '';
-    let parsed = null;
-    try {
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        // display annotations moved under the tool call's _metadata key
-        parsed = JSON.parse(tool._metadata?.response);
-    } catch {
-        return '';
-    }
-    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    // cacheKey is only a streamMemo hint; default to the call id so callers
-    // outside a card x-data scope (and completed calls) still memoize sanely
-    return display.summary(parsed, tool, cacheKey ?? tool?.id ?? '') ?? '';
+// -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+// one-line result hint for the completed tool call header. fully
+// backend-owned now: core/turns.py asks the owning module's
+// _tool_summary(name, args, response) hook and stamps the ready-made line
+// as _metadata.result_summary (live stream AND history reloads). the JS
+// summary callbacks are gone - the registry only matches and names views,
+// and the frontend is a pure display sink. empty = show nothing.
+function toolCallResultSummary(tool) {
+    return tool?._metadata?.result_summary || '';
 }
 
 // -- generic template helpers ----------------------------------------------

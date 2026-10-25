@@ -41,12 +41,8 @@ document.addEventListener('alpine:init', () => {
     // grep calls: file-grouped match lists with line numbers + context
     registerToolDisplay({
         match: /^coder_(folder|file)_grep$/,
-        view: 'grep',
-        summary: (res, tool, cacheKey) => {
-            const groups = grepGroups(res, toolArgs(tool, cacheKey));
-            const n = groups.reduce((sum, g) => sum + g.matches.length, 0);
-            if (!n) return '';
-            return groups.length > 1 ? `${n} matches \u00b7 ${groups.length} files` : `${n} match${n === 1 ? '' : 'es'}`;
-        }
+        view: 'grep'
+        // the "n matches · m files" header hint is backend-owned now
+        // (_metadata.result_summary via coder's _tool_summary)
     });
 });

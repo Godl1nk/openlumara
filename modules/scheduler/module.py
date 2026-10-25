@@ -964,3 +964,22 @@ Use tools if needed. For simple reminders, do not use tools.
 
         self.schedule.load()
         return await self.remove_job(job_id)
+
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    # one-line RESULT hint for the webui tool header (port of the old JS
+    # summary callback): echo when the job fires. the underscore prefix is
+    # REQUIRED: the tool loader treats every public callable on a module as
+    # a tool. called by turns.TurnCollector._result_summary once a response
+    # exists; crashes are swallowed by the caller and output is
+    # flattened/capped there.
+    def _tool_summary(self, name, args, response):
+        match name:
+            case "scheduler_add_job":
+                # mirrors the JS ?? chain: fall through only on absent/null
+                when = args.get("relative_duration")
+                if when is None:
+                    when = args.get("target_time")
+                if when is None:
+                    return ""
+                return str(when)
+        return ""
