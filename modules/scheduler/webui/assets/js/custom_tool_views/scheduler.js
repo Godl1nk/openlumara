@@ -24,6 +24,6 @@ document.addEventListener('alpine:init', () => {
         match: /^scheduler_add_job$/,
         view: 'scheduler-job'
         // the "when" header hint is backend-owned now
-        // (_metadata.result_summary via scheduler's _tool_summary)
+        // (_metadata.result_summary via scheduler's on_tool_summary)
     });
 });

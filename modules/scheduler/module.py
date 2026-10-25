@@ -972,9 +972,9 @@ Use tools if needed. For simple reminders, do not use tools.
     # one-line RESULT hint for the webui tool header (port of the old JS
     # summary callback): echo when the job fires. private by naming
     # convention (the loader only registers @core.module.tool methods).
-    # called by turns.TurnCollector._result_summary once a response exists;
+    # called by turns.TurnCollector.on_result_summary once a response exists;
     # crashes are swallowed by the caller and output is flattened/capped there.
-    def _tool_summary(self, name, args, response):
+    def on_tool_summary(self, name, args, response):
         match name:
             case "scheduler_add_job":
                 # mirrors the JS ?? chain: fall through only on absent/null

@@ -2399,7 +2399,7 @@ class Coder(core.module.Module):
         flush_buffers()
         return rows
 
-    def _tool_summary(self, name, args, response):
+    def on_tool_summary(self, name, args, response):
         match name:
             case "coder_file_edit":
                 if not isinstance(response, dict) or response.get("status") != "success":

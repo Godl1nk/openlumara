@@ -54,8 +54,6 @@ class Channel:
         self.console_buffer = [] # used to log system messages
 
         self.tc_manager = core.toolcalls.ToolcallManager(self)
-        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-        # channel ref so the turn collector can ask modules for result summaries
         self.turncollector = core.turns.TurnCollector(self)
         self.tool_loader = core.tool_loader.ToolLoader(self)
         self.tool_loader.register_meta_tools()

@@ -12,7 +12,6 @@ _END_SECTIONS = ("Returns:", "Raises:", "Note:", "Example:")
 _ALL_SECTIONS = (_ARG_SECTION,) + _END_SECTIONS
 _PARAM_RE = re.compile(r"(\w+)(?:\s*\([^)]*\))?\s*:\s*(.+)")
 
-# -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
 # caches tool dicts to speed stuff up
 _TOOL_DICT_CACHE = weakref.WeakKeyDictionary()
 
@@ -266,20 +265,6 @@ class ToolLoader:
 
     # ------------------------------------------------------------------
     # Tool bridge (cache-stable dynamic invocation)
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-15) harness:openlumara
-    # -- REDESIGNED (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    # Progressive disclosure without ever touching the active tools array
-    # (any change to it invalidates the request prefix and blows the
-    # provider prompt cache): tools_load returns the schemas of a module's
-    # tools as a tool result (append-only, so the cache survives) and the
-    # model invokes them through the generic tools_call bridge. The model
-    # only ever needs module names (listed in the tools_load description);
-    # no per-tool catalog is embedded anywhere. The active array holds
-    # exactly: the meta tools and the preloaded modules' tools; a chat that
-    # needs more simply calls tools_load (and can re-read its own previous
-    # tools_load results from history - there is no per-chat tool restore).
-    # With dynamic_tool_loading off the whole system is bypassed and every
-    # tool registers natively.
     # ------------------------------------------------------------------
 
     def _build_bridge_defs(self):
@@ -300,21 +285,6 @@ class ToolLoader:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Exact tool name to call. Always output this key first"},
-                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-                        # the args key is named 'params' instead of 'arguments' on purpose:
-                        # several grammar/guided-decoding backends emit object keys in
-                        # ALPHABETICAL order, so 'arguments' reliably came BEFORE 'name'
-                        # and the model streamed a whole payload before revealing which
-                        # tool it was calling. 'params' sorts after 'name', so both
-                        # schema-order and alphabetical-order emitters put the name first.
-                        # tools_call() still accepts 'arguments' as a legacy alias.
-                        # params is TRANSPORTED as a JSON-encoded string on purpose:
-                        # string-typed fields stream token by token, while object-typed
-                        # nested values arrive as one atomic chunk from the model server
-                        # (verified in the bridge debug log) - which made long bridged
-                        # args pop in all at once instead of streaming. execution-side
-                        # coercion of str -> dict already exists in tools_call(), and a
-                        # model that emits a raw object anyway keeps working.
                         "params": {
                             "type": "string",
                             "description": (
@@ -382,10 +352,6 @@ class ToolLoader:
     # Meta tool implementation
     # ------------------------------------------------------------------
 
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    # tools_load no longer mutates the active tools array (a prefix change that
-    # blows the provider prompt cache): it returns the schemas of the modules'
-    # tools directly, and the model invokes them via the tools_call bridge.
     async def tools_load(self, module_names: list):
         """Returns the full parameter schemas of all tools in the given modules.
 
@@ -448,17 +414,6 @@ class ToolLoader:
         if disabled:
             result["disabled"] = disabled
         return result
-
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    # Schema pre-validation for the bridge. Without it, a bad kwarg survives
-    # until the real method call and blows up deep inside the tool with a raw
-    # TypeError, which toolcalls.py can only report as a generic execution
-    # error. Pre-binding against the target signature rejects unknown/missing
-    # arguments and type mismatches before any side effects happen, and the
-    # error lists the valid parameters so the model can recover in one retry.
-    # Simple annotated types are coerced leniently (stringified numbers are a
-    # common model slip) to skip even that retry; unannotated or exotic
-    # annotations are left unchecked so previously-working calls never break.
 
     _NAME_TO_TYPE = {"str": str, "int": int, "bool": bool, "list": list, "dict": dict}
 
@@ -557,20 +512,19 @@ class ToolLoader:
         name (str): Exact name of the tool to call
         params (str): JSON-encoded arguments object for the tool, matching its schema (a raw object is accepted too)
         """
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # 'params' is the schema key now (it sorts after 'name', 'arguments' did not);
-        # 'arguments' stays accepted as a legacy alias so models biased by old chat
-        # history keep working.
         if params is None:
             params = arguments
+            
         if isinstance(params, str):
             # transport format: JSON-encoded string (streams token by token)
             try:
                 params = json_repair.loads(params)
             except Exception:
                 return {"status": "error", "content": "params is not valid JSON"}
+            
         if params is None:
             params = {}
+            
         if not isinstance(params, dict):
             return {"status": "error", "content": "params must be an object"}
 
