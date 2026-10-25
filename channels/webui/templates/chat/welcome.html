@@ -9,7 +9,7 @@
      only produce whitespace. -->
 {% set slot_above = extension_slot("above_message") %}
 {% set slot_below = extension_slot("below_message") %}
-<template x-if="$store.chat.turnHistory.length === 0 && !$store.stream.turn.messages">
+<template x-if="$store.chat.turnHistory.length === 0 && !$store.stream.turn.steps">
     <div class="welcome-panel">
         {{ slot_above }}
 

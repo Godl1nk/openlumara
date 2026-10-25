@@ -1,7 +1,7 @@
 /* alpine.js directive that renders markdown into an element, but only does
  * the actual work when it matters:
  *
- *   x-md="{ message: message, live: messageIndex === $store.stream.turn.messages.length - 1 }"
+ *   x-md="{ message: message, live: message.is_tail === true }"
  *
  * for the live message (the last one in a streaming turn), paints are
  * coalesced to one per animation frame (vsync-synced, ~120fps ceiling).

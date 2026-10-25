@@ -7,7 +7,10 @@ let STREAM_STORE = {
     // processing_tools. don't write to it from the frontend anymore.
     state: 'idle',
 
-    // stores raw token data
+    // the live in-progress turn. starts as a bare [] and becomes a live
+    // turn object {role, live, steps, final_messages} on the first
+    // turn_step/turn_final event - EXACTLY the history turn shape, fed by
+    // backend step upserts + final snapshots (core/turns.py step stream).
     turn: [],
     processing: {},
 

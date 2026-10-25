@@ -5,11 +5,14 @@
     </template>
 
     <!-- Content block -->
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-         live check now uses object identity instead of index, since the
-         chain/final split makes per-loop indexes meaningless -->
+    <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25)
+         final bubbles only ever render while they are the PROVISIONAL
+         final: a retract takes the message out of this loop the moment
+         its text slides back into the chain. being the live tail of the
+         stream is therefore structural - the raw-segment identity check
+         from the old segment stream is gone. -->
     <template x-if="message.type === 'content'">
-        <div class="content" x-md="{ message: message, live: message === $store.stream.turn.messages[$store.stream.turn.messages.length - 1] }"></div>
+        <div class="content" x-md="{ message: message, live: true }"></div>
     </template>
 
     <!-- Tool calls block -->

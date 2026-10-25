@@ -660,6 +660,14 @@ class Webui(core.channel.Channel):
                         # set_stream_state is deduped, so hitting it on every
                         # streamed token costs nothing beyond the transition.
                         match token_type:
+                            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+                            # the step-based stream carries no segment-type
+                            # events anymore, so thinking/streaming derive
+                            # from the raw tokens themselves
+                            case "reasoning":
+                                await self.websocket_manager.set_stream_state("thinking")
+                            case "content":
+                                await self.websocket_manager.set_stream_state("streaming")
                             case "prompt_progress":
                                 # prompt eval between tool rounds: keep the
                                 # processing_tools state if it's been set
@@ -680,26 +688,34 @@ class Webui(core.channel.Channel):
                             "content": token
                         })
 
-            elif partial.get("type") == "turn":
-                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                # the turncollector groups tokens into typed segments; the
-                # live segment type is what the UI shows (thinking/streaming)
-                segment_type = (payload.get("content") or {}).get("type")
-                if segment_type == "reasoning":
-                    await self.websocket_manager.set_stream_state("thinking")
-                elif segment_type == "content":
-                    await self.websocket_manager.set_stream_state("streaming")
+            elif partial.get("type") == "step":
+                # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+                # step upserts: the collector now folds tokens into
+                # history-shaped step objects itself, so the frontend just
+                # upserts by step number. (the thinking/streaming stream
+                # states moved down into the raw-token branch.)
+                step = payload.get("content")
+                if step is None:
+                    continue
 
-                # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
                 # buffer the snapshot for mid-stream reconnect replay.
                 # payload is a fresh serialize_for_json copy every pass, so
                 # the buffered object is a true point-in-time snapshot and
-                # never aliases the collector's mutating live segment.
-                self.websocket_manager.record_turn_segment(payload.get("content"))
+                # never aliases the collector's mutating live step.
+                self.websocket_manager.record_step_snapshot(step)
 
                 await self.websocket_manager.broadcast({
-                    "type": "turn_stream",
-                    "turn": payload.get("content")
+                    "type": "turn_step",
+                    "step": step
+                })
+
+            elif partial.get("type") == "final":
+                messages = payload.get("content") or []
+                self.websocket_manager.record_final_snapshot(messages)
+
+                await self.websocket_manager.broadcast({
+                    "type": "turn_final",
+                    "messages": messages
                 })
 
     def on_log(self, category, message):
@@ -2850,28 +2866,25 @@ class WebSocketManager:
         # processing, thinking, streaming, calling_tools, processing_tools
         self.stream_state = "idle"
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # live-turn segment buffer: the latest snapshot of every segment the
-        # turncollector has emitted for the in-progress stream, in order.
-        # a websocket that connects mid-stream (page reload) gets a replay,
-        # so the frontend can rebuild the entire live turn instead of only
-        # seeing segments streamed from now on. entries are serialized
-        # snapshots (fresh objects per broadcast), replaced in place while
-        # the same segment keeps growing.
-        self.turn_segments = []
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+        # live-turn step buffer: the LATEST snapshot of every step the
+        # step-based stream has emitted (keyed by step number) plus the
+        # newest final-bubble snapshot. a websocket that connects mid-stream
+        # (page reload) gets a replay, so the frontend can rebuild the whole
+        # live turn instead of only seeing events streamed from now on.
+        # upsert-by-number replaces the old segment-identity matching.
+        self.turn_steps = {}
+        self.turn_final = []
 
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-    def record_turn_segment(self, segment: dict):
-        """track the newest snapshot of the streaming turn's segments.
-        mirrors the frontend's segment-identity rule: same type and same
-        tool_call_id = the same segment growing, otherwise a new one."""
-        if self.turn_segments:
-            last = self.turn_segments[-1]
-            if (last.get("type") == segment.get("type")
-                    and last.get("tool_call_id") == segment.get("tool_call_id")):
-                self.turn_segments[-1] = segment
-                return
-        self.turn_segments.append(segment)
+    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+    def record_step_snapshot(self, step: dict):
+        """track the newest snapshot of one streaming step (upsert by number)"""
+        self.turn_steps[step.get("step")] = step
+
+    def record_final_snapshot(self, messages: list):
+        """track the newest authoritative final-bubble snapshot (empty list
+        is itself meaningful: it records that nothing is final right now)"""
+        self.turn_final = messages
 
     async def set_stream_state(self, state: str):
         """update the authoritative stream state and notify all clients.
@@ -2881,10 +2894,11 @@ class WebSocketManager:
         self.stream_state = state
 
         # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # the segment buffer only ever belongs to the in-progress stream:
+        # the step buffer only ever belongs to the in-progress stream:
         # wipe it when a new stream starts and when one finishes.
         if state in ("message_sending", "idle"):
-            self.turn_segments = []
+            self.turn_steps = {}
+            self.turn_final = []
 
         await self.broadcast({"type": "stream_state", "state": state})
 
@@ -2908,19 +2922,23 @@ class WebSocketManager:
             "state": self.stream_state
         })
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # mid-stream reconnect: replay the segments the in-progress stream
-        # has emitted so far, so a page reload resumes the live turn where
-        # it left off (all of it, not just whatever streams in next). the
-        # frontend's turn_stream handler rebuilds the turn from these exactly
-        # like it would have watched them live, because each snapshot is
-        # fully accumulated for its segment.
-        if self.stream_state != "idle" and self.turn_segments:
-            for segment in self.turn_segments:
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+        # mid-stream reconnect: replay the latest snapshot of every step the
+        # in-progress stream has produced (plus the newest final snapshot),
+        # so a page reload resumes the live turn where it left off (all of
+        # it, not just whatever streams in next). the frontend's turn_step /
+        # turn_final handlers apply these exactly like watched-live events,
+        # because every snapshot is fully accumulated for its step.
+        if self.stream_state != "idle" and (self.turn_steps or self.turn_final):
+            for step_num in sorted(self.turn_steps):
                 await websocket.send_json({
-                    "type": "turn_stream",
-                    "turn": segment
+                    "type": "turn_step",
+                    "step": self.turn_steps[step_num]
                 })
+            await websocket.send_json({
+                "type": "turn_final",
+                "messages": self.turn_final
+            })
 
         asyncio.create_task(self.queue_ready_signal())
 
