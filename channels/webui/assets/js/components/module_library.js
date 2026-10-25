@@ -1,4 +1,4 @@
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12) status:reviewed
 // Alpine component behind the settings modal's Module Library tab.
 // Talks to the /api/libraries/* endpoints in channels/webui/channel.py,
 // which proxy core.module_manager.ModuleManager.
@@ -23,7 +23,6 @@ function moduleLibrary() {
         // completion notice shown inside the restart banner after an action
         restartNote: '',
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
         // pre-install code review: installing a module runs arbitrary Python
         // with full OpenLumara access, so install/update first open a
         // read-only source viewer (GET /api/libraries/source) with jump-links
@@ -48,7 +47,6 @@ function moduleLibrary() {
             return this.busyKey === this.moduleKey(m);
         },
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
         // per-type totals for the tab bar badges
         get typeCounts() {
             const counts = { module: 0, channel: 0, theme: 0, skill: 0 };
@@ -167,7 +165,6 @@ function moduleLibrary() {
             this.openAudit(m, 'update');
         },
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
         // code review modal logic (source viewing + flags + two-step confirm)
         async openAudit(m, mode) {
             this.audit = {
@@ -212,7 +209,6 @@ function moduleLibrary() {
         get auditHighlighted() {
             if (!this.audit || !this.audit.code) return '';
             const code = this.audit.code;
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
             // pick the grammar by file extension: skills and themes review
             // .md/.json/.css files too, not just .py
             const LANG_BY_EXT = { py: 'python', json: 'json', css: 'css', md: 'markdown', yaml: 'yaml', yml: 'yaml', html: 'xml', js: 'javascript' };
@@ -241,7 +237,6 @@ function moduleLibrary() {
             this.audit = null;
         },
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
         // themes and skills are data, not executed code: the review dialog is
         // already a deliberate step, so no extra native confirm popup, no red
         // confirm button, and friendlier footer wording for them.

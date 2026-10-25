@@ -4,11 +4,6 @@
         <h3 x-text="$store.settings.categories[activeCategory].title"></h3>
         <p class="section-desc" x-text="$store.settings.categories[activeCategory].description"></p>
         
-        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-             All modules grouped by the category each module declares on its
-             class (enabled first within each group, uncategorized under
-             "Other" last). The group header hides itself when no module in
-             this section declares a category at all. -->
         <template x-for="group in $store.settings.groupedSubItems(activeCategory)" :key="group.label">
             <div class="module-group">
                 <template x-if="group.label">
@@ -40,10 +35,6 @@
             <p class="section-desc" x-html="renderMarkdown($store.settings.categories[activeCategory].descriptions[activeModule]) || ''"></p>
             
             <template x-if="$store.settings.categories[activeCategory].settings[activeModule] && $store.settings.categories[activeCategory].settings[activeModule].value">
-                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                     dependency x-show -> x-if templates: settings whose dependencies
-                     are unmet now unmount their whole field widget instead of
-                     just hiding it. -->
                 <template x-for="hierarchyItem in getHierarchicalSettings()" :key="hierarchyItem.key">
                     <template x-if="$store.settings.showUnsafe || !hierarchyItem.setting.unsafe">
                         <template x-if="checkDependency(hierarchyItem.setting.depends)">

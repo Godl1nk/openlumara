@@ -14,7 +14,6 @@ function settingsModal() {
             user_channels: false
         },
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
         // collapsed module/channel categories in the settings sidebar,
         // keyed "category::groupName", persisted so a tidied sidebar stays tidied
         collapsedGroups: {},
@@ -51,7 +50,7 @@ function settingsModal() {
             localStorage.setItem('settingsCollapsedGroups', JSON.stringify(this.collapsedGroups));
         },
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12) status:reviewed
         // keeps the sidebar's group expansion in sync with the open module:
         // - open module is enabled -> auto-open the group containing it; since
         //   only one group is ever auto-open, switching to an enabled module in
@@ -94,17 +93,11 @@ function settingsModal() {
         messageWidth: localStorage.getItem('messageMaxWidth') || '60',
         expandReasoning: localStorage.getItem('expandReasoning') || false,
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
         // streamed-token fade settings (localStorage; applied live, no save needed).
-        // literal 350 default: this file loads before directives/fade_tail.js.
         tokenFadeEnabled: localStorage.getItem('tokenFadeEnabled') !== 'false',
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
         // start the live processing chain collapsed (localStorage; default off)
         collapseChainDefault: localStorage.getItem('collapseChainDefault') === 'true',
-        // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
         // 'Step display mode' dropdown: default | thinking | steps.
-        // Replaces collapseStepsDefault / collapseThinkingDefault /
-        // collapseToolcallsDefault (migrated once by init.js).
         stepDisplayMode: localStorage.getItem('stepDisplayMode') || 'default',
         tokenFadeMs: localStorage.getItem('tokenFadeMs') || '500',
 
@@ -115,20 +108,11 @@ function settingsModal() {
 
         // --- Init & Load ---
         async init() {
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-            // the resize + theme-changed listeners used to be attached here
-            // with raw addEventListener. the modal is x-if now, so it
-            // unmounts when closed - but these listeners were never removed,
-            // leaking a fresh pair (pinning the dead component in memory)
-            // on every single open. they now live as x-on bindings on the
-            // modal root in settings/index.html, which Alpine tears down
-            // together with the component.
             this.themeFamily = Alpine.store('theme').family;
             this.themeMode = Alpine.store('theme').mode;
 
             this.activeCategory = "appearance";
 
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
             // restore which sidebar categories were folded away last time
             try {
                 this.collapsedGroups = JSON.parse(localStorage.getItem('settingsCollapsedGroups') || '{}');
@@ -136,29 +120,17 @@ function settingsModal() {
                 this.collapsedGroups = {};
             }
 
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-            // keep the sidebar's group expansion in sync with whichever
-            // module/channel is open. watchers cover every navigation path
-            // (sidebar click, main-list drilldown, Back button, category
-            // switch) without touching each of their handlers. watchers run
-            // async, so multi-step updates settle before syncActiveGroup reads.
+            // keep the sidebar's group expansion in sync with whichever module/channel is open
             this.$watch('activeModule', () => this.syncActiveGroup());
             this.$watch('activeChannel', () => this.syncActiveGroup());
             this.$watch('activeCategory', () => this.syncActiveGroup());
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-            // always pull fresh settings from the backend on every open:
-            // the store's page-init copy goes stale the moment anything
-            // else touches the config (another tab, an instance restart,
-            // a module registering new settings). the modal mounts per
-            // open (x-if), so this init is the natural refresh hook.
-            // skipped under the admin lockdown, same as the store init.
+            // always pull fresh settings from the backend on every open
             if (!window.ADMIN_SETTINGS_DISABLED) {
                 await Alpine.store('settings').load();
             }
         },
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
         // called from @resize.window.debounce on the modal root
         checkMobile() {
             const newMobile = window.innerWidth <= 768;
@@ -167,14 +139,10 @@ function settingsModal() {
             }
         },
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
         // unsaved-changes prompt: shown when closing with dirty settings
         // so nobody loses edits by reflex-clicking the close button.
         showClosePrompt: false,
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-        // closing no longer silently saves: with pending changes the
-        // in-modal prompt (save / don't save / cancel) intercepts first.
         async close() {
             if (Alpine.store('settings').hasChanges) {
                 this.showClosePrompt = true;
@@ -196,10 +164,6 @@ function settingsModal() {
             await Alpine.store('ui').closeModal();
         },
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-        // switching categories no longer auto-saves, and the model
-        // category no longer auto-fetches its model list (the model
-        // field shows a hint with a refresh button instead).
         async switchCategory(cat) {
             this.activeCategory = cat;
             this.activeModule = null;
@@ -383,27 +347,17 @@ function settingsModal() {
             document.documentElement.style.setProperty('--chat-content-width', `${width}%`);
         },
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // streamed-token fade: stored in localStorage and applied live.
-        // the fade directives read the same keys on every paint, and the
-        // CSS animation duration follows the --token-fade-duration var.
         handleTokenFadeToggle() {
             this.tokenFadeEnabled = !this.tokenFadeEnabled;
             localStorage.setItem('tokenFadeEnabled', this.tokenFadeEnabled);
         },
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-        // processing chain default-collapse toggle (localStorage; read fresh
-        // when a streaming chain mounts, so it applies to the next turn)
         handleCollapseChainToggle() {
             this.collapseChainDefault = !this.collapseChainDefault;
             localStorage.setItem('collapseChainDefault', this.collapseChainDefault);
         },
 
-        // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-        // 'Step display mode' dropdown (default | thinking | steps). read
-        // fresh per streaming step mount, so a change applies from the next
-        // step onward without a reload.
+        // 'Step display mode' dropdown (default | thinking | steps)
         handleStepDisplayModeChange(mode) {
             this.stepDisplayMode = mode;
             localStorage.setItem('stepDisplayMode', mode);

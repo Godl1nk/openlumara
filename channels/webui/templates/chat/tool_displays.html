@@ -1,15 +1,10 @@
-<!--
--- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-   tool display views CORE. included by chat/toolcalls.html inside each
-   tool card; the `tool` and `cacheKey` variables every branch reads come
-   from the card's Alpine x-data scope, not from jinja.
--->
 {{ extension_slot("tool_views") }}
 
-<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
      tools_load: module chips while the args stream (they grow in with the
      module_names array), then a per-module section listing each fetched tool
-     with its dimmed description - the schemas themselves stay in the result. -->
+     with its dimmed description - the schemas themselves stay in the result. 
+-->
 <template x-if="toolDisplayView(tool) === 'tools-load'"
           x-data="{ get view() { return toolLoadGroups(tool, cacheKey) } }">
     <div>

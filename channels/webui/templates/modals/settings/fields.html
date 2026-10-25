@@ -181,11 +181,6 @@
         <template x-if="setting.type === 'api_url'">
             <div class="row">
                 <label x-text="setting.title.toUpperCase()"></label>
-                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                     blur only triggers save + connection check when the url
-                     actually differs from the stored value (setting.value
-                     stays untouched until blur, since this field has no
-                     @input handler). tabbing through no longer re-saves. -->
                 <input type="text" :value="setting.value" 
                        @blur="if ($event.target.value !== setting.value) { updateSetting(setting, $event.target.value); await $store.settings.saveSettings(); await $store.settings.checkApiConnection(); }">
                 <div class="api-status">
@@ -203,11 +198,6 @@
         <template x-if="setting.type === 'api_key'">
             <div class="row">
                 <label x-text="setting.title"></label>
-                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                     blur only triggers save + connection check when the url
-                     actually differs from the stored value (setting.value
-                     stays untouched until blur, since this field has no
-                     @input handler). tabbing through no longer re-saves. -->
                 <input type="text" :value="setting.value" 
                        @blur="if ($event.target.value !== setting.value) { updateSetting(setting, $event.target.value); await $store.settings.saveSettings(); await $store.settings.checkApiConnection(); }">
                 <span class="description" x-show="setting.description" x-html="renderMarkdown(setting.description)"></span>
@@ -241,10 +231,6 @@
                     </button>
                 </div>
                 <span class="description" x-show="setting.description" x-html="renderMarkdown(setting.description)"></span>
-                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                     models are no longer auto-fetched when the model tab
-                     opens; nudge the user to hit refresh when the list is
-                     still empty (and nothing failed to load). -->
                 <template x-if="!$store.settings.modelsLoadError && (!$store.settings.cachedModels || $store.settings.cachedModels.length === 0)">
                     <p class="model-empty-note">No models found on the API. Press the refresh button to load the model list.</p>
                 </template>

@@ -12,19 +12,12 @@
                  ),
              
                  autoCollapsed: false,
-                 // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-                 // one-shot: the auto-open for arriving tool calls fires once
-                 // per step, mirroring the autoCollapsed idiom.
+                 // the auto-open for arriving tool calls fires once per step
                  autoOpened: false,
              	 done: $store.stream.state === 'idle',
              
-                 // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-                 // thinking is only hidden for the DURATION of this step's
-                 // streaming, and only from the moment its tool calls arrive:
-                 // the step pops open for the toolcards while the raw
-                 // reasoning stays tucked away. once the step is done the
-                 // thinking is visible again (on expand, as usual).
                  get thinkingHidden() {
+             		 // if display mode is set to hide thinking, hide it 
                      return this.displayMode === 'thinking' && !this.done && (step.tool_calls?.length ?? 0) > 0
                  },
 
@@ -39,7 +32,6 @@
                const hasNewerStep = (turn.steps ?? []).some(s => s.step != null && s.step > step.step);
                done = $store.stream.state === 'idle' || hasNewerStep || step.status === 'done' || step.status === 'failed' || step.status === 'thoughts';
 
-               // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
                // the moment this live step's first tool call arrives, open
                // the step (once) so the toolcards take the stage - the
                // thinkingHidden getter keeps the raw reasoning out of sight
@@ -120,11 +112,6 @@
         <div class="block">
             <!-- reasoning gets the thought bubble, like a mini Thoughts
                  block inside the step -->
-            <!-- -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-                 live steps honour 'collapse thinking by default': the raw
-                 reasoning hides from the moment the step's tool calls arrive
-                 until the step finishes (thinkingHidden). history renders
-                 it unconditionally. -->
             <div class="reasoning-row" {% if combined_stream %}x-show="step.reasoning_content && !thinkingHidden"{% else %}x-show="step.reasoning_content"{% endif %}>
                 <div class="reasoning-text" x-fade-text="step.reasoning_content" x-auto-scroll></div>
             </div>
