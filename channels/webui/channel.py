@@ -1531,7 +1531,9 @@ async def create_fastapi(channel):
             "/favicon.ico", "/favicon.svg", "/icon-192.png", "/icon-512.png",
             "/icon-maskable-512.png", "/manifest.json",
         ]
-        if request.url.path in public_paths or str(request.url.path).startswith("/assets/"):
+        # theme data and sidecar CSS also serve the signed-out login page
+        public_prefixes = ("/assets/", "/themes/", "/api/themes")
+        if request.url.path in public_paths or str(request.url.path).startswith(public_prefixes):
             return await call_next(request)
         
         # Check session for API and other routes

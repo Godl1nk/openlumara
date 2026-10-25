@@ -7,13 +7,68 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="stylesheet" href="{{ url_for('assets', path='css/base/base.css') }}?v={{ asset_version }}">
-    <link rel="stylesheet" href="{{ url_for('assets', path='css/base/variables.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ url_for('assets', path='css/effects.css') }}?v={{ asset_version }}">
     <link rel="stylesheet" href="{{ url_for('assets', path='css/login.css') }}?v={{ asset_version }}">
     {# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
        module-shipped stylesheets, so login slots can be styled too #}
     {% for url in ext_css_files %}
     <link rel="stylesheet" href="{{ url }}">
     {% endfor %}
+    <script>
+    // apply the saved WebUI theme to the login page before the card paints
+    (function () {
+        const root = document.documentElement;
+        const family = localStorage.getItem('themeFamily') || 'monochrome';
+        const mode = localStorage.getItem('themeMode') || 'dark';
+        const font = localStorage.getItem('fontFamily');
+        const size = localStorage.getItem('fontSize');
+        if (font && font !== 'default') root.style.setProperty('--font-primary', `'${font}', sans-serif`);
+        if (size) root.style.setProperty('--font-size-base', `${size}px`);
+
+        (async () => {
+            const get = async (name) => {
+                const res = await fetch(`/api/themes/${encodeURIComponent(name)}`, { cache: 'no-store' });
+                return res.ok ? res.json() : null;
+            };
+            try {
+                const base = await get('base');
+                if (base) {
+                    for (const [key, value] of Object.entries(base)) {
+                        if (key.startsWith('--')) root.style.setProperty(key, value);
+                    }
+                }
+
+                const theme = await get(family);
+                if (!theme) return;
+
+                const vars = theme[mode] || theme.dark || theme.light || {};
+                for (const [key, value] of Object.entries(vars)) {
+                    if (key.startsWith('--')) root.style.setProperty(key, value);
+                }
+                root.dataset.themeMode = theme[mode] ? mode : (theme.dark ? 'dark' : 'light');
+
+                // theme sidecar (extra CSS for that family)
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = `/themes/${encodeURIComponent(family)}.css`;
+                document.head.appendChild(link);
+
+                // animated effects: set the dataset for the engine's boot and
+                // fire the event for the case where it already started
+                const fx = theme.effects;
+                if (fx && fx.type && fx.type !== 'none') {
+                    root.dataset.themeEffect = String(fx.type);
+                    root.dataset.themeEffectIntensity = String(fx.intensity ?? 1);
+                    root.dataset.themeEffectTrail = String(fx.trail ?? 0);
+                    window.dispatchEvent(new CustomEvent('theme-effect-changed', { detail: fx }));
+                }
+            } catch (e) {
+                // keep the built-in login styling when themes are unavailable
+            }
+        })();
+    })();
+    </script>
+    <script src="{{ url_for('assets', path='js/effects/theme_effects.js') }}?v={{ asset_version }}" defer></script>
 </head>
 <body>
     <div class="login-wrapper">
