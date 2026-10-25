@@ -3,8 +3,9 @@
    side-by-side), live while the args stream.
    shared machinery (streamMemo) lives in the webui's
    renderers/custom_tool_views/shared.js; langForPath + coderFooterText in
-   this folder's shared.js; markup in the webui's tool_displays.html; styling
-   in css/chat/custom_tool_views.css. */
+   this folder's shared.js; markup in this module's
+   templates/chat/tool_displays.html (tool_views slot); styling
+   in this folder's file_edit.css. */
 
 // generic helper: true line diff (LCS) between two code strings.
 // common lines render as context, changed lines as -/+; long unchanged
@@ -138,13 +139,13 @@ function sideBySideRows(rows) {
 }
 
 // full side-by-side markup for the desktop diff view. css shows either
-// this or the unified diffHtml, never both (see custom_tool_views.css);
+// this or the unified diffHtml, never both (see this folder's file_edit.css);
 // no line numbers - the cell tints convey which side is which. memoized
 // like diffHtml: each box keeps its own memo entry, so the hidden one
 // only recomputes on real arg changes.
 // side-by-side counterpart of diffHtml. which one VISIBLE is pure css:
 // .diff-container is a size container and a container query swaps the
-// layouts at a min card width (custom_tool_views.css) - so the switch
+// layouts at a min card width (file_edit.css) - so the switch
 // follows the chat/message width settings and resizes with zero JS.
 // both layouts render regardless; the per-line highlight cache is shared
 // between them, so the second render is mostly just the LCS + string work

@@ -1,14 +1,6 @@
 <div class="combined-block" :class="{collapsed: collapsed, expanded: !collapsed}"
     {% if combined_stream %}
      x-data="{
-                 // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-                 // 'Step display mode' (localStorage: default | thinking |
-                 // steps), for the getter and the x-effect below. NOTE: the
-                 // 'collapsed' initializer deliberately re-reads localStorage
-                 // instead of referencing this property: inside an x-data
-                 // object LITERAL `this` is not the component (it's window),
-                 // so initializers can never see sibling properties - getters
-                 // are fine.
                  displayMode: localStorage.getItem('stepDisplayMode') || 'default',
 
                  collapsed: $store.stream.state === 'idle'

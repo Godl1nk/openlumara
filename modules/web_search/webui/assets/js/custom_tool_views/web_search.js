@@ -1,7 +1,7 @@
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
    web search module view: web_search_* results render as titled link cards.
-   markup in the webui's tool_displays.html; styling in
-   css/chat/custom_tool_views.css. */
+   markup in this module's templates/chat/tool_displays.html (tool_views
+   slot); styling in this folder's web_search.css. */
 
 // flatten a web_search response into display cards: [{ title, url, thumb,
 // snippet, note }]. response shape: { status, content: [ wrapped,

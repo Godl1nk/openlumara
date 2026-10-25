@@ -1,9 +1,12 @@
 // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
 // tool display CORE: the registry + generic template helpers that let
-// specific tool calls render from an inline markup view
-// (templates/chat/tool_displays.html) instead of the default arg rows.
+// specific tool calls render from an inline markup view instead of the
+// default arg rows. the view markup branches live in the webui's
+// templates/chat/tool_displays.html (core views) plus each module's own
+// templates/chat/tool_displays.html, stitched in through the file's
+// tool_views extension slot.
 // NO html strings - the registry only matches and names views; all markup
-// lives in the template file.
+// lives in the template files.
 //
 // THE VIEWS THEMSELVES (per-tool helpers + registry entries) live in
 // js/renderers/custom_tool_views/ + the per-module
@@ -13,7 +16,8 @@
 //
 // registry entry shape (registered by the views file):
 //   match:   RegExp tested against the tool function name
-//   view:    name of the template branch in tool_displays.html to render
+//   view:    name of the template branch to render; the branch lives in
+//            the webui's or a module's chat/tool_displays.html (tool_views slot)
 
 const TOOL_DISPLAYS = [];
 

@@ -1,0 +1,24 @@
+/* -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+   coder module view styles: the coder-path view's glob result list
+   (the running one-liner it shares with grep lives in shared.css).
+   moved out of the webui's css/chat/custom_tool_views.css. */
+
+.tool-call-card {
+    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+       coder-path view (glob/move/delete): plain list of result file paths */
+    .glob-files {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 240px;
+        overflow-y: auto;
+        margin-top: 4px;
+
+        .glob-file {
+            font-family: var(--code-font);
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+    }
+}

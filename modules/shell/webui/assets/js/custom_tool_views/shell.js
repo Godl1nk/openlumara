@@ -2,8 +2,9 @@
    shell module view: shell_run renders as a terminal - command streams in
    with a blinking cursor, output lands below once the call completes.
    highlightedCode + streamMemo live in the webui's
-   renderers/custom_tool_views/shared.js; markup in the webui's
-   tool_displays.html; styling in css/chat/custom_tool_views.css. */
+   renderers/custom_tool_views/shared.js; markup in this module's
+   templates/chat/tool_displays.html (tool_views slot); styling in this
+   folder's shell.css. */
 
 // flatten a shell tool call into terminal display bits: the command text
 // (from args, streams live) plus the combined output (stdout, then stderr,

@@ -1,0 +1,24 @@
+<!-- -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+   scheduler module tool view: the add-job card. fills the "tool_views"
+   slot of the webui's templates/chat/tool_displays.html via the extension
+   system; helpers in webui/assets/js/custom_tool_views/scheduler.js,
+   styling in css/custom_tool_views/scheduler.css. `tool`/`cacheKey` come
+   from the tool card's Alpine scope, not from jinja. -->
+{% macro tool_views() %}
+
+<template x-if="toolDisplayView(tool) === 'scheduler-job'"
+          x-data="{ get args() { return toolArgs(tool, cacheKey) },
+                    get info() { return schedulerInfo(this.args) } }">
+    <div class="job-card">
+        <div class="job-when">
+            {% include 'svg/clock.svg' %}
+            <span x-text="info.when || 'whenever'"></span>
+            <template x-for="tag in info.tags">
+                <span class="job-tag" x-text="tag"></span>
+            </template>
+        </div>
+        <div class="job-action" x-show="info.action" x-text="info.action"></div>
+    </div>
+</template>
+
+{% endmacro %}

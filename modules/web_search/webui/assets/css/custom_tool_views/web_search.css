@@ -1,0 +1,68 @@
+/* -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+   web_search module view styles: the result link cards. moved out of the
+   webui's css/chat/custom_tool_views.css. the dim policy-note row inside
+   rejected cards uses the shared .grep-note chrome (webui). */
+
+.tool-call-card {
+    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
+       web search results view: titled link cards with url + snippet */
+    .search-results {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 320px;
+        overflow-y: auto;
+
+        .search-card {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        .search-title-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .search-title {
+            font-weight: 600;
+            color: var(--accent);
+            text-decoration: none;
+            min-width: 0;
+
+            &:hover { text-decoration: underline; }
+
+            &.plain { color: var(--text-primary); }
+        }
+
+        .search-thumb {
+            flex-shrink: 0;
+            width: 56px;
+            height: 42px;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .search-url {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            opacity: 0.75;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
+    /* snippet text inside result cards AND the bare error fallback that
+       renders outside .search-results, so scoped at the card level */
+    .search-snippet {
+        font-size: 0.82rem;
+        line-height: 1.5;
+        color: var(--text-primary);
+        opacity: 0.85;
+    }
+}

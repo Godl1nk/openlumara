@@ -1,0 +1,141 @@
+<!-- -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+   coder module tool views: file read, file create, grep, path (glob/move/
+   delete) and file edit (diff). fills the "tool_views" slot of the webui's
+   templates/chat/tool_displays.html via the extension system; helpers in
+   this folder's js/custom_tool_views/, styling in css/custom_tool_views/.
+   markup is pure Alpine: `tool` + `cacheKey` come from the card's x-data
+   scope (chat/toolcalls.html), not from jinja. -->
+{% macro tool_views() %}
+
+<template x-if="toolDisplayView(tool) === 'file-read'"
+          x-data="{ get args() { return toolArgs(tool, cacheKey) },
+                    get response() { return toolResponse(tool) },
+                    get html() {
+                        // error responses carry the message in content -
+                        // don't paint it as a code block, the shared
+                        // .display-error row below the view shows it
+                        if (this.response && this.response.status === 'error') return '';
+                        return codeLinesHtml(this.response?.content, langForPath(this.args.path), this.args.line_start, cacheKey);
+                    } }">
+    <div>
+        <!-- read: highlighted code block (error responses render nothing
+             here; the shared .display-error row below the view shows the
+             failure). x-html is the one sanctioned escape hatch: hljs
+             output is escaped markup -->
+        <div class="file-read-box hljs" x-show="html" x-html="html"></div>
+        <div class="display-footer" x-show="args.sandbox || args.path" x-text="coderFooterText(args)"></div>
+        <div class="grep-note" x-show="response?.truncation_note" x-text="response?.truncation_note ?? ''"></div>
+    </div>
+</template>
+
+<template x-if="toolDisplayView(tool) === 'file-create'"
+          x-data="{ get args() { return toolArgs(tool, cacheKey) },
+                    get response() { return toolResponse(tool) },
+                    get html() {
+                        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+                        // a failed create must render no box (the file was
+                        // never written): bail like file-read does, the
+                        // shared .display-error row shows the reason
+                        if (this.response && this.response.status === 'error') return '';
+                        return codeLinesHtml(this.args.content, langForPath(this.args.path), 1, cacheKey);
+                    } }">
+    <div>
+        <!-- the new file's content, highlighted, streaming live from the
+             args (no response needed - creation is the last step). a failed
+             create renders no box; the shared .display-error row shows the
+             reason. x-fade-html fades in the new tail chars per paint;
+             faded chars sit inside their hljs token spans so they keep
+             their colors -->
+        <div class="file-read-box hljs" x-show="html" x-auto-scroll x-fade-html="html"></div>
+        <div class="display-footer" x-show="args.sandbox || args.path" x-text="coderFooterText(args)"></div>
+    </div>
+</template>
+
+<template x-if="toolDisplayView(tool) === 'grep'"
+          x-data="{ get args() { return toolArgs(tool, cacheKey) },
+                    get response() { return toolResponse(tool) },
+                    get groups() { return grepGroups(this.response, this.args) } }">
+    <!-- single root element: x-if only renders the template's FIRST child -->
+    <div>
+        <!-- while running (no response yet): live preview of the args, eg.
+             "searching 'pattern' in sub/path" - streams in as they arrive -->
+        <div class="grep-running" x-show="!response">
+            <span class="grep-running-label">searching</span>
+            <span class="grep-running-pattern" x-show="args.regex_pattern" x-text="args.regex_pattern"></span>
+            <span class="grep-running-label" x-show="args.regex_pattern && (args.sandbox || args.file_path || args.sub_path)">in</span>
+            <span class="grep-running-pattern" x-show="args.sandbox || args.file_path || args.sub_path"
+                  x-text="(args.sandbox ? args.sandbox + ': ' : '') + (args.file_path ?? args.sub_path ?? '')"></span>
+        </div>
+        <div class="grep-results" x-show="groups.length">
+            <template x-for="g in groups">
+                <div class="grep-file">
+                    <div class="grep-file-name" x-text="g.file"></div>
+                    <div class="grep-box">
+                        <template x-for="row in grepRows(g.matches)">
+                            <div class="grep-line" :class="'grep-' + row.kind">
+                                <span class="grep-num" x-text="row.num"></span>
+                                <span class="grep-text" x-text="row.text"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+             the module returns { matches, note } when the max_matches cap
+             hit - show the note so a truncated list is visible as such -->
+        <div class="grep-note" x-show="response?.content?.note" x-text="response?.content?.note ?? ''"></div>
+    </div>
+</template>
+
+<template x-if="toolDisplayView(tool) === 'coder-path'"
+          x-data="{ get args() { return toolArgs(tool, cacheKey) },
+                    get response() { return toolResponse(tool) },
+                    get info() { return coderRunningInfo(tool, cacheKey) },
+                    get files() { return globFiles(this.response) } }">
+    <!-- single root element: x-if only renders the template's FIRST child -->
+    <div>
+        <!-- while running (no response yet): dim one-liner of the streamed
+             args, eg. "moving · dev: foo/bar.py" - same idea as the grep
+             running preview. hidden once the call settles (errors are shown
+             by the shared .display-error row below the view) -->
+        <div class="grep-running" x-show="!response">
+            <span class="grep-running-label" x-text="info.label"></span>
+            <span class="grep-running-pattern" x-show="info.sandbox || info.path"
+                  x-text="(info.sandbox ? info.sandbox + ': ' : '') + info.path"></span>
+            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+                 move destination, streams in right after the source path -->
+            <span class="grep-running-label" x-show="info.out">-></span>
+            <span class="grep-running-pattern" x-show="info.out" x-text="info.out"></span>
+        </div>
+        <!-- glob results: plain file list -->
+        <div class="glob-files" x-show="files.length">
+            <template x-for="f in files">
+                <div class="glob-file" x-text="f"></div>
+            </template>
+        </div>
+        <div class="grep-note" x-show="response?.content?.note" x-text="response?.content?.note ?? ''"></div>
+        <div class="display-footer" x-show="response && response.status !== 'error' && (args.sandbox || args.path || args.orig_path)"
+             x-text="coderFooterText({ sandbox: args.sandbox, path: args.path ?? args.orig_path })"></div>
+    </div>
+</template>
+
+<template x-if="toolDisplayView(tool) === 'coder-file-edit'"
+          x-data="{ get args() { return toolArgs(tool, cacheKey) },
+                    get html() { return diffHtml(this.args.original_code, this.args.replacement_code, langForPath(this.args.path), cacheKey) },
+                    get sideHtml() { return diffSideHtml(this.args.original_code, this.args.replacement_code, langForPath(this.args.path), cacheKey) } }">
+    <div class="diff-container">
+        <!-- both views render as html strings: token fade needs whole-content
+             repaints (x-fade-html), which x-for rows can't survive. see
+             diffHtml()/diffSideHtml() in this folder's custom_tool_views/
+             file_edit.js. which one shows is a css container query on this
+             .diff-container's width (custom_tool_views/file_edit.css):
+             side-by-side once the card is wide enough, unified below -
+             follows the chat width setting -->
+        <div class="tool-display hljs diff-unified" x-show="html" x-auto-scroll x-fade-html="html"></div>
+        <div class="diff-side hljs" x-show="sideHtml" x-auto-scroll x-fade-html="sideHtml"></div>
+        <div class="display-footer" x-show="args.sandbox || args.path" x-text="coderFooterText(args)"></div>
+    </div>
+</template>
+
+{% endmacro %}

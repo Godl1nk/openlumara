@@ -1,0 +1,34 @@
+<!-- -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+   web_search module tool view: the result link cards. fills the
+   "tool_views" slot of the webui's templates/chat/tool_displays.html via
+   the extension system; helpers in webui/assets/js/custom_tool_views/
+   web_search.js, styling in css/custom_tool_views/web_search.css.
+   `tool`/`cacheKey` come from the tool card's Alpine scope, not jinja. -->
+{% macro tool_views() %}
+
+<template x-if="toolDisplayView(tool) === 'web-search'"
+          x-data="{ get response() { return toolResponse(tool) },
+                    get results() { return searchResults(this.response) } }">
+    <div>
+        <div class="search-results" x-show="results.length">
+            <template x-for="res in results">
+                <div class="search-card">
+                    <div class="search-title-row">
+                        <a class="search-title" x-show="res.url" :href="res.url"
+                           target="_blank" rel="noopener noreferrer" x-text="res.title"></a>
+                        <span class="search-title plain" x-show="!res.url && res.title" x-text="res.title"></span>
+                        <img class="search-thumb" x-show="res.thumb" :src="res.thumb" loading="lazy" alt="">
+                    </div>
+                    <div class="search-url" x-show="res.url" x-text="res.url"></div>
+                    <div class="search-snippet" x-show="res.snippet" x-text="res.snippet"></div>
+                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+                         policy-rejected results: show the module's note explaining
+                         why the card is empty -->
+                    <div class="grep-note" x-show="res.note" x-text="res.note"></div>
+                </div>
+            </template>
+        </div>
+    </div>
+</template>
+
+{% endmacro %}
