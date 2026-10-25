@@ -25,14 +25,15 @@
             {% include 'svg/search.svg' %}
         </button>
         -->
-        <!-- live generation speed, beside the model picker; lingers a few
-             seconds after the turn so the value can still be read -->
+        <!-- generation speed: always present, shows the last measured value -->
         <span id="tok-rate"
-              x-show="$store.stream.tokens_per_second > 0"
               x-cloak
-              :title="'Generation speed — ' + ($store.stream.tokens_per_second_source === 'server' ? 'measured by the server' : 'estimated from streamed text')"
+              :class="{ 'is-empty': !($store.stream.tokens_per_second > 0) }"
+              :title="($store.stream.tokens_per_second > 0)
+                  ? 'Generation speed — ' + ($store.stream.tokens_per_second_source === 'server' ? 'measured by the server' : 'estimated from streamed text')
+                  : 'Generation speed — no data yet'"
               :aria-label="'Generation speed: ' + $store.stream.tokens_per_second + ' tokens per second'">
-            <span class="tok-rate-value" x-text="$store.stream.tokens_per_second"></span>
+            <span class="tok-rate-value" x-text="$store.stream.tokens_per_second > 0 ? $store.stream.tokens_per_second : '—'"></span>
             <span class="tok-rate-unit">tok/s</span>
         </span>
 
@@ -53,14 +54,15 @@
             <select class="model-select effort-select" :value="currentEffort" :disabled="effortSaving"
                     @change="setEffort($event.target.value)"
                     @focus="lazyFetch()"
-                    title="Reasoning effort for the active model">
-                <option value="default">Effort: Default</option>
-                <option value="none">Effort: None</option>
-                <option value="low">Effort: Low</option>
-                <option value="medium">Effort: Medium</option>
-                <option value="high">Effort: High</option>
-                <option value="xhigh">Effort: xhigh</option>
-                <option value="max">Effort: Max</option>
+                    title="Reasoning effort for the active model"
+                    aria-label="Reasoning effort">
+                <option value="default">Default</option>
+                <option value="none">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="xhigh">xhigh</option>
+                <option value="max">Max</option>
             </select>
             <button type="button" class="btn model-tune-btn" title="Model, Reasoning Effort & Image Model Manager" @click="$store.ui.openModal('model_manager')">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

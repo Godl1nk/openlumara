@@ -23,13 +23,10 @@ let STREAM_STORE = {
     tokens_per_second_source: "",
     _tokStart: 0,
     _tokChars: 0,
-    _tokClearTimer: null,
 
     resetTokenRate() {
-        clearTimeout(this._tokClearTimer);
-        this._tokClearTimer = null;
-        this.tokens_per_second = 0;
-        this.tokens_per_second_source = "";
+        // the readout is permanent: keep the last value and its source on
+        // screen, only the measurement accumulators restart for the new turn
         this._tokStart = 0;
         this._tokChars = 0;
     },
@@ -71,16 +68,8 @@ let STREAM_STORE = {
         this.userMsg = null;
         this.processing = {};
         this.modelLoad = null;
-
-        // keep the last speed on screen briefly so it can still be read after
-        // the turn ends, then let the pill disappear
-        clearTimeout(this._tokClearTimer);
+        // the last speed stays visible; a new turn replaces it once it has data
         this._tokStart = 0;
         this._tokChars = 0;
-        this._tokClearTimer = setTimeout(() => {
-            this.tokens_per_second = 0;
-            this.tokens_per_second_source = "";
-            this._tokClearTimer = null;
-        }, 8000);
     }
 }

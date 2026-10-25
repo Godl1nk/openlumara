@@ -31,13 +31,16 @@ header {
         #tok-rate {
             display: inline-flex;
             align-items: baseline;
-            gap: 0.3em;
+            justify-content: center;
+            gap: 0.24em;
             flex-shrink: 0;
-            padding: 4px 10px;
+            /* fixed width: the readout must not jiggle the header as digits change */
+            min-width: 62px;
+            padding: 4px 7px;
             border: 1px solid var(--border-color);
             border-radius: var(--radius-sm);
             background: var(--bg-secondary);
-            font-size: 0.8rem;
+            font-size: 0.76rem;
             line-height: 1;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
@@ -50,6 +53,12 @@ header {
 
             .tok-rate-unit {
                 color: var(--text-secondary);
+            }
+
+            /* no measurement yet: keep the slot, just dim it */
+            &.is-empty .tok-rate-value {
+                color: var(--text-secondary);
+                opacity: 0.55;
             }
         }
     }
@@ -111,7 +120,7 @@ header {
             font-size: 0.85rem;
             font-family: inherit;
             padding: 7px 8px;
-            max-width: 220px;
+            max-width: 176px;
             cursor: pointer;
             transition: all 0.2s ease;
             text-overflow: ellipsis;
@@ -133,9 +142,10 @@ header {
             }
         }
 
-        /* reasoning effort sits right next to the model picker */
+        /* reasoning effort sits right next to the model picker; compact so the
+           header keeps its breathing room */
         .effort-select {
-            max-width: 150px;
+            max-width: 96px;
         }
 
     }
