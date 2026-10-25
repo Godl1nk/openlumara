@@ -1,0 +1,12 @@
+/* Ink: white paper with dark ink trails drifting across it. The strokes are
+   drawn on #theme-effect-canvas; light-only theme. */
+html {
+    background:
+        radial-gradient(70% 55% at 18% 8%, #ffffff 0%, transparent 62%),
+        radial-gradient(60% 50% at 88% 92%, #f6f6f6 0%, transparent 60%),
+        #fdfdfd;
+}
+
+body {
+    background-color: transparent;
+}

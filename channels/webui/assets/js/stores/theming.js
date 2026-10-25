@@ -1,3 +1,8 @@
+// renamed families: keep saved selections pointing at the new name
+const THEME_ALIASES = {
+    'pro-test': 'effects-sakura',
+};
+
 THEME_STORE = {
     family: localStorage.getItem('themeFamily') || 'monochrome',
     mode: localStorage.getItem('themeMode') || 'dark',
@@ -9,6 +14,12 @@ THEME_STORE = {
     themeCssStatus: {},
 
     init() {
+        // a renamed theme must not silently fall back to the base palette
+        if (THEME_ALIASES[this.family]) {
+            this.family = THEME_ALIASES[this.family];
+            localStorage.setItem('themeFamily', this.family);
+        }
+
         // Load theme list (just names and modes) - async, doesn't block
         this.refreshThemeList();
 

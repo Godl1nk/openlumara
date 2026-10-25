@@ -1,0 +1,11 @@
+/* Wire: black room with a white constellation drifting through it. */
+html {
+    background:
+        radial-gradient(70% 55% at 20% 6%, #101010 0%, transparent 62%),
+        radial-gradient(60% 50% at 86% 94%, #0a0a0a 0%, transparent 60%),
+        #030303;
+}
+
+body {
+    background-color: transparent;
+}
