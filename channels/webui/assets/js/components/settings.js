@@ -101,16 +101,12 @@ function settingsModal() {
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
         // start the live processing chain collapsed (localStorage; default off)
         collapseChainDefault: localStorage.getItem('collapseChainDefault') === 'true',
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-        // stream tool calls collapsed (localStorage; default off)
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        // steps start collapsed and stay collapsed unless toggled manually
-        collapseStepsDefault: localStorage.getItem('collapseStepsDefault') === 'true',
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
-        // thinking blocks start collapsed (localStorage; default off)
-        collapseThinkingDefault: localStorage.getItem('collapseThinkingDefault') === 'true',
-        collapseToolcallsDefault: localStorage.getItem('collapseToolcallsDefault') === 'true',
-        tokenFadeMs: localStorage.getItem('tokenFadeMs') || '350',
+        // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        // 'Step display mode' dropdown: default | thinking | steps.
+        // Replaces collapseStepsDefault / collapseThinkingDefault /
+        // collapseToolcallsDefault (migrated once by init.js).
+        stepDisplayMode: localStorage.getItem('stepDisplayMode') || 'default',
+        tokenFadeMs: localStorage.getItem('tokenFadeMs') || '500',
 
         get activeNavCategory() {
             return this.activeModule ? 'modules' : 
@@ -404,21 +400,13 @@ function settingsModal() {
             localStorage.setItem('collapseChainDefault', this.collapseChainDefault);
         },
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-        handleCollapseStepsToggle() {
-            this.collapseStepsDefault = !this.collapseStepsDefault;
-            localStorage.setItem('collapseStepsDefault', this.collapseStepsDefault);
-        },
-
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
-        handleCollapseThinkingToggle() {
-            this.collapseThinkingDefault = !this.collapseThinkingDefault;
-            localStorage.setItem('collapseThinkingDefault', this.collapseThinkingDefault);
-        },
-
-        handleCollapseToolcallsToggle() {
-            this.collapseToolcallsDefault = !this.collapseToolcallsDefault;
-            localStorage.setItem('collapseToolcallsDefault', this.collapseToolcallsDefault);
+        // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        // 'Step display mode' dropdown (default | thinking | steps). read
+        // fresh per streaming step mount, so a change applies from the next
+        // step onward without a reload.
+        handleStepDisplayModeChange(mode) {
+            this.stepDisplayMode = mode;
+            localStorage.setItem('stepDisplayMode', mode);
         },
 
         handleTokenFadeSpeed(ms) {
