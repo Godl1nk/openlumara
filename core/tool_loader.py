@@ -2,6 +2,7 @@ import core
 import inspect
 import json_repair
 import regex as re
+import weakref
 
 META_TOOL_NAMES = {"tools_load", "tools_call"}
 
@@ -10,6 +11,10 @@ _ARG_SECTION = "Args:"
 _END_SECTIONS = ("Returns:", "Raises:", "Note:", "Example:")
 _ALL_SECTIONS = (_ARG_SECTION,) + _END_SECTIONS
 _PARAM_RE = re.compile(r"(\w+)(?:\s*\([^)]*\))?\s*:\s*(.+)")
+
+# -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+# caches tool dicts to speed stuff up
+_TOOL_DICT_CACHE = weakref.WeakKeyDictionary()
 
 
 class ToolLoader:
@@ -75,7 +80,22 @@ class ToolLoader:
         return descriptions, "\n".join(clean_lines).strip()
 
     def _tool_dict_from_func(self, func, tool_name):
-        """Build an API tool dict from a callable."""
+        """Build (or reuse) an API tool dict from a callable."""
+        # bound methods are recreated on every getattr, so the cache keys
+        # on the underlying class-level function instead
+        key = getattr(func, "__func__", func)
+        by_name = _TOOL_DICT_CACHE.get(key)
+        if by_name is None:
+            by_name = {}
+            try:
+                _TOOL_DICT_CACHE[key] = by_name
+            except TypeError:
+                pass  # exotic non-weakref-able callable: build without caching
+        else:
+            cached = by_name.get(tool_name)
+            if cached is not None:
+                return cached
+
         param_descriptions, docstring = self.parse_tool_docstring(func.__doc__)
 
         properties = {}
@@ -104,6 +124,7 @@ class ToolLoader:
         }
         if docstring:
             tool["function"]["description"] = docstring
+        by_name[tool_name] = tool
         return tool
 
     def _loadable_entry(self, name):
