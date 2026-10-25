@@ -115,9 +115,11 @@ THEME_STORE = {
         if (effects) {
             root.dataset.themeEffect = String(effects.type);
             root.dataset.themeEffectIntensity = String(effects.intensity ?? 1);
+            root.dataset.themeEffectTrail = String(effects.trail ?? 0);
         } else {
             delete root.dataset.themeEffect;
             delete root.dataset.themeEffectIntensity;
+            delete root.dataset.themeEffectTrail;
         }
         window.dispatchEvent(new CustomEvent('theme-effect-changed', { detail: effects }));
 

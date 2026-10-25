@@ -2,15 +2,19 @@
  * Optional animated background layers for themes.
  *
  * A theme family opts in from its JSON:
- *   "effects": { "type": "embers" | "stars", "intensity": 1 }
+ *   "effects": { "type": "<name>", "intensity": 1, "trail": 0.08 }
+ * Types: embers | stars | network | flow | warp | bokeh  (aurora is CSS-only)
  * The theming store publishes the choice via <html data-theme-effect> and a
- * 'theme-effect-changed' event. Rendering is canvas-only (transform/opacity
- * work happens on the compositor, no layout), pointer-interactive, paused
+ * 'theme-effect-changed' event.
+ *
+ * Rendering is canvas-only (no layout work), pointer-interactive, paused
  * while the tab is hidden and disabled under prefers-reduced-motion.
- * "aurora" is a CSS-only effect and needs no code here.
+ * "trail" > 0 keeps motion trails by fading the previous frame instead of
+ * clearing it.
  */
 (function () {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const CANVAS_TYPES = new Set(['embers', 'stars', 'network', 'flow', 'warp', 'bokeh']);
 
     let canvas = null;
     let ctx = null;
@@ -18,11 +22,12 @@
     let last = 0;
     let type = null;
     let intensity = 1;
+    let trailAlpha = 0;
     let w = 0;
     let h = 0;
     let dpr = 1;
     let particles = [];
-    let sprite = null;
+    let sprites = {};
 
     const pointer = { x: -9999, y: -9999, active: false };
     const rand = (a, b) => a + Math.random() * (b - a);
@@ -45,7 +50,7 @@
         if (canvas) canvas.remove();
         canvas = null;
         ctx = null;
-        sprite = null;
+        sprites = {};
     }
 
     function resize() {
@@ -61,18 +66,19 @@
     }
 
     // one pre-rendered glow sprite beats a gradient per particle per frame
-    function makeSprite() {
-        const size = 64;
+    function makeSprite(size, color) {
+        const key = size + color;
+        if (sprites[key]) return sprites[key];
         const el = document.createElement('canvas');
         el.width = el.height = size;
         const g = el.getContext('2d');
         const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-        const color = cssVar('--effect-color', cssVar('--accent', '#ff7a3d'));
         grad.addColorStop(0, color);
         grad.addColorStop(0.4, color);
         grad.addColorStop(1, 'transparent');
         g.fillStyle = grad;
         g.fillRect(0, 0, size, size);
+        sprites[key] = el;
         return el;
     }
 
@@ -80,28 +86,46 @@
         if (type === 'embers') {
             const count = Math.round(Math.min(90, (w * h) / 24000) * intensity);
             particles = Array.from({ length: count }, () => ({
-                x: rand(0, w),
-                y: rand(0, h),
-                r: rand(1.1, 3.2),
-                vy: rand(8, 26),
-                sway: rand(0.4, 1.2),
-                phase: rand(0, Math.PI * 2),
+                x: rand(0, w), y: rand(0, h),
+                r: rand(1.1, 3.2), vy: rand(8, 26),
+                sway: rand(0.4, 1.2), phase: rand(0, Math.PI * 2),
                 a: rand(0.25, 0.75),
             }));
-        } else {
+        } else if (type === 'stars') {
             const count = Math.round(Math.min(160, (w * h) / 12000) * intensity);
             particles = Array.from({ length: count }, () => ({
-                x: rand(0, w),
-                y: rand(0, h),
-                r: rand(0.4, 1.4),
-                phase: rand(0, Math.PI * 2),
-                speed: rand(0.3, 1.1),
+                x: rand(0, w), y: rand(0, h), r: rand(0.4, 1.4),
+                phase: rand(0, Math.PI * 2), speed: rand(0.3, 1.1),
                 a: rand(0.25, 0.8),
+            }));
+        } else if (type === 'network') {
+            const count = Math.round(Math.min(110, (w * h) / 14000) * intensity);
+            particles = Array.from({ length: count }, () => ({
+                x: rand(0, w), y: rand(0, h),
+                vx: rand(-14, 14), vy: rand(-14, 14),
+                r: rand(1, 2.2),
+            }));
+        } else if (type === 'flow') {
+            const count = Math.round(Math.min(420, (w * h) / 4200) * intensity);
+            particles = Array.from({ length: count }, spawnFlowParticle);
+        } else if (type === 'warp') {
+            const count = Math.round(Math.min(220, (w * h) / 9000) * intensity);
+            particles = Array.from({ length: count }, () => ({
+                x: rand(-1, 1), y: rand(-1, 1), z: rand(0.05, 1),
+            }));
+        } else if (type === 'bokeh') {
+            const count = Math.round(Math.min(26, (w * h) / 60000) * intensity);
+            particles = Array.from({ length: count }, () => ({
+                x: rand(0, w), y: rand(0, h),
+                r: rand(18, 54),
+                vx: rand(-7, 7), vy: rand(-5, 5),
+                a: rand(0.08, 0.2), phase: rand(0, Math.PI * 2),
             }));
         }
     }
 
     function drawEmbers(dt, t) {
+        const sprite = makeSprite(64, cssVar('--effect-color', cssVar('--accent', '#ff7a3d')));
         ctx.globalCompositeOperation = 'lighter';
         for (const p of particles) {
             p.y -= p.vy * dt;
@@ -119,10 +143,7 @@
                 }
             }
 
-            if (p.y < -8) {
-                p.y = h + 8;
-                p.x = rand(0, w);
-            }
+            if (p.y < -8) { p.y = h + 8; p.x = rand(0, w); }
             if (p.x < -8) p.x = w + 8;
             else if (p.x > w + 8) p.x = -8;
 
@@ -146,6 +167,177 @@
         ctx.globalAlpha = 1;
     }
 
+    // drifting nodes wired to their neighbours, with the cursor pulling them in
+    function drawNetwork(dt) {
+        const color = cssVar('--effect-color', '#7dd3fc');
+        const maxSpeed = 26;
+
+        for (const p of particles) {
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
+            else if (p.x > w) { p.x = w; p.vx = -Math.abs(p.vx); }
+            if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); }
+            else if (p.y > h) { p.y = h; p.vy = -Math.abs(p.vy); }
+
+            if (pointer.active) {
+                const dx = pointer.x - p.x;
+                const dy = pointer.y - p.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < 220 * 220 && d2 > 1) {
+                    const d = Math.sqrt(d2);
+                    p.vx += (dx / d) * 8 * dt;
+                    p.vy += (dy / d) * 8 * dt;
+                }
+            }
+
+            const speed = Math.hypot(p.vx, p.vy);
+            if (speed > maxSpeed) {
+                p.vx = (p.vx / speed) * maxSpeed;
+                p.vy = (p.vy / speed) * maxSpeed;
+            }
+        }
+
+        const link = 130;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = color;
+        for (let i = 0; i < particles.length; i++) {
+            const a = particles[i];
+            for (let j = i + 1; j < particles.length; j++) {
+                const b = particles[j];
+                const dx = a.x - b.x;
+                const dy = a.y - b.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 > link * link) continue;
+                ctx.globalAlpha = (1 - Math.sqrt(d2) / link) * 0.35;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+            }
+        }
+
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = color;
+        for (const p of particles) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    function spawnFlowParticle() {
+        return {
+            x: rand(0, w), y: rand(0, h),
+            life: rand(2.5, 7), age: 0,
+            warm: Math.random() > 0.5,
+        };
+    }
+
+    function flowAngle(x, y, t) {
+        // three cheap sines make a smooth, non-repeating stream field
+        return Math.sin(x * 0.0025 + t * 0.15) * 1.6
+             + Math.cos(y * 0.003 - t * 0.11) * 1.6
+             + Math.sin((x + y) * 0.0012) * 1.2;
+    }
+
+    function drawFlow(dt, t) {
+        const cool = cssVar('--effect-color', '#c084fc');
+        const warm = cssVar('--accent-secondary', '#f472b6');
+        ctx.lineWidth = 1.1;
+
+        for (const p of particles) {
+            const angle = flowAngle(p.x, p.y, t);
+            let vx = Math.cos(angle) * 42;
+            let vy = Math.sin(angle) * 42;
+
+            if (pointer.active) {
+                const dx = p.x - pointer.x;
+                const dy = p.y - pointer.y;
+                const d = Math.hypot(dx, dy);
+                if (d < 170 && d > 1) {
+                    const f = (170 - d) / 170;
+                    // swirl around the cursor instead of pushing straight out
+                    vx += (-dy / d) * 110 * f;
+                    vy += (dx / d) * 110 * f;
+                }
+            }
+
+            const nx = p.x + vx * dt;
+            const ny = p.y + vy * dt;
+            ctx.strokeStyle = p.warm ? warm : cool;
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(nx, ny);
+            ctx.stroke();
+
+            p.x = nx;
+            p.y = ny;
+            p.age += dt;
+            if (p.age > p.life || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
+                Object.assign(p, spawnFlowParticle());
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // hyperspace: stars dive toward the viewer, the cursor is the vanishing point
+    function drawWarp(dt) {
+        const cx = pointer.active ? pointer.x : w / 2;
+        const cy = pointer.active ? pointer.y : h / 2;
+        const speed = 0.3;
+
+        ctx.strokeStyle = cssVar('--effect-color', '#dbeafe');
+        ctx.lineWidth = 1.2;
+
+        for (const p of particles) {
+            const prevZ = p.z;
+            p.z -= speed * dt;
+            if (p.z <= 0.03) {
+                p.x = rand(-1, 1);
+                p.y = rand(-1, 1);
+                p.z = 1;
+                continue;
+            }
+            const k = 1 / p.z;
+            const pk = 1 / prevZ;
+            const x1 = cx + p.x * k * 120;
+            const y1 = cy + p.y * k * 120;
+            const x0 = cx + p.x * pk * 120;
+            const y0 = cy + p.y * pk * 120;
+            ctx.globalAlpha = Math.min(1, (1 - p.z) * 0.9);
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    function drawBokeh(dt, t) {
+        const sprite = makeSprite(128, cssVar('--effect-color', cssVar('--accent', '#f0abfc')));
+        const px = pointer.active ? (pointer.x - w / 2) * 0.03 : 0;
+        const py = pointer.active ? (pointer.y - h / 2) * 0.03 : 0;
+
+        ctx.globalCompositeOperation = 'lighter';
+        for (const p of particles) {
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            if (p.x < -p.r) p.x = w + p.r;
+            else if (p.x > w + p.r) p.x = -p.r;
+            if (p.y < -p.r) p.y = h + p.r;
+            else if (p.y > h + p.r) p.y = -p.r;
+
+            const bob = Math.sin(t * 0.4 + p.phase) * 0.5 + 0.5;
+            ctx.globalAlpha = p.a * (0.6 + 0.4 * bob);
+            ctx.drawImage(sprite, p.x - p.r + px, p.y - p.r + py, p.r * 2, p.r * 2);
+        }
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
     function frame(now) {
         raf = 0;
         if (!ctx || !type) return;
@@ -153,9 +345,23 @@
         last = now;
         const t = now / 1000;
 
-        ctx.clearRect(0, 0, w, h);
+        if (trailAlpha > 0) {
+            // fade the previous frame toward transparent: motion trails that
+            // still let the theme background show through
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = `rgba(0,0,0,${trailAlpha})`;
+            ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = 'source-over';
+        } else {
+            ctx.clearRect(0, 0, w, h);
+        }
+
         if (type === 'embers') drawEmbers(dt, t);
-        else drawStars(t);
+        else if (type === 'stars') drawStars(t);
+        else if (type === 'network') drawNetwork(dt);
+        else if (type === 'flow') drawFlow(dt, t);
+        else if (type === 'warp') drawWarp(dt);
+        else if (type === 'bokeh') drawBokeh(dt, t);
 
         raf = requestAnimationFrame(frame);
     }
@@ -163,7 +369,6 @@
     function start() {
         ensureCanvas();
         resize();
-        sprite = type === 'embers' ? makeSprite() : null;
         seed();
         last = performance.now();
         if (!raf) raf = requestAnimationFrame(frame);
@@ -188,23 +393,27 @@
     }
 
     function setEffect(effects) {
-        const next = effects && effects.type ? String(effects.type) : null;
+        const nextType = effects && effects.type ? String(effects.type) : null;
         const nextIntensity = effects && effects.intensity != null ? (Number(effects.intensity) || 1) : 1;
-        // aurora is pure CSS: make sure the canvas layer is gone
-        if (next === 'aurora') {
+        const nextTrail = effects && effects.trail != null ? Math.max(0, Math.min(0.5, Number(effects.trail))) : 0;
+
+        if (!nextType || !CANVAS_TYPES.has(nextType)) {
+            // includes "aurora", which is pure CSS
             stop();
             type = null;
             return;
         }
-        if (next === type && nextIntensity === intensity) return;
+        if (nextType === type && nextIntensity === intensity && nextTrail === trailAlpha) return;
+
         stop();
-        type = (next === 'embers' || next === 'stars') ? next : null;
+        type = nextType;
         intensity = nextIntensity;
-        if (type && !reduced.matches && !document.hidden) start();
+        trailAlpha = nextTrail;
+        if (!reduced.matches && !document.hidden) start();
     }
 
     window.addEventListener('theme-effect-changed', (event) => setEffect(event.detail));
-    // a theme swap changes the accent colours: rebuild the sprite/particles
+    // a theme swap changes the accent colours: rebuild sprites and particles
     window.addEventListener('theme-changed', () => { if (type) restart(); });
     window.addEventListener('resize', () => { if (type) { resize(); seed(); } }, { passive: true });
     window.addEventListener('pointermove', (event) => {
@@ -229,6 +438,7 @@
         setEffect({
             type: root.dataset.themeEffect || null,
             intensity: Number(root.dataset.themeEffectIntensity || 1),
+            trail: Number(root.dataset.themeEffectTrail || 0),
         });
     }
 

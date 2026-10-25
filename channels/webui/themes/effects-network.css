@@ -1,0 +1,11 @@
+/* Network: cool night haze behind the drifting constellation. */
+html {
+    background:
+        radial-gradient(90% 70% at 15% 0%, #0b2036 0%, transparent 60%),
+        radial-gradient(80% 60% at 85% 100%, #06222e 0%, transparent 62%),
+        #04070d;
+}
+
+body {
+    background-color: transparent;
+}

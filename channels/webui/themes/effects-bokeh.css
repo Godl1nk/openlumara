@@ -1,0 +1,11 @@
+/* Bokeh: warm dusk haze behind the floating orbs. */
+html {
+    background:
+        radial-gradient(80% 65% at 20% 10%, #2a1030 0%, transparent 62%),
+        radial-gradient(70% 60% at 85% 85%, #331425 0%, transparent 60%),
+        #0c060e;
+}
+
+body {
+    background-color: transparent;
+}

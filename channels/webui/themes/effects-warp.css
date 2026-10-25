@@ -1,0 +1,10 @@
+/* Warp: deep space vignette for the hyperspace streaks. */
+html {
+    background:
+        radial-gradient(70% 60% at 50% 45%, #0a1226 0%, transparent 65%),
+        radial-gradient(120% 90% at 50% 50%, #060a16 0%, #02030a 100%);
+}
+
+body {
+    background-color: transparent;
+}

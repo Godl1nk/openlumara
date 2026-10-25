@@ -1,0 +1,11 @@
+/* Flow: near-black violet field so the light trails read cleanly. */
+html {
+    background:
+        radial-gradient(70% 60% at 80% 10%, #2a0f3a 0%, transparent 60%),
+        radial-gradient(60% 50% at 10% 90%, #1a0a2e 0%, transparent 62%),
+        #08050e;
+}
+
+body {
+    background-color: transparent;
+}
