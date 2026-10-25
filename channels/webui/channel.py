@@ -1503,7 +1503,12 @@ async def create_fastapi(channel):
             return await call_next(request)
         
         # Skip auth for login page and assets
-        if request.url.path in ["/login", "/logout"] or str(request.url.path).startswith("/assets/"):
+        public_paths = [
+            "/login", "/logout",
+            "/favicon.ico", "/favicon.svg", "/icon-192.png", "/icon-512.png",
+            "/manifest.json",
+        ]
+        if request.url.path in public_paths or str(request.url.path).startswith("/assets/"):
             return await call_next(request)
         
         # Check session for API and other routes
