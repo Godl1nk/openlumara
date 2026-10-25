@@ -1,103 +1,38 @@
+<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) -->
 <div class="flex fullwidth nogaps">
-    <template x-for="(tool, toolIdx) in message.tool_calls">
+    {% set scope = 'step' if toolcard_in_step else 'message' %}
+    <template x-for="(tool, toolIdx) in {{ scope }}.tool_calls">
         <div>
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                 Auto-collapse each tool card the moment its response arrives
-                 during streaming. autoCollapsed guards against re-collapsing
-                 if the user manually expands it again mid-stream. -->
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                 in-step cards (toolcard_in_step set by combined_block.html):
-                 while streaming, a call is expanded while running and the
-                 auto-collapse x-effect folds it when the response lands
-                 (unchanged); once idle, the step's FIRST card starts
-                 expanded - it's the step's payload, already open when the
-                 step opens, so no follow-up toggle can lag behind. the
-                 collapse-toolcalls-by-default pref wins over both.
-                 autoCollapsed seeds from !!tool.response: the collapse
-                 x-effect fires on init, which would otherwise re-collapse a
-                 settled expanded card (history cards always have a
-                 response) the instant it renders. -->
-            {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13): tool call display annotations moved under tool._metadata #}
             <div class="tool-calls-container"
-                 x-data="{ collapsed: {% if toolcard_in_step %}localStorage.getItem('collapseToolcallsDefault') === 'true' || ($store.stream.state === 'idle' ? toolIdx > 0 : !!(tool._metadata?.response)){% else %}$store.stream.state === 'idle' || !!(tool._metadata?.response) || localStorage.getItem('collapseToolcallsDefault') === 'true'{% endif %}, autoCollapsed: !!(tool._metadata?.response), cacheKey: tool.id ?? (message.tool_call_id + ':' + toolIdx) }"
-                 x-effect="if (tool._metadata?.response && !autoCollapsed) { autoCollapsed = true; collapsed = true }">
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                 tool-pending marks in-flight calls (no response yet) so the
-                 timeline pulses exactly the active nodes regardless of
-                 collapse state; tool-error marks calls whose response has
-                 status:"error" -->
+                 x-data="{ collapsed: {% if toolcard_in_step %}localStorage.getItem('collapseToolcallsDefault') === 'true' || ($store.stream.state === 'idle' ? toolIdx > 0 : !!(tool._metadata?.response)){% else %}$store.stream.state === 'idle' || !!(tool._metadata?.response) || localStorage.getItem('collapseToolcallsDefault') === 'true'{% endif %}, autoCollapsed: !!(tool._metadata?.response), cacheKey: tool.id ?? ({{ scope }}.tool_call_id + ':' + toolIdx) }"
+                 x-effect="if (tool._metadata?.response && !autoCollapsed) { autoCollapsed = true; collapsed = true }"
+            >
             <div class="tool-call-card" :class="{ 'tool-pending': !tool._metadata?.response, 'tool-error': tool._metadata?.failed }">
-                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                         timeline node: circle + chevron on the spine (design B) -->
                     <div class="node-dot" :class="{expanded: !collapsed}" @click.stop="collapsed = !collapsed">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"></polyline></svg>
                     </div>
                     <div class="header" @click="collapsed = !collapsed">
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-27)
-                             in-step chevron: inside a combined step the node dot
-                             belongs to the step header, so the card gets its own
-                             little expand indicator (hidden elsewhere via css) -->
                         <svg class="card-chevron" :class="{'expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"></polyline></svg>
                         {% include 'svg/wrench.svg' %}
                         <span class="name" x-show="toolDisplayName(tool)">
-                          <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                               function names also stream in via tool_call_delta -->
                           <span class="module" x-fade-text="toolDisplayName(tool).split('_')[0].replace(/^\w/, c => c.toUpperCase())+': '"></span>
                           <span x-fade-text="toolDisplayName(tool).split('_').slice(1).join(' ')"></span>
                         </span>
                         <span class="name" x-show="!toolDisplayName(tool)">unknown</span>
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                             once the call completes, the header shows its args
-                             inline, de-emphasized vs the tool name.
-                             -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                             the summary is precomputed backend-side (turns.py) -->
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                             args now show live while streaming (lenient-parse
-                             summary from the backend); only the result hint
-                             below still waits for tool.response -->
                         <span class="call-args" x-show="tool._metadata?.summary"
                               x-text="tool._metadata?.summary ?? ''"></span>
-                        <!-- result hint from the display registry (default:
-                             displays define no summary, so this stays empty) -->
-                        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-                             self-contained memo key (same pattern as combined_block.html):
-                             the bare card-scope cacheKey can drop out when Alpine re-runs
-                             header effects after step swaps replaced the ancestor scope -->
                         <span class="call-result" x-show="tool._metadata?.response"
-                              x-text="toolCallResultSummary(tool, tool.id ?? message?.tool_call_id)"></span>
+                              x-text="toolCallResultSummary(tool, tool.id ?? {{ scope }}?.tool_call_id)"></span>
                     </div>
 
-                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                         roomier skeleton: uppercase section titles dropped,
-                         args + response are rows in one grid, long values get
-                         a soft scroll box (via x-box) only when they overflow. -->
-                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                         the display registry can CLAIM a call's body: when a
-                         tool matches a registered display, an inline markup
-                         view (tool_displays.html) replaces the default
-                         args+response rows entirely. -->
                     <div x-show="!collapsed" x-collapse.duration.250>
-                    <div class="body" x-data="{ cacheKey: tool.id ?? (message.tool_call_id + ':' + toolIdx) }">
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                             claimed tool calls render from inline markup views
-                             (tool_displays.html) instead of the default arg
-                             rows - no html strings involved -->
+                    <div class="body" x-data="{ cacheKey: tool.id ?? ({{ scope }}.tool_call_id + ':' + toolIdx) }">
                         {% include 'chat/tool_displays.html' %}
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                             failed calls with a custom view: the error text always
-                             shows below the view markup, in the error color (the
-                             default display renders its own raw response) -->
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                             single getter so the response is parsed once per
-                             reactive flush instead of once per binding -->
                         <template x-if="toolDisplayView(tool)" x-data="{ get err() { return toolDisplayError(tool) } }">
                             <div class="display-error" x-show="err" x-text="err"></div>
                         </template>
                         <template x-if="!toolDisplayView(tool)">
                         <div class="default-display">
-                            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                 args are parsed backend-side now (args_parsed
-                                 is stamped onto every tool call) -->
                             <template x-for="(value, key) in tool._metadata?.args_parsed ?? {}">
                                 <div class="arg-row">
                                     <span class="arg-name" x-fade-text="key"></span>
@@ -132,5 +67,4 @@
             </div>
         </div>
     </template>
-
 </div>
