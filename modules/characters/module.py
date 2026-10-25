@@ -298,6 +298,7 @@ class Characters(core.module.Module):
         characters = "\n".join(char_list)
         return characters
 
+    @core.module.tool
     async def get_all(self):
         return self.result(await self._list_characters())
 
@@ -408,6 +409,7 @@ class Characters(core.module.Module):
 
         return output or None
 
+    @core.module.tool
     async def switch(self, name: str):
         """Switches you to a different character. This will change your personality! Use this if user requests it."""
         char = self._find_character(name)
@@ -434,6 +436,7 @@ class Characters(core.module.Module):
 
         return self.result(f"Switch successful. Write your response as the character's first message.")
 
+    @core.module.tool
     async def switch_to_default(self):
         """Switches you back to your default identity."""
         self.channel.context.chat.get("metadata")["character"] = ""
@@ -503,6 +506,7 @@ class Characters(core.module.Module):
 
         return character
 
+    @core.module.tool
     async def add(self, name: str, profile: str, category: str = ""):
         """
         Adds a new character to your character storage.
@@ -535,6 +539,7 @@ class Characters(core.module.Module):
         self.characters.save()
         return self.result("character added")
 
+    @core.module.tool
     async def edit(self, name: str, profile: str = None, category: str = None, first_message: str = None):
         """
         Edits an existing character. All fields except name are optional.
@@ -568,6 +573,7 @@ class Characters(core.module.Module):
         self.characters.save()
         return self.result("character edited")
 
+    @core.module.tool
     async def read(self, name: str):
         """
         Reads a character profile.
@@ -580,6 +586,7 @@ class Characters(core.module.Module):
 
         return self.result(character)
 
+    @core.module.tool
     async def delete(self, name: str):
         """Deletes a character. Use ONLY if user explicitly requests it."""
         name = self._find_char_name(name)
@@ -591,6 +598,7 @@ class Characters(core.module.Module):
 
         return self.result("character doesn't exist!", False)
 
+    @core.module.tool
     async def set_user_persona(self, name: str, profile: str):
         self.user_profile["name"] = name
         self.user_profile["profile"] = profile
@@ -598,6 +606,7 @@ class Characters(core.module.Module):
 
         return self.result("user persona set")
 
+    @core.module.tool
     async def import_json(self, json_code: str):
         """imports a character card (spec V1 or V2) into your character storage"""
         try:

@@ -128,6 +128,7 @@ class Skills(core.module.Module):
     #   AI TOOLS
     # -------------------------
 
+    @core.module.tool
     async def use(self, name: str):
         """uses skill listed in system prompt, returns instructions to follow"""
         if name not in self.index:

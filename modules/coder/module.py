@@ -397,9 +397,11 @@ class Coder(core.module.Module):
     # ----------------------
     # tools: file navigation
     # ----------------------
+    @core.module.tool
     async def list_sandboxes(self):
         return self.result(await self._get_sandbox_paths())
 
+    @core.module.tool
     async def glob(self, sandbox: str, pattern: str, sub_path=None, max_results: int = 200):
         """globs path for desired files. does not support regex. paths relative to sandbox root."""
         sandbox_path = await self._get_full_sandbox_path(sandbox)
@@ -448,6 +450,7 @@ class Coder(core.module.Module):
         except Exception as e:
             return self.result(str(e), success=False)
 
+    @core.module.tool
     async def folder_grep(self, sandbox: str, sub_path: str, regex_pattern: str, case_sensitive=False, context: int = 0, file_extensions: list = None, max_matches: int = 30):
         """searches for regex pattern in all files in folder"""
         folder_blacklist = self.config.get("folder_blacklist")
@@ -526,6 +529,7 @@ class Coder(core.module.Module):
     # ----------------------
     # tools: file management
     # ----------------------
+    @core.module.tool
     async def file_create(self, sandbox: str, path: str, content: str):
         """creates new file, does not support overwriting existing files. auto-creates parent dirs in path."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -554,6 +558,7 @@ class Coder(core.module.Module):
 
         return self.result(f"File {path} successfully created. Syntax verification passed - no need to verify further.")
 
+    @core.module.tool
     async def file_move(self, sandbox: str, orig_path: str, target_path: str):
         orig_path_sandboxed = await self._get_sandbox_subpath(sandbox, orig_path)
         target_path_sandboxed = await self._get_sandbox_subpath(sandbox, target_path)
@@ -566,6 +571,7 @@ class Coder(core.module.Module):
 
         return self.result(f"File successfully moved: {orig_path_sandboxed} -> {target_path_sandboxed}")
 
+    @core.module.tool
     async def file_delete(self, sandbox: str, path: str):
         """only use this if user explicitely requests it"""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -578,6 +584,7 @@ class Coder(core.module.Module):
 
         return self.result(f"File {path} successfully deleted")
 
+    @core.module.tool
     async def folder_delete(self, sandbox: str, path: str):
         """only use this if user explicitely requests it. can only remove empty folders as safety precaution."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -593,6 +600,7 @@ class Coder(core.module.Module):
     # ----------------------
     # tools: file reading
     # ----------------------
+    @core.module.tool
     async def file_outline(self, sandbox: str, path: str):
         """provides information about source code. only works on source code files."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -609,6 +617,7 @@ class Coder(core.module.Module):
             # FAWK KUAH
             return self.result(str(e), success=False)
 
+    @core.module.tool
     async def file_read(self, sandbox: str, path: str, line_start: int = None, line_end: int = None):
         """reads file, or part of file. use line_start and line_end to read in chunks."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -680,6 +689,7 @@ class Coder(core.module.Module):
 
         return result
 
+    @core.module.tool
     async def file_grep(self, sandbox: str, file_path: str, regex_pattern: str, case_sensitive: bool = True, context: int = 0, max_matches: int = 30):
         target_path = await self._get_sandbox_subpath(sandbox, file_path)
         
@@ -729,6 +739,7 @@ class Coder(core.module.Module):
             # FKAWK SUAH
             return self.result(str(e), success=False)
 
+    @core.module.tool
     async def read_template(self, template_name: str):
         template_folders = await self._get_template_folders()
         if not template_folders:
@@ -758,6 +769,7 @@ class Coder(core.module.Module):
     # --------------------
     # tools: file writing
     # --------------------
+    @core.module.tool
     async def file_edit(self, sandbox: str, path: str, original_code: str, replacement_code: str):
        target_path = await self._get_sandbox_subpath(sandbox, path)
 

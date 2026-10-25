@@ -78,6 +78,7 @@ class Chats(core.module.Module):
         cats = [c for c in self.channel.context.chat.get_categories() if len(c.split(":")) == 1 and c]
         return cats
 
+    @core.module.tool
     async def get_categories(self):
         cats = await self._get_categories()
         if not cats:
@@ -85,6 +86,7 @@ class Chats(core.module.Module):
 
         return self.result(cats)
 
+    @core.module.tool
     async def organize(self, new_name: str, category: str, tags: list = None):
         """Lets you rename, categorize, and tag the current chat. If the chat fits within an existing category (defined in your system prompt), use that one. If a fitting category does not exist, create a new one."""
         if not new_name:
@@ -98,6 +100,7 @@ class Chats(core.module.Module):
         await self.channel.context.chat.set("tags", tags)
         return self.result(f"chat organised!")
 
+    @core.module.tool
     async def search(self, query: str):
         """Searches within all previous chats the user ever had with you. Very useful for recalling information from the past! Use only if user explicitly requests it, or if you can't find a past event the user is referring to within your current context!"""
         chat_list = self.channel.context.chat

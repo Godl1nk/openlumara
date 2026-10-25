@@ -580,6 +580,7 @@ class Shell(core.module.Module):
         except Exception as e:
             return self.result(f"Error while running passthrough shell command: {e}", False)
 
+    @core.module.tool
     async def run(self, command):
         """Executes a command inside the existing persistent container."""
         if self.passthrough:
@@ -769,8 +770,8 @@ class Shell(core.module.Module):
 
     # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
     # one-line RESULT hint for the webui tool header (port of the old JS
-    # summary callback). the underscore prefix is REQUIRED: the tool loader
-    # treats every public callable on a module as a tool. called by
+    # summary callback). private by naming convention (the loader only
+    # registers @core.module.tool methods). called by
     # turns.TurnCollector._result_summary once a response exists; crashes
     # are swallowed by the caller and output is flattened/capped there.
     def _tool_summary(self, name, args, response):

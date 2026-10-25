@@ -8,6 +8,7 @@ class Notes(core.module.Module):
     async def on_ready(self):
         self.data = core.storage.StorageDict("notes", "markdown")
 
+    @core.module.tool
     async def create(self, name: str, category: str, content: str):
         if category not in self.data.keys():
             self.data[category] = {}
@@ -19,6 +20,7 @@ class Notes(core.module.Module):
         self.data.save()
         return self.result("note created")
 
+    @core.module.tool
     async def read(self, category: str, name: str):
         if category not in self.data.keys():
             return self.result("category doesn't exist. use get_categories first!", False)
@@ -28,6 +30,7 @@ class Notes(core.module.Module):
 
         return self.result(self.data[category].get(name, "EMPTY"))
 
+    @core.module.tool
     async def edit(self, category: str, name: str, content: str):
         """Edits an existing note. ALWAYS read the note first before editing."""
         if category not in self.data.keys():
@@ -49,15 +52,18 @@ class Notes(core.module.Module):
             else:
                 yield current_key, value
 
+    @core.module.tool
     async def get_categories(self):
         return self.result(list(self.data.keys()))
 
+    @core.module.tool
     async def list(self, category: str):
         if category not in self.data.keys():
             return self.result("category doesn't exist. use get_categories first!", False)
 
         return self.result(list(self.data.get(category, {}).keys()))
 
+    @core.module.tool
     async def search(self, query: str):
         """searches all notes, ranked by relevance. returns paths and snippets, not entire notes."""
         self.data.load()
@@ -83,6 +89,7 @@ class Notes(core.module.Module):
 
         return self.result("\n".join(lines))
 
+    @core.module.tool
     async def delete(self, category: str, name: str):
         if category not in self.data.keys():
             return self.result("category doesn't exist. use get_categories first!", False)

@@ -55,6 +55,7 @@ class FileManager(core.module.Module):
 
         return {"success": success, "reason": reason}
 
+    @core.module.tool
     async def list(self, path: str):
         verify = self._verify_path(path, should_be_dir=True)
         if not verify.get("success"):
@@ -62,6 +63,7 @@ class FileManager(core.module.Module):
 
         return os.listdir(path)
 
+    @core.module.tool
     async def read(self, path: str):
         verify = self._verify_path(path, should_be_file=True)
         if not verify.get("success"):
@@ -76,6 +78,7 @@ class FileManager(core.module.Module):
         except Exception as e:
             return self.result(str(e), False)
 
+    @core.module.tool
     async def read_binary(self, path: str):
         """Reads a file in binary mode. Useful for images, executables, etc."""
         verify = self._verify_path(path, should_be_file=True)
@@ -105,6 +108,7 @@ class FileManager(core.module.Module):
         except Exception as e:
             return self.result(str(e), False)
 
+    @core.module.tool
     async def write(self, path: str, content: str):
         """Writes content to a file. Automatically creates parent directories."""
         try:
@@ -112,9 +116,11 @@ class FileManager(core.module.Module):
         except Exception as e:
             return self.result(str(e), False)
 
+    @core.module.tool
     async def append(self, path: str, content: str):
         return await self._write(path, content, mode='a')
 
+    @core.module.tool
     async def mkdir(self, path: str):
         """Creates a directory and any necessary parent directories."""
         try:
@@ -123,6 +129,7 @@ class FileManager(core.module.Module):
         except Exception as e:
             return self.result(str(e), False)
 
+    @core.module.tool
     async def remove(self, path: str):
         p = Path(path)
         if not p.exists():
@@ -139,6 +146,7 @@ class FileManager(core.module.Module):
         except Exception as e:
             return self.result(str(e), False)
 
+    @core.module.tool
     async def move(self, src: str, dst: str):
         try:
             # Ensure destination directory exists
@@ -148,6 +156,7 @@ class FileManager(core.module.Module):
         except Exception as e:
             return self.result(str(e), False)
 
+    @core.module.tool
     async def copy(self, src: str, dst: str):
         try:
             Path(dst).parent.mkdir(parents=True, exist_ok=True)
@@ -159,6 +168,7 @@ class FileManager(core.module.Module):
         except Exception as e:
             return self.result(str(e), False)
 
+    @core.module.tool
     async def get_info(self, path: str):
         verify = self._verify_path(path)
         if not verify.get("success"):

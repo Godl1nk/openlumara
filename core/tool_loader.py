@@ -138,14 +138,17 @@ class ToolLoader:
     # ------------------------------------------------------------------
 
     def register_module(self, module):
-        """Scan a module for tool methods and add them to the catalog."""
+        """Catalog all @core.module.tool decorated methods of a module."""
+        registered = []
         for func_name in type(module).__dict__:
-            if func_name.startswith("_") or func_name in module.disabled_tools:
-                continue
-            if func_name == "result" or func_name.startswith("on_"):
-                continue
             func_obj = getattr(module, func_name, None)
-            if not callable(func_obj) or getattr(func_obj, "_is_command", False):
+            
+            if not callable(func_obj) or not getattr(func_obj, "_is_tool", False):
+                continue
+            if getattr(func_obj, "_is_command", False):
+                continue  # a command is never a tool, even if double-decorated
+            if func_name in module.disabled_tools:
+                # don't register disabled tools
                 continue
 
             tool_name = f"{module.name}_{func_name}"
@@ -156,6 +159,38 @@ class ToolLoader:
                 "method": func_name,
                 "description": tool_dict["function"].get("description", ""),
             }
+            registered.append(func_name)
+        self._warn_missed_tools(module, registered)
+
+    def _warn_missed_tools(self, module, registered):
+        """
+        a module that registers zero tools while still
+        holding public callables most likely predates @core.module.tool and
+        was never migrated
+        """
+        if registered:
+            return
+        
+        candidates = []
+        for name in type(module).__dict__:
+            if name.startswith(("_", "on_")) or name == "result":
+                continue
+            if name in module.disabled_tools:
+                continue
+                
+            func_obj = getattr(module, name, None)
+            if callable(func_obj) and not getattr(func_obj, "_is_command", False):
+                candidates.append(name)
+                
+        if candidates:
+            shown = ", ".join(sorted(candidates)[:8])
+            if len(candidates) > 8:
+                shown += ", ..."
+            self.channel.log(
+                "warning",
+                f"{module.name}: registered 0 tools but has public callables "
+                f"({shown}). Please add @core.module.tool decorators to your tools."
+            )
 
     def unregister_module(self, module):
         """Remove all catalog entries for a module (the caller refreshes)."""

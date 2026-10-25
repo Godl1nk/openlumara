@@ -165,6 +165,13 @@ class Module:
         pass
 
 # --------------
+# tool decorator (@core.module.tool)
+def tool(func):
+    """Decorator that marks a method as a tool callable by the AI."""
+    func._is_tool = True
+    return func
+
+# --------------
 # command decorator (@core.module.command)
 # Registry format: {"command_name": [(class_type, method), ...]}
 _command_registry = {}
