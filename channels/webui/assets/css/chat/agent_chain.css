@@ -1,4 +1,4 @@
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) */
+/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) status:reviewed harness:openlumara */
 /* collapsible "Process" wrapper around the agentic chain, rendered as a
    timeline: a spine starts under the header chevron, every chain segment is
    a station with a node dot on it, and the chain terminates on a finish
@@ -15,10 +15,6 @@
     display: none;
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-   rail/dot/chevron geometry is all in em now, anchored to the 0.85rem
-   font-size on .agent-chain, so the whole timeline scales with text.
-   (1em = 0.85rem = 13.6px, so 14px ~= 1em, 7px ~= 0.5em, etc) */
 .agent-chain {
     width: 100%;
     display: inline-block;
@@ -30,8 +26,6 @@
         gap: 0.6em;
         cursor: pointer;
         user-select: none;
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-           chain text uses the secondary color; icons stay muted */
         color: var(--text-secondary);
         border-radius: var(--radius-sm);
         transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -46,9 +40,6 @@
         filter: brightness(1.03);
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-       locked chain (enable_chain_expansion off): not expandable, so
-       no pointer cursor and no hover feedback */
     .agent-chain-header.locked {
         cursor: default;
 
@@ -57,14 +48,6 @@
         }
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       slow gear spin while the chain is still running. NOTE: `&.is-streaming`
-       - the class is on the .agent-chain element ITSELF, a plain nested
-       `.is-streaming` selector would compile to a descendant match and never
-       fire (which is why the spin, and the node pulses below, were dead)
-       -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-27)
-       scoped to the Process header: Step headers use the gear icon too, and
-       every step gear spinning at once would be a washing machine */
     &.is-streaming .agent-chain-header .gear {
         animation: gearSpin 9s linear infinite;
     }
@@ -81,13 +64,6 @@
         flex: 0 1 auto;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       gear icon: the svg hardcodes 16px -> keep it em-based so it scales
-       with the timeline.
-       -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-       header chevron (.toggle) removed along with its template markup: the
-       gear is the first header item now, center at 1.18em/2 = 0.59em =
-       body margin-left(0.09em) + spine(0.5em) */
     .agent-chain-header svg {
         width: 1.18em;
         height: 1.18em;
@@ -95,33 +71,17 @@
     }
 
     .agent-chain-body {
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-           chevron gone: the gear is now the first header item, so its center
-           sits at 1.18em/2 = 0.59em from the chain edge. nudge the body 0.09em
-           so the spine (centered at 0.5em into the rail) grows straight out of
-           the gear center. everything below (rail, dots, content column) keeps
-           its relative geometry - the whole timeline shifted with it. */
         margin-top: 0;
         margin-left: 0.09em;
         display: flex;
         flex-direction: column;
     }
 
-    /* one station = spine segment (rail) + content, no nesting.
-       all geometry in em (1em = 0.85rem = 13.6px): rail(0.3em=4px) +
-       gap(1.18em=16px) puts the content column at x=22px, so the spine
-       line sits at x=7px and node dots (1em) center on it at left:-1.54em */
     .chain-station {
         display: flex;
         gap: 1.18em;
         min-width: 0;
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-           render-skipping for gigantic chains: off-screen stations skip
-           layout + paint entirely (the browser keeps a placeholder sized
-           by contain-intrinsic-size, which then remembers the real size
-           after the first paint). makes mounting/scrolling a long chain
-           body cheap without touching the DOM. */
         content-visibility: auto;
         contain-intrinsic-size: auto 120px;
     }
@@ -136,10 +96,6 @@
             position: absolute;
             top: 0;
             bottom: 0;
-            /* the spine lives at 0.5em (header chevron + gear + status dots
-               all center there); the line's center is its left edge + half
-               its 1px width, so pull it half a pixel left or it visibly
-               grazes one side of the dots */
             left: calc(0.5em - 0.5px);
             width: 0.5px;
             background: var(--text-secondary);
@@ -161,25 +117,15 @@
         }
     }
 
-    /* the header row is a bit taller than the gear icon, so the gear's
-       bottom edge sits a few px above the body. pull the first rail
-       segment up so the line starts AT the gear, no gap. */
     .chain-station:first-child .chain-rail::before {
         top: -0.45em;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-       the last streaming station (no finish flag after it) TERMINATES the
-       spine at its own dot instead of trailing past it: the line stops at
-       the dot center (0.8em from the station top). the transient tool-wait
-       indicator is excluded - the line must keep running through it */
     .chain-station:last-child:not(:has(.prompt-processing-indicator-wrapper)) .chain-rail::before {
         bottom: auto;
         height: 0.8em;
     }
 
-    /* single-station chain: first-child raised the line's top to -0.45em,
-       so extend the height to still land on the dot center */
     .chain-station:first-child:last-child:not(:has(.prompt-processing-indicator-wrapper)) .chain-rail::before {
         height: 1.25em;
     }
@@ -189,8 +135,6 @@
         min-width: 0;
     }
 
-    /* stations whose content draws its own nodes (reasoning, tool cards,
-       combined blocks) hide the plain station dot so there's never a double */
     .chain-station:has(.tool-call-card) > .chain-rail .chain-dot,
     .chain-station:has(.reasoning-wrapper) > .chain-rail .chain-dot,
     .chain-station:has(.combined-block) > .chain-rail .chain-dot {
@@ -202,28 +146,16 @@
         display: none;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-       a combined block still streaming pulses its own node (the block adds
-       no is-streaming class; the station being last + chain streaming is
-       enough signal) */
     &.is-streaming .chain-station:last-child .combined-block:not(.collapsed) > .node-dot {
         border-color: var(--accent);
         color: var(--accent);
         animation: statusPulse 1.5s ease-in-out infinite;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       the tool processing indicator is a transient wait-state, not a real
-       chain event: keep the rail line running through it, but no node */
     .chain-station:has(.prompt-processing-indicator-wrapper) > .chain-rail .chain-dot {
         display: none;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       design B: the timeline node IS the expand/collapse affordance - a
-       14px circle with a chevron inside, centered on the spine. collapsible
-       components (reasoning, tool cards) draw one inside their own markup
-       so it can bind to their local collapsed state. */
     .node-dot {
         position: absolute;
         /* content column starts at 0.3em + 1.18em = 1.48em; spine is at
@@ -260,9 +192,6 @@
         color: var(--accent);
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       failed tool call: red node ring + red wrench, visible even when
-       the card is collapsed (error responses have status:"error") */
     .tool-call-card.tool-error .node-dot {
         border-color: var(--error, #f87171);
     }
@@ -286,8 +215,6 @@
         color: var(--error, #f87171);
     }
 
-    /* the station feeding the finish flag keeps its dot; instead its rail
-       extends through the flag's top padding so the line never breaks */
     .chain-station:has(+ .chain-end) .chain-rail::before {
         bottom: -0.6em;
     }
@@ -301,11 +228,6 @@
         animation: statusPulse 1.5s ease-in-out infinite;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       pulse exactly the IN-FLIGHT calls: a card only renders a response-row
-       once its response arrives, so "no response-row" == still being called.
-       handles parallel calls too (each pending card pulses on its own), and
-       the pulse dies the moment a response lands. */
     &.is-streaming .tool-call-card.tool-pending .node-dot {
         border-color: var(--accent);
         color: var(--accent);
@@ -319,18 +241,11 @@
         animation: statusPulse 1.5s ease-in-out infinite;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-         intermediate content inside the chain (the model talking to itself
-         between tool calls) reads as process, not as the answer: muted and
-         one step smaller than the final reply */
     .chain-content .content {
         color: var(--text-secondary);
         font-size: 0.85rem;
     }
 
-    /* finish flag: the last station's rail already runs to its bottom, so
-       the flag just continues the line by sitting ON it - padding-left
-       puts the svg pole (2.5px into the 15px icon) at x=7px */
     .chain-end {
         display: flex;
         align-items: center;
