@@ -392,13 +392,6 @@ class Shell(core.module.Module):
             limit = self.config.get("temporary_filesystem_size_limit", default="512m")
             cmd.extend(['--tmpfs', f"{home_dir}:size={limit}"])
 
-        # mount dockerfile read-only if using dockerfile method
-        if method == "dockerfile" and dockerfile_path:
-            expanded_path = self._resolve_dockerfile_path(dockerfile_path)
-            if os.path.isfile(expanded_path):
-                cmd.extend(['-v', f"{expanded_path}:{dockerfile_mount}:ro"])
-                self.log("sandbox_shell", f"Mounted Dockerfile read-only at {dockerfile_mount}")
-
         cmd.extend(['-w', home_dir, img])
 
         self.log(self.name, "starting using command: "+' '.join(cmd))
