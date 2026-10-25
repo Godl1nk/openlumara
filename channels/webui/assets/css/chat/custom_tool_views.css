@@ -641,18 +641,40 @@
     background-size: 16px 16px;
     background-position: center;
     overflow: hidden;
-    animation: image-wait-pulse 2.8s ease-in-out infinite;
+    /* keep the animated layers off the page's paint path */
+    contain: paint;
+    isolation: isolate;
+
+    /* border glow lives on its own layer: only opacity animates, so the
+       border/shadow are painted once instead of every frame */
+    &::after {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border: 1px solid var(--accent);
+        border-radius: inherit;
+        box-shadow:
+            0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent),
+            inset 0 0 14px color-mix(in srgb, var(--accent) 14%, transparent);
+        opacity: 0.25;
+        pointer-events: none;
+        animation: image-wait-breathe 2.8s ease-in-out infinite;
+    }
 }
 
 .image-wait-glow {
     position: absolute;
-    width: 55%;
-    height: 55%;
+    left: 0;
+    top: 0;
+    width: 60%;
+    height: 60%;
     border-radius: 50%;
-    background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
-    opacity: 0.5;
-    filter: blur(6px);
-    mix-blend-mode: screen;
+    /* soft edge baked into the gradient: no filter, so transform is cheap */
+    background: radial-gradient(circle,
+        color-mix(in srgb, var(--accent) 55%, transparent) 0%,
+        transparent 70%);
+    opacity: 0.55;
+    will-change: transform;
     animation: image-wait-drift 3.4s ease-in-out infinite alternate;
 }
 
@@ -705,15 +727,9 @@
     }
 }
 
-@keyframes image-wait-pulse {
-    0%, 100% {
-        border-color: var(--border-color);
-        box-shadow: 0 0 0 0 transparent;
-    }
-    50% {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
-    }
+@keyframes image-wait-breathe {
+    0%, 100% { opacity: 0.22; }
+    50% { opacity: 0.72; }
 }
 
 @keyframes image-wait-drift {
@@ -724,9 +740,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .image-wait-canvas,
+    .image-wait-canvas::after,
     .image-wait-glow {
         animation: none;
+    }
+
+    .image-wait-canvas::after {
+        opacity: 0.4;
     }
 }
 

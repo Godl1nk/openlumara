@@ -280,3 +280,9 @@
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-color);
 }
+
+@media (prefers-reduced-motion: reduce) {
+    .message.animate-in {
+        animation: none;
+    }
+}
