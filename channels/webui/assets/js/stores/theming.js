@@ -139,6 +139,10 @@ THEME_STORE = {
         this.family = family;
         this.mode = effectiveMode;
 
+        // expose the mode to CSS so sidecar theme styles can adapt to
+        // dark/light (used by effect themes with a transparent background)
+        document.documentElement.dataset.themeMode = effectiveMode;
+
         // Persist
         localStorage.setItem('themeFamily', family);
         localStorage.setItem('themeMode', effectiveMode);

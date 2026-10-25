@@ -14,7 +14,7 @@
  */
 (function () {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const CANVAS_TYPES = new Set(['embers', 'stars', 'network', 'flow', 'warp', 'bokeh']);
+    const CANVAS_TYPES = new Set(['embers', 'stars', 'network', 'flow', 'warp', 'bokeh', 'mesh']);
 
     let canvas = null;
     let ctx = null;
@@ -121,7 +121,122 @@
                 vx: rand(-7, 7), vy: rand(-5, 5),
                 a: rand(0.08, 0.2), phase: rand(0, Math.PI * 2),
             }));
+        } else if (type === 'mesh') {
+            seedMesh();
         }
+    }
+
+    // rasterise the Aegis mark offscreen, then sample it on a grid: each lit
+    // cell becomes the resting position of one particle
+    function buildMeshTargets() {
+        const size = 320;
+        const s = size / 512;
+        const off = document.createElement('canvas');
+        off.width = off.height = size;
+        const g = off.getContext('2d');
+
+        g.beginPath();
+        g.moveTo(166 * s, 96 * s);
+        g.lineTo(346 * s, 96 * s);
+        g.quadraticCurveTo(406 * s, 96 * s, 406 * s, 156 * s);
+        g.lineTo(406 * s, 268 * s);
+        g.bezierCurveTo(406 * s, 350 * s, 336 * s, 396 * s, 256 * s, 436 * s);
+        g.bezierCurveTo(176 * s, 396 * s, 106 * s, 350 * s, 106 * s, 268 * s);
+        g.lineTo(106 * s, 156 * s);
+        g.quadraticCurveTo(106 * s, 96 * s, 166 * s, 96 * s);
+        g.closePath();
+        g.fillStyle = '#fff';
+        g.fill();
+
+        // the A is carved out, same as the icon
+        g.globalCompositeOperation = 'destination-out';
+        g.lineCap = 'round';
+        g.lineWidth = 38 * s;
+        g.beginPath();
+        g.moveTo(256 * s, 170 * s);
+        g.lineTo(188 * s, 330 * s);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(256 * s, 170 * s);
+        g.lineTo(324 * s, 330 * s);
+        g.stroke();
+        g.lineWidth = 30 * s;
+        g.beginPath();
+        g.moveTo(216 * s, 280 * s);
+        g.lineTo(296 * s, 280 * s);
+        g.stroke();
+
+        const data = g.getImageData(0, 0, size, size).data;
+        const step = 5;
+        const points = [];
+        for (let y = 0; y < size; y += step) {
+            for (let x = 0; x < size; x += step) {
+                if (data[(y * size + x) * 4 + 3] > 128) {
+                    points.push({ x: x / size, y: y / size });
+                }
+            }
+        }
+        return points;
+    }
+
+    function seedMesh() {
+        const points = buildMeshTargets();
+        const scale = Math.min(w, h) * 0.68;
+        const ox = (w - scale) / 2;
+        const oy = (h - scale) / 2;
+        const pitch = (scale / 320) * 5;
+
+        particles = points.map((p) => {
+            const tx = ox + p.x * scale;
+            const ty = oy + p.y * scale;
+            return {
+                tx, ty,
+                // start scattered so the mark assembles itself on entry
+                x: tx + rand(-w * 0.45, w * 0.45),
+                y: ty + rand(-h * 0.45, h * 0.45),
+                vx: 0, vy: 0,
+                s: Math.max(1.3, pitch * rand(0.3, 0.55)),
+                a: rand(0.45, 1),
+                ph: rand(0, Math.PI * 2),
+            };
+        });
+    }
+
+    function drawMesh(dt, t) {
+        const color = cssVar('--effect-color', '#6ee7b7');
+        const stiffness = 54;
+        const damping = 8.5;
+        const pushRadius = 150;
+
+        ctx.fillStyle = color;
+        for (const p of particles) {
+            const wobble = Math.sin(t * 0.9 + p.ph) * 1.4;
+            let ax = (p.tx + wobble - p.x) * stiffness;
+            let ay = (p.ty + wobble * 0.6 - p.y) * stiffness;
+            ax -= p.vx * damping;
+            ay -= p.vy * damping;
+
+            if (pointer.active) {
+                const dx = p.x - pointer.x;
+                const dy = p.y - pointer.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < pushRadius * pushRadius && d2 > 1) {
+                    const d = Math.sqrt(d2);
+                    const force = (1 - d / pushRadius) * 2600;
+                    ax += (dx / d) * force;
+                    ay += (dy / d) * force;
+                }
+            }
+
+            p.vx += ax * dt;
+            p.vy += ay * dt;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+
+            ctx.globalAlpha = p.a;
+            ctx.fillRect(p.x, p.y, p.s, p.s);
+        }
+        ctx.globalAlpha = 1;
     }
 
     function drawEmbers(dt, t) {
@@ -362,6 +477,7 @@
         else if (type === 'flow') drawFlow(dt, t);
         else if (type === 'warp') drawWarp(dt);
         else if (type === 'bokeh') drawBokeh(dt, t);
+        else if (type === 'mesh') drawMesh(dt, t);
 
         raf = requestAnimationFrame(frame);
     }
