@@ -34,6 +34,7 @@ class Modules(core.module.Module):
 
         return str(module_list)
 
+    @core.module.tool
     async def toggle(self, name: str):
         if not self.config.get("allow_ai_to_toggle"):
             return self.result("Module toggling is disabled for security. Ask user to manually toggle the module via the web ui or `/config` or by editing the config file.")
@@ -47,6 +48,7 @@ class Modules(core.module.Module):
         else:
             return self.result("That module does not exist!", success=False)
 
+    @core.module.tool
     async def get_help(self, module_name: str):
         """Returns documentation for any given module. Use this if user wants to know how to set up or use a specific module. Prefer over docs_read() for module questions."""
 

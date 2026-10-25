@@ -32,6 +32,7 @@ class Identity(core.module.Module):
 
         return identity
 
+    @core.module.tool
     async def set(self, content: str):
         """Defines who you are as an AI. When defining your identity, ALWAYS start with "You are". Give yourself a name. Make one up if user doesn't provide it. Don't use words like "i", "i'm" or "i am". Write in 2nd person when using this tool.
         """
@@ -59,6 +60,7 @@ class Identity(core.module.Module):
         else:
             return "invalid argument"
 
+    @core.module.tool
     async def clear(self):
         """Wipes your identity as an AI so you may start from scratch. USE WITH CAUTION!"""
         self.config.set("identity", "")

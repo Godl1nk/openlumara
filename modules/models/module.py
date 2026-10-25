@@ -54,6 +54,7 @@ class Models(core.module.Module):
                 return None
             self.models = models
 
+    @core.module.tool
     async def get_available(self):
         """Returns a list of AI/LLM models available to switch to"""
         await self._load_models()
@@ -82,6 +83,7 @@ class Models(core.module.Module):
         await self._load_models()
         return "\n".join(self.models)+"\n\nUse `/model <name>` to switch to your model of choice"
 
+    @core.module.tool
     async def switch(self, name: str):
         """Switches you to a different AI model"""
         if not self.models:

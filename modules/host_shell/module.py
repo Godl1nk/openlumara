@@ -12,6 +12,7 @@ class HostShell(core.module.Module):
 
     unsafe = True
 
+    @core.module.tool
     async def exec(self, cmd: str):
         """Executes commands in an unsandboxed shell. Be extremely careful! ONLY use if the user explicitly asks. NEVER run autonomously. Prefer sandboxed shell if available."""
         # run the command in a seperate thread to avoid blocking the entire harness process

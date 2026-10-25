@@ -308,8 +308,12 @@ class Mcp(core.module.Module):
         srv["tools"] = sorted(srv["tools"])
 
         # keep the tools_load meta tool's module description in sync
+        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        # latent bug fix: ToolLoader has no refresh_meta_tool_descriptions()
+        # (AttributeError on every resync); refresh() is the method that
+        # rebuilds the meta def + active array.
         for loader in self._loaders():
-            loader.refresh_meta_tool_descriptions()
+            loader.refresh()
 
     def _inject_tool(self, server, tool, was_active, srv):
         """Register one MCP tool: an OpenAI-format definition built from the

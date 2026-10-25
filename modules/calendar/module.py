@@ -156,6 +156,7 @@ class Calendar(core.module.Module):
 
         return "\n".join(output)
 
+    @core.module.tool
     async def add_event(self, title: str, year: int, month: int, day: int, hour: int, minute: int, should_notify: bool = True, notify_channel: str = None):
         event = {
             "id": str(ulid.ULID()),
@@ -181,6 +182,7 @@ class Calendar(core.module.Module):
 
         return self.result(f"appointment added with ID {event['id']}")
 
+    @core.module.tool
     async def edit_event(self, id: str, title: str = None, year: int = None, month: int = None, day: int = None, hour: int = None, minute: int = None, should_notify: bool = None, notify_channel: str = None):
         index = await self._get_event_by_id(id)
         if index < 0:
@@ -209,6 +211,7 @@ class Calendar(core.module.Module):
 
         return self.result(f"event {event['id']} edited")
 
+    @core.module.tool
     async def delete_event(self, id: str):
         index = await self._get_event_by_id(id)
         if index < 0:
@@ -259,6 +262,7 @@ class Calendar(core.module.Module):
 
         return "\n".join(output)
 
+    @core.module.tool
     async def read_calendar_range(self, start_date: str, end_date: str):
         """Read calendar events within a date range. Both dates are required."""
         today = datetime.datetime.today()

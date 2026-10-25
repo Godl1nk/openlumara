@@ -71,6 +71,7 @@ class Lists(core.module.Module):
 
         return False
 
+    @core.module.tool
     async def create(self, category: str, name: str, items: list = None, pinned: bool = False):
         if category not in self.data.keys():
             self.data[category] = {}
@@ -96,6 +97,7 @@ class Lists(core.module.Module):
 #
 #         return self.result("list deleted!")
 
+    @core.module.tool
     async def delete(self, category: str, list_name: str):
         """Deletes a list. ONLY use if user explicitly asks."""
         if not self._verify_target(category, list_name):
@@ -110,6 +112,7 @@ class Lists(core.module.Module):
 
         return self.result("list deleted!")
 
+    @core.module.tool
     async def pin(self, category: str, list_name: str):
         """Pins a list to the top of your context."""
         if not self._verify_target(category, list_name):
@@ -119,6 +122,7 @@ class Lists(core.module.Module):
         self.data.save()
 
         return self.result("list pinned!")
+    @core.module.tool
     async def unpin(self, category: str, list_name: str):
         if not self._verify_target(category, list_name):
             return self.result("that list doesn't exist")
@@ -128,6 +132,7 @@ class Lists(core.module.Module):
 
         return self.result("list unpinned!")
 
+    @core.module.tool
     async def search(self, query: str):
         """Searches all lists for your query: matches both list names and individual list items, ranked by relevance."""
         self.data.load()
@@ -166,6 +171,7 @@ class Lists(core.module.Module):
 
         return self.result("\n".join(lines))
 
+    @core.module.tool
     async def get(self, category: str, list_name: str):
         if not self._verify_target(category, list_name):
             return self.result("that list doesn't exist")
@@ -178,6 +184,7 @@ class Lists(core.module.Module):
                 return index
         return None
 
+    @core.module.tool
     async def add_item(self, category: str, list_name: str, item_content: str):
         """adds item to list. creates list if nonexistent."""
         self._create_if_non_existent(category, list_name)
@@ -188,6 +195,7 @@ class Lists(core.module.Module):
 
         return self.result("list item added!")
 
+    @core.module.tool
     async def edit_item(self, category: str, list_name: str, item_starts_with: str, item_content: str):
         if not self._verify_target(category, list_name):
             return self.result("that list doesn't exist")
@@ -203,6 +211,7 @@ class Lists(core.module.Module):
 
         return self.result("list item edited!")
 
+    @core.module.tool
     async def delete_item(self, category: str, list_name: str, item_starts_with: str):
         if not self._verify_target(category, list_name):
             return self.result("that list doesn't exist")
@@ -218,6 +227,7 @@ class Lists(core.module.Module):
 
         return self.result("list item deleted!")
 
+    @core.module.tool
     async def get_random_item(self, category: str, list_name: str):
         if not self._verify_target(category, list_name):
             return self.result("that list doesn't exist")
