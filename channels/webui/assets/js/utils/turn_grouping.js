@@ -1,25 +1,3 @@
-/*
- * -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
- * the step-based stream (core/turns.py) now delivers the live turn in
- * exactly the history shape: step upserts + authoritative final-bubble
- * snapshots, so ALL chain/step folding lives in the core and this file is
- * display logic only.
- *
- * what used to live here (streamSteps, streamTurnSplit, resplitHistoryTurn,
- * stepIsThinkingLive) all moved backend-side with the 2026-10-25 step
- * stream refactor.
- *
- * what stays: how MUCH of a thought to show in a step header. the backend
- * always ships reasoning in FULL - previewing it is per-channel display
- * logic and belongs to the webui.
- */
-
-// header preview of a thought: the LAST sentence of the whole reasoning
-// (whitespace collapsed across lines), then the classic truncation: cut
-// at the last sentence terminator that still fits within max chars,
-// otherwise a clean word cut with an ellipsis. no mid-word pixel
-// guillotines in the chain. while streaming this tracks the thought as
-// it unfolds, since the newest sentence is always the live one.
 function thoughtSnippet(text, max) {
     const limit = max || 80;
     const t = (text || '').replace(/\s+/g, ' ').trim();

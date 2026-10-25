@@ -678,9 +678,12 @@ class Qt6Channel(core.channel.Channel):
                         self._emit_token_status(token_content)
                     elif token_type == "error" and token_content is not None:
                         self._emit_ui("stream_error", self._display_text(token_content))
-                elif event_type == "turn":
-                    segment = event.get("content")
-                    if not isinstance(segment, dict):
+                elif event_type == "step":
+                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+                    # step upserts (reasoning + content + tool calls all
+                    # folded backend-side, shaped like history steps)
+                    step = event.get("content")
+                    if not isinstance(step, dict):
                         continue
 
                     # the prompt is processed once real words arrive: the
@@ -689,7 +692,14 @@ class Qt6Channel(core.channel.Channel):
                         self._emit_ui("clear_progress")
                         last_progress = None
 
-                    self._emit_ui("apply_segment", segment)
+                    self._emit_ui("apply_step", step)
+                elif event_type == "final":
+                    # authoritative final-bubble snapshot (empty = retract)
+                    if last_progress is not None:
+                        self._emit_ui("clear_progress")
+                        last_progress = None
+
+                    self._emit_ui("apply_final", event.get("content") or [])
         finally:
             self._emit_ui("end_stream")
             self._emit_ui("set_status", self._status_text(None))

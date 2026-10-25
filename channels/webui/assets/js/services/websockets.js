@@ -2,20 +2,9 @@ let isWsConnected = false;
 let wsReconnecting = false;
 let responseSoundPlayed = false;
 
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-// remembers that the server went away while this page was open, so the
-// reconnect can reload the page and pick up fresh assets after a restart.
-// wsClosedAt also lets us tell a real restart (multi-second outage) apart
-// from a momentary proxy/network blip.
 let serverShutdownSeen = false;
 let wsClosedAt = null;
 
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-// app-level heartbeat: sends {type:"ping"} every 25s while connected and
-// tracks when the last message of ANY kind arrived. defeats idle-socket
-// reapers (reverse proxies / tunnels dropping quiet connections) and the
-// last-seen timestamp tells us whether a 1006 hit during total silence
-// (network path died) or right after traffic (server side issue).
 let wsHeartbeatTimer = null;
 window.wsLastRx = Date.now();
 
@@ -23,13 +12,6 @@ window.wsLastRx = Date.now();
 // websocket isn't connected. it's a stub for now
 let sendQueue = [];
 
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-// true while the stream_complete handoff handler is running. ws handlers run
-// per-message and interleave at every await, so a push event landing during
-// the handoff (the backend opens its push gate before stream_complete is even
-// broadcast, and stream_state idle can arrive mid-fold) must NOT reloadChat
-// concurrently: the live turn has no hash, so the index-merge drops it, and
-// stream_complete's fallback then re-pushes it as a duplicate Process turn.
 let streamFinalizing = false;
 
 async function connectWebSocket() {
@@ -58,11 +40,7 @@ async function connectWebSocket() {
         isWsConnected = true;
         wsReconnecting = false;
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-        // the server came back after having gone away: reload the page so
-        // fresh templates/css/js and any module changes take effect. only
-        // counts as a real restart when the shutdown broadcast arrived, the
-        // restart button was used, or the outage outlasted a blip.
+        // the server came back after having gone away: reload the page
         const downFor = wsClosedAt ? Date.now() - wsClosedAt : 0;
         wsClosedAt = null;
         if (serverShutdownSeen || Alpine.store('system').restarting || downFor > 2500) {
@@ -70,9 +48,7 @@ async function connectWebSocket() {
             return;
         }
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-        // start the app-level heartbeat (server answers {type:"pong"}; the
-        // message switch ignores unknown types, so nothing else changes)
+        // start the app-level heartbeat (server answers {type:"pong"}
         clearInterval(wsHeartbeatTimer);
         wsHeartbeatTimer = setInterval(() => {
             if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
@@ -92,11 +68,6 @@ async function connectWebSocket() {
         } catch (e) {
             console.error('Error parsing WebSocket message:', e);
         } finally {
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-            // safety net so a throwing stream_complete handler can't leave the
-            // finalizing flag stuck (pushes would stop reloading). only cleared
-            // for stream_complete itself, so a push handler resolving mid-
-            // handoff can never clear it early.
             if (data && data.type === 'stream_complete') {
                 streamFinalizing = false;
             }
@@ -113,17 +84,13 @@ async function connectWebSocket() {
             isWsConnected = false;
             wsClosedAt = Date.now();
 
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-            // make the disconnect actually diagnosable: the close code tells
-            // auth failures apart from server restarts, and the generic
-            // "is it running?" notice made all of them look identical.
             let notice = "Not connected to the backend server! Is OpenLumara running?";
             if (event.code === 4001) {
                 notice = "Login session no longer accepted (expired, or the session secret changed). Log out and back in.";
             } else if (event.code === 4003) {
                 notice = "WebSocket blocked: origin mismatch. The address in the URL bar does not match the webui's host/port settings.";
             } else if (event.code === 1012 || event.code === 1011 || event.code === 1006) {
-                notice = "Connection to the backend dropped (code " + event.code + "). Reconnecting..";
+                notice = "Connection to the backend dropped. Reconnecting..";
             }
             notice += " [" + event.code + (event.reason ? ' - ' + event.reason : '') + "]";
             Alpine.store('ui').notice = notice;
@@ -163,11 +130,6 @@ async function handleWebSocketMessage(data) {
 
     // process based on broadcast type
     switch (data_type) {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-        // the backend now owns the stream state machine and announces every
-        // transition here; the frontend is a pure mirror. this also arrives
-        // on websocket connect, so reconnects and page reloads mid-stream
-        // resync automatically instead of guessing.
         case "stream_state":
             stream.state = data.state;
             break;
@@ -197,10 +159,6 @@ async function handleWebSocketMessage(data) {
 
             // force scroll to bottom
             await ui.forceScrollToBottom();
-
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-            // state transitions removed: the backend announces them via
-            // stream_state. this handler only keeps the UI side effects.
             break;
 
         case "user_message_confirmed":
@@ -208,36 +166,14 @@ async function handleWebSocketMessage(data) {
 
         case "turn_step":
         case "turn_final": {
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
-            // step-based stream: the backend upserts step objects (already
-            // folded exactly like history steps) and ships authoritative
-            // final-bubble snapshots, so the live turn lives in the history
-            // shape - {steps, final_messages} - from its very first event.
-            // streamSteps()/streamTurnSplit() folding is gone.
-
+            // step-based stream
             if (stream.turn.length <= 0) {
-                // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-                // mid-stream reload: the fetched history can already contain
-                // a persisted assistant turn after the last user turn (tool
-                // rounds get saved to chat storage before the answer is
-                // final). The live turn - rebuilt in full from the backend's
-                // snapshot replay - is that snapshot's superset, so drop the
-                // trailing assistant turns instead of rendering them twice.
                 while (chat.turnHistory.length > 0 &&
                        chat.turnHistory[chat.turnHistory.length - 1].role === 'assistant' &&
                        chat.turnHistory[chat.turnHistory.length - 1].live !== true) {
                     chat.turnHistory.pop();
                 }
 
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                // the live turn joins turnHistory the moment its first
-                // event arrives, flagged live. the streaming templates
-                // render it as a branch inside the turn x-for (reading the
-                // same object), and stream_complete promotes it in place
-                // (live -> false) instead of removing a streaming node and
-                // appending a history node - so the alpine-animation FLIP
-                // watching #messages never sees a remove+add when a stream
-                // finishes.
                 stream.turn = {role: "assistant", live: true, steps: [], final_messages: []};
                 chat.turnHistory.push(stream.turn);
                 Alpine.store('ui').syncMountWindows();
@@ -253,24 +189,13 @@ async function handleWebSocketMessage(data) {
                     const prev = steps[stepIdx];
                     grew = (step.reasoning_content || '').length !== (prev.reasoning_content || '').length
                         || (step.content || '').length !== (prev.content || '').length;
-                    // backend sends FULL accumulated content: mutate the
-                    // existing step in place - alpine's proxy set-trap
-                    // fires the same way, and the markdown cache + lazy-
-                    // height WeakMaps keep their object identity (the
-                    // 2026-09-16 lesson).
                     Object.assign(prev, step);
                 } else {
-                    // steps arrive in order; sorting only ever matters for
-                    // late refreshes of an older step (a tool response
-                    // landing after the chain moved on)
                     steps.push(step);
                     steps.sort((a, b) => a.step - b.step);
                     grew = true;
                 }
 
-                // token sounds ride actual text growth (a step re-emitted
-                // for a tool status flip stays silent, like the old
-                // tool-segment events were)
                 if (grew) {
                     stream.processing = {};
                     stream.modelLoad = null;
@@ -315,22 +240,6 @@ async function handleWebSocketMessage(data) {
 
         case "push":
             // it's a push messsage (like a scheduler reminder)
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-            // removed the manual turnHistory.push(): reloadChat() fetches the
-            // authoritative history anyway, and pushing first shifted every
-            // index by one, making mergeTurnHistory see the entire chat as
-            // "changed" and re-parse the markdown of every turn.
-
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-            // never reloadChat while a stream is active. the backend opens its
-            // push gate in the send_stream finally, which runs a hair BEFORE
-            // stream_complete is broadcast; reloading in that window merges the
-            // finalized history while the turnHistory tail is still the live
-            // turn, which duplicates the Process turn. stream_complete does its
-            // own reloadChat a frame later anyway, and that one picks the
-            // pushed message up from history. sound + notification still fire.
-            // this also covers defer=False chain-internal pushes, which used to
-            // be able to reload mid-stream for the same reason.
             if (stream.state !== 'idle' || streamFinalizing) {
                 await AudioManager.play('response_start');
                 await Alpine.store('notifications').send(data.content.content);
@@ -346,7 +255,6 @@ async function handleWebSocketMessage(data) {
             break;
 
         case "log":
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
             // cap the log buffer so a chatty backend can't grow it forever
             const logs = Alpine.store('system').logs;
             logs.push(data);
@@ -386,11 +294,6 @@ async function handleWebSocketMessage(data) {
                     }
                     await chat.reloadChat();
                     break;
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                // all state assignments removed from the token handler: the
-                // backend derives the state from these same tokens and
-                // announces it via stream_state. kept: audio cues and the
-                // processing/modelLoad payload bookkeeping.
                 case "tool":
                     AudioManager.playProcessingSound();
                     break;
@@ -403,10 +306,6 @@ async function handleWebSocketMessage(data) {
                     AudioManager.playProcessingSound();
                     break;
                 case "model_load_progress":
-                    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                    // the llama.cpp router is swapping a model in: hijack the
-                    // processing indicator with load progress until the real
-                    // stream starts (cleared on prompt_progress/content below)
                     stream.modelLoad = token_content;
 
                     AudioManager.playProcessingSound();
@@ -427,12 +326,6 @@ async function handleWebSocketMessage(data) {
 
             break;
 
-        // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-        // event-driven context pill: the backend pushes these after every
-        // context change - in-stream token_usage tokens still arrive nested
-        // under 'token', while out-of-stream changes (connect, chat switch,
-        // settings save, model switch, reconnect) arrive as these top-level
-        // events. no REST is involved anywhere on the pill's path.
         case "token_usage":
             chat.currentTokenUsage = data.content;
             break;
@@ -449,11 +342,6 @@ async function handleWebSocketMessage(data) {
             if (ui.scrollToTurnIndex) {
                 await ui.scrollToTurn(ui.scrollToTurnIndex);
             } else {
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-                // turnHistory was wiped and rebuilt; reloadChat's
-                // syncMountWindows remounted the tail, but estimated
-                // placeholder heights above still settle the scrollHeight -
-                // the iterative jump converges on the true bottom fast.
                 await ui.forceScrollToBottom();
             }
 
@@ -469,20 +357,8 @@ async function handleWebSocketMessage(data) {
              * this prevents UI flicker that comes from re-rendering the entire turn history
              */
 
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-            // block push-triggered reloads for the duration of the handoff
-            // (cleared in onmessage's finally, also when this handler throws)
             streamFinalizing = true;
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-            // smooth fold: the history chain is collapsed by design, so the
-            // streaming chain folds away (animated height, matching the
-            // history x-collapse's 250ms) BEFORE the handoff instead of
-            // snap-collapsing in the swap frame. the scroll is pinned to the
-            // bottom every frame while it folds, so the final answer stays
-            // exactly where it is and the chain shrinks behind it. a
-            // wheel/touch or a scroll-away cancels the pin; reduced-motion
-            // users keep the instant fold.
             const foldEl = document.querySelector('.agent-chain.is-streaming .agent-chain-body');
             if (foldEl && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 const foldMsgs = document.getElementById('messages');
@@ -506,42 +382,18 @@ async function handleWebSocketMessage(data) {
                 foldMsgs.removeEventListener('touchstart', cancelFoldPin);
             }
 
-            // push the user message + the fully collected assistant turn to the history.
-            // user_message_added already reloads the chat, so the user turn is usually
-            // already displayed - only push it if it's missing, otherwise we render a
-            // duplicate bubble that shifts the scroll height right when we scroll to bottom
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-            // the live assistant turn is now the tail of turnHistory, so
-            // the user turn to check against sits one slot earlier - and if
-            // it's somehow missing it must be spliced in BEFORE the live
-            // turn, never after it.
             const hist = chat.turnHistory;
             const hasLiveTail = hist.length > 0 && hist[hist.length - 1] && hist[hist.length - 1].live === true;
             const lastTurn = hist[hist.length - 1 - (hasLiveTail ? 1 : 0)];
             const userAlreadyShown = lastTurn && lastTurn.role === 'user' &&
                 stream.userMsg && lastTurn.messages?.[0]?.index === stream.userMsg.index;
 
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-            // stream.userMsg is null after a mid-stream reload (the
-            // user_message_added broadcast went to the old page instance) -
-            // pushing it then rendered a phantom turn of [null]. the user
-            // message is in the backend history either way, so only push
-            // when we actually have it.
             if (!userAlreadyShown && stream.userMsg) {
                 const userTurn = {"role": "user", "messages": [stream.userMsg]};
                 if (hasLiveTail) hist.splice(hist.length - 1, 0, userTurn);
                 else hist.push(userTurn);
             }
 
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
-            // the live turn has been in the history shape (steps +
-            // final_messages, fed event by event by the backend step
-            // stream) since its first event, so there is no hand-off
-            // folding left to do. just flip the live-only flags off:
-            // reasoning headers drop their anonymous "Thinking.." state,
-            // the live-tail markdown mode ends, and a thought-only step
-            // gets the status history would give it. (the authoritative
-            // reloadChat below lands a frame later either way.)
             (stream.turn.steps ?? []).forEach(s => {
                 s.reasoning_live = false;
                 s.is_tail = false;
@@ -553,25 +405,12 @@ async function handleWebSocketMessage(data) {
                 }
             });
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-            // promote the live turn in place: same object, same x-for
-            // index, same DOM element - the streaming branch and the
-            // history branch swap INSIDE the turn element, so no node is
-            // ever removed from or added to #messages and the animation
-            // FLIP stays silent. the push below only runs as a fallback
-            // when the live turn never made it into history (e.g. the chat
-            // was reloaded or switched mid-stream, or the response was
-            // empty so no token ever arrived).
             if (hist.length > 0 && hist[hist.length - 1] && hist[hist.length - 1].live === true) {
                 stream.turn.live = false;
             } else {
                 chat.turnHistory.push(stream.turn);
             }
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-            // mount the pushed turns synchronously: they land exactly where
-            // the viewport is about to be, so they must never render as
-            // placeholders first
             Alpine.store('ui').syncMountWindows();
 
             // then clear the user message placeholder and the current turn
@@ -580,27 +419,13 @@ async function handleWebSocketMessage(data) {
             // finalize the stream
             responseSoundPlayed = false;
             AudioManager.play("completion");
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-            // the handoff now mounts the history turn with the same content
-            // the streaming DOM had, so the remaining distance is only the
-            // action-row/finish-flag delta: glide it with the native pump
-            // instead of snapping. every hop re-reads the bottom and the
-            // pump re-arms per token, so the finalized-turn reload landing
-            // mid-glide just extends the glide.
             await ui.scrollToBottom('messages');
 
             // and finally, sync back up with the backend
             await chat.reloadChat();
             await chat.reloadChats();
 
-            // the reload can swap in finalized turn objects after the chase
-            // settled, which changes content heights - chase once more so we
-            // end up at the true bottom (no-op if the user scrolled up)
             await ui.scrollToBottom('messages');
-
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-            // no state write here: the backend broadcasts stream_state idle
-            // right after stream_complete, including on cancelled streams.
 
             break;
     }

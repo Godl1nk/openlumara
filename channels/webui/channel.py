@@ -46,6 +46,9 @@ class Webui(core.channel.Channel):
     """A full-featured, modern webUI for OpenLumara, providing you with a privacy-friendly option that doesn't depend on any external chat providers"""
     version = 2.0
 
+    # stream index registered by the ws stream-start handler; -1 = none
+    _ws_stream_index = -1
+
     dependencies = [
         "fastapi",
         "starlette>=1.0.1",
@@ -153,7 +156,7 @@ class Webui(core.channel.Channel):
     }
 
     def _origin_allowed(self, origin: str, host_header: str = "") -> bool:
-        """-- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
+        """
         True when an Origin header refers back to this same webui instance.
         localhost and 127.0.0.1 are treated as the same host. Used to reject
         cross-origin WebSocket handshakes, which is the only real defense
@@ -166,7 +169,9 @@ class Webui(core.channel.Channel):
             parsed = urllib.parse.urlsplit(origin)
         except ValueError:
             return False
+        
         origin_host = (parsed.hostname or "").lower()
+        
         # strip the scheme-default port so http://host:80 matches host
         origin_port = parsed.port
         if origin_port and (
@@ -175,33 +180,34 @@ class Webui(core.channel.Channel):
         ):
             origin_port = None
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-        # explicit allow list (extra_allowed_origins): the public origin of a
-        # reverse proxy / tunnel will never match the bound host:port, so the
-        # setting is the only way a proxied webui can pass this check.
-        # entries with a scheme must match it exactly; scheme-less entries
-        # match host+port over either scheme. exact matches only.
+        # allow extra allowed origins, for if you use a custom domain name
+        # otherwise, the websocket will refuse the connection
         for spec in (self.config.get("extra_allowed_origins") or []):
             if not isinstance(spec, str) or not spec.strip():
                 continue
+                
             spec = spec.strip().lower().rstrip("/")
             has_scheme = "://" in spec
             parsed_spec = urllib.parse.urlsplit(spec if has_scheme else "//" + spec)
             spec_host = (parsed_spec.hostname or "").lower()
+            
             if spec_host == "localhost":
                 spec_host = "127.0.0.1"
             if spec_host != origin_host:
                 continue
+                
             spec_port = parsed_spec.port
             if spec_port and (
                 (parsed_spec.scheme == "http" and spec_port == 80)
                 or (parsed_spec.scheme == "https" and spec_port == 443)
             ):
                 spec_port = None
+                
             if spec_port != origin_port:
                 continue
             if has_scheme and parsed_spec.scheme != parsed.scheme:
                 continue
+                
             return True
 
         if self.host in ("0.0.0.0", "::"):
@@ -237,38 +243,22 @@ class Webui(core.channel.Channel):
             return False
         return secrets.compare_digest(password, correct_password)
 
-    # -- AI GENERATED CODE (qwen/Qwen3.8-Flash-Next-Q4) :: 2026-10-03
-    # webui extension system: modules ship UI by placing templates in
-    # <module>/webui/templates/. the jinja loader becomes a ChoiceLoader where the
-    # core webui templates always win, plus a PrefixLoader exposing each enabled
-    # module's templates under "<module_name>/..". core templates call
-    # `extension_slot("name")` for named regions, and the modal area auto-includes
-    # everything under each module's templates/modals/ via `extension_modals()`.
+    # ---------------------------
+    # WebUI Extension System
+    # ---------------------------
     def _ui_extension_enabled(self, module):
-        """special gate for optional module webui extensions.
-
-        If a module declares enable_webui_extension, its configured value controls
-        all webui extension loading/injection for that module: True proceeds,
-        False disables templates, assets and /api/ext routes. If the config value
-        is not persisted yet, fall back to the declared default. Modules without
-        the setting keep legacy behavior.
-        -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        """
+        """lets the user enable/disable the webui extension via a special setting on the module"""
         enabled = module.config.get("enable_webui_extension")
-        if enabled is None:
-            setting = (getattr(module, "settings", None) or {}).get("enable_webui_extension", {})
-            enabled = setting.get("default") if isinstance(setting, dict) else None
+        
         if enabled is None:
             return True
-        if isinstance(enabled, str):
-            return enabled.strip().lower() not in ("false", "0", "no", "off", "")
+        
         return bool(enabled)
 
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
     def _ext_module_config(self, module):
         """settings of a module for use inside its shipped templates"""
         values = {}
-        for name in (getattr(module, "settings", None) or {}):
+        for name in module.settings:
             values[name] = module.config.get(name)
         return values
 
@@ -293,15 +283,14 @@ class Webui(core.channel.Channel):
                 if module is None or not self._ui_extension_enabled(module):
                     continue
 
-                for sub_path in getattr(package, "__path__", []):
+                for sub_path in package.__path__:
                     candidate = os.path.join(sub_path, module_name, "webui", "templates")
                     if os.path.isdir(candidate):
                         dirs[module_name] = candidate
         return dirs
 
-    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-    # phase 3 of the extension system: modules can ship static assets
-    # (css/js/...) in <module>/webui/assets/, served under /ext-assets/.
+    # modules can ship static assets (css/js/...)
+    # in <module>/webui/assets/, served under /ext-assets/.
     def _ui_asset_dirs(self):
         """collect webui asset folders from all enabled modules, as {module_name: path}"""
         dirs = {}
@@ -316,7 +305,7 @@ class Webui(core.channel.Channel):
                 if module is None or not self._ui_extension_enabled(module):
                     continue
 
-                for sub_path in getattr(package, "__path__", []):
+                for sub_path in package.__path__:
                     candidate = os.path.join(sub_path, module_name, "webui", "assets")
                     if os.path.isdir(candidate):
                         dirs[module_name] = candidate
@@ -331,12 +320,14 @@ class Webui(core.channel.Channel):
             ext_dir = os.path.join(assets_dir, ext)
             if not os.path.isdir(ext_dir):
                 continue
+                
             for root, _sub, files in os.walk(ext_dir):
                 for filename in sorted(files):
                     if not filename.endswith(f".{ext}"):
                         continue
                     rel = os.path.relpath(os.path.join(root, filename), assets_dir).replace(os.sep, "/")
                     urls.append(f"/ext-assets/{module_name}/{rel}")
+                    
         return urls
 
     def setup_ui_extensions(self):
@@ -363,31 +354,35 @@ class Webui(core.channel.Channel):
                 template_name = f"{module_name}/{relative_path}"
                 if not os.path.isfile(os.path.join(dirs[module_name], relative_path)):
                     continue
+                    
                 try:
                     env.get_template(template_name)
                 except Exception as e:
                     self.log("webui", f"skipping UI extension '{template_name}': {core.detail_error(e)}")
                     continue
+                    
                 found.append(template_name)
             return found
 
         def extension_modals():
             """auto-discovers modal templates: every .html file directly in
-            <module>/webui/templates/modals/ is included by the core modal area.
-            index.html inside modals/ is skipped (legacy manual-hook file)."""
+            <module>/webui/templates/modals/ is included by the core modal area."""
             found = []
             for module_name in sorted(dirs):
                 modal_root = os.path.join(dirs[module_name], "modals")
                 if not os.path.isdir(modal_root):
                     continue
+                    
                 module = self.manager.modules.get(module_name)
                 module_config = self._ext_module_config(module) if module else {}
                 for filename in sorted(os.listdir(modal_root)):
                     filepath = os.path.join(modal_root, filename)
+                    
                     if not os.path.isfile(filepath):
                         continue
                     if not filename.endswith(".html") or filename == "index.html":
                         continue
+                        
                     rel = os.path.relpath(filepath, dirs[module_name]).replace(os.sep, "/")
                     template_name = f"{module_name}/{rel}"
                     try:
@@ -395,6 +390,7 @@ class Webui(core.channel.Channel):
                     except Exception as e:
                         self.log("webui", f"skipping UI modal '{template_name}': {core.detail_error(e)}")
                         continue
+                        
                     found.append({"template": template_name, "config": module_config})
             return found
 
@@ -402,10 +398,8 @@ class Webui(core.channel.Channel):
             """
             auto-discovers sidebar tab panels: every .html file directly in
             <module>/webui/templates/sidebars/ renders as its own tab in the
-            core sidebar. a same-named .svg next to it becomes the tab icon
-            (inlined raw, so it inherits currentColor and themes for free).
-            the tab label is derived from the filename (underscores/hyphens
-            become spaces, title-cased) - zero config, just drop files in.
+            core sidebar, and a same-named .svg next to it becomes the tab icon
+            the tab label is derived from the filename
 
 			templates can access module config using var `module_config`
             """
@@ -414,14 +408,17 @@ class Webui(core.channel.Channel):
                 sidebar_root = os.path.join(dirs[module_name], "sidebars")
                 if not os.path.isdir(sidebar_root):
                     continue
+                    
                 module = self.manager.modules.get(module_name)
                 module_config = self._ext_module_config(module) if module else {}
                 for filename in sorted(os.listdir(sidebar_root)):
                     filepath = os.path.join(sidebar_root, filename)
+                    
                     if not os.path.isfile(filepath):
                         continue
                     if not filename.endswith(".html"):
                         continue
+                        
                     name = filename[:-5]
                     template_name = f"{module_name}/sidebars/{filename}"
                     try:
@@ -429,6 +426,7 @@ class Webui(core.channel.Channel):
                     except Exception as e:
                         self.log("webui", f"skipping UI sidebar '{template_name}': {core.detail_error(e)}")
                         continue
+                        
                     icon = markupsafe.Markup("")
                     icon_path = os.path.join(sidebar_root, f"{name}.svg")
                     if os.path.isfile(icon_path):
@@ -437,6 +435,7 @@ class Webui(core.channel.Channel):
                                 icon = markupsafe.Markup(f.read())
                         except Exception as e:
                             self.log("webui", f"skipping sidebar icon '{icon_path}': {core.detail_error(e)}")
+                            
                     label = name.replace("_", " ").replace("-", " ").title()
                     found.append({
                         "module": module_name,
@@ -467,6 +466,7 @@ class Webui(core.channel.Channel):
             relative_path = relative_path or ctx.name
             if not relative_path:
                 return markupsafe.Markup("")
+            
             parts = []
             for template_name in _extension_templates(relative_path):
                 try:
@@ -493,7 +493,6 @@ class Webui(core.channel.Channel):
         self.template_path = os.path.join(self.path, "templates")
         self.assets_path = os.path.join(self.path, "assets")
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
         self.session_secret_value = ""
         secret_file = core.get_data_path("webui_session_secret")
         try:
@@ -502,25 +501,17 @@ class Webui(core.channel.Channel):
                     self.session_secret_value = f.read().strip()
         except OSError:
             self.session_secret_value = ""
+            
         if not self.session_secret_value:
-            legacy = str(self.config.get("session_secret") or "").strip()
-            self.session_secret_value = legacy or secrets.token_urlsafe(48)
+            self.session_secret_value = secrets.token_urlsafe(48)
             try:
                 fd = os.open(secret_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(self.session_secret_value)
-                self.log("webui", "session signing key stored in webui_session_secret (data folder, 0600)"
-                         + (" - migrated from the old config value" if legacy else ""))
+                self.log("webui", "session signing key stored in webui_session_secret (data folder, 0600)")
             except OSError:
                 self.log("webui", "WARNING: could not persist the session key; all sessions will reset on restart")
-        # the config must not keep a signing key, even an ignored one: drop
-        # any leftover so it stops riding along in config dumps and saves.
-        try:
-            if self.config.get("session_secret"):
-                self.config.pop("session_secret")
-        except (AttributeError, TypeError):
-            pass
-
+                
         # fastapi-specific instances
         self.templates = fastapi.templating.Jinja2Templates(self.template_path)
         self.setup_ui_extensions()
@@ -553,9 +544,7 @@ class Webui(core.channel.Channel):
         # initialize the websocket manager
         self.websocket_manager = WebSocketManager(self)
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # shell-style input history, persisted server-side so it follows
-        # the user across browsers/devices instead of living in localStorage
+        # shell-style input history, persisted server-side
         self.input_history = core.storage.StorageList(
             name="webui_input_history",
             type="json",
@@ -575,12 +564,6 @@ class Webui(core.channel.Channel):
             proxy_headers=True,
             forwarded_allow_ips = "127.0.0.1",
 
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-            # keep the protocol-level ping (defends against silently-dead TCP:
-            # sleep/resume, wifi switches, tunnels) but widen the pong deadline
-            # from the 20s default: on a box busy serving local models the
-            # event loop can answer a pong late WITHOUT anything being wrong,
-            # and uvicorn would tear healthy websockets down as code 1006.
             ws_ping_interval=20,
             ws_ping_timeout=90,
 
@@ -599,7 +582,7 @@ class Webui(core.channel.Channel):
 
     async def on_stream(self, stream):
         user_message_confirmed = False
-        index = getattr(self, "_ws_stream_index", -1)
+        index = self._ws_stream_index
 
         async for partial in self.turncollector.group_stream(stream):
             payload = serialize_for_json(partial)
@@ -608,11 +591,6 @@ class Webui(core.channel.Channel):
                 token = partial.get("content")
                 token_type = token.get("type")
                 match token_type:
-                    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                    # the backend derives the stream state from the token
-                    # stream itself and broadcasts stream_state transitions.
-                    # the frontend used to run this state machine off raw
-                    # tokens; now it only mirrors what we announce.
                     case "user_message":
                         await self.websocket_manager.set_stream_state("message_sending")
                         try:
@@ -654,11 +632,7 @@ class Webui(core.channel.Channel):
                             })
                             await self.websocket_manager.set_stream_state("message_received")
 
-                        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                        # backend-side state machine for the token types that
-                        # drive the UI's "what is the AI doing" indicator.
-                        # set_stream_state is deduped, so hitting it on every
-                        # streamed token costs nothing beyond the transition.
+                        # track stream state backend-side based on tokens
                         push_context_size = False
                         match token_type:
                             case "reasoning":
@@ -666,9 +640,7 @@ class Webui(core.channel.Channel):
                             case "content":
                                 await self.websocket_manager.set_stream_state("streaming")
                             case "prompt_progress":
-                                # prompt eval between tool rounds: keep the
-                                # processing_tools state if it's been set
-                                # (matches the old frontend's behavior)
+                                # prompt eval between tool rounds
                                 if self.websocket_manager.stream_state != "processing_tools":
                                     await self.websocket_manager.set_stream_state("processing")
                             case "model_load_progress":
@@ -698,19 +670,10 @@ class Webui(core.channel.Channel):
                                 self.log(self.name, f"error sending context size: {core.detail_error(e)}")
 
             elif partial.get("type") == "step":
-                # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
-                # step upserts: the collector now folds tokens into
-                # history-shaped step objects itself, so the frontend just
-                # upserts by step number. (the thinking/streaming stream
-                # states moved down into the raw-token branch.)
                 step = payload.get("content")
                 if step is None:
                     continue
 
-                # buffer the snapshot for mid-stream reconnect replay.
-                # payload is a fresh serialize_for_json copy every pass, so
-                # the buffered object is a true point-in-time snapshot and
-                # never aliases the collector's mutating live step.
                 self.websocket_manager.record_step_snapshot(step)
 
                 await self.websocket_manager.broadcast({
@@ -818,12 +781,6 @@ def inject_indexes_into_chat(chat):
 # -------------------
 # Settings Structure (backend-side)
 # -------------------
-# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-# ported from the webui frontend's processors/settings_structure.js and
-# settings_flatten.js. the backend now returns a ready-to-render category
-# tree from /api/settings/load and accepts that same (edited) tree on
-# /api/settings/save, flattening it back into raw config server-side.
-# the frontend never merges schemas or reassembles nested config again.
 
 # special keys that render with a bespoke widget instead of a generic field
 SPECIAL_FIELD_TYPES = {
@@ -1523,7 +1480,7 @@ async def create_fastapi(channel):
 
     session_lifetime_days = channel.config.get("login_lifetime")
     # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
-    signing_key = getattr(channel, "session_secret_value", "") or secrets.token_urlsafe(48)
+    signing_key = channel.session_secret_value
     cookie_name = "session_" + hashlib.sha256(signing_key.encode()).hexdigest()[:12]
     channel.session_cookie_name = cookie_name
     app.add_middleware(
@@ -2741,7 +2698,7 @@ async def create_fastapi(channel):
                         await websocket.close(code=4001, reason="Rate limited")
                         return
 
-                channel.log(channel.name, f"websocket handshake rejected: session not authenticated (cookie_present={getattr(channel, 'session_cookie_name', 'session') in websocket.cookies}, client={client_ip})")
+                channel.log(channel.name, f"websocket handshake rejected: session not authenticated (cookie_present={channel.session_cookie_name in websocket.cookies}, client={client_ip})")
                 await websocket.close(code=4001, reason="Unauthorized")
                 return
 
