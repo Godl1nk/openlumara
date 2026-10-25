@@ -1,6 +1,7 @@
 // renamed families: keep saved selections pointing at the new name
 const THEME_ALIASES = {
-    'pro-test': 'effects-sakura',
+    'pro-test': 'effects-hanami',
+    'effects-sakura': 'effects-hanami',
 };
 
 THEME_STORE = {

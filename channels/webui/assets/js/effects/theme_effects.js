@@ -14,7 +14,7 @@
  */
 (function () {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const CANVAS_TYPES = new Set(['embers', 'stars', 'network', 'flow', 'warp', 'bokeh', 'mesh']);
+    const CANVAS_TYPES = new Set(['embers', 'stars', 'network', 'flow', 'warp', 'bokeh', 'mesh', 'petals']);
 
     let canvas = null;
     let ctx = null;
@@ -23,6 +23,7 @@
     let type = null;
     let intensity = 1;
     let trailAlpha = 0;
+    let overlay = false;
     let w = 0;
     let h = 0;
     let dpr = 1;
@@ -102,11 +103,13 @@
             const count = Math.round(Math.min(110, (w * h) / 14000) * intensity);
             particles = Array.from({ length: count }, () => ({
                 x: rand(0, w), y: rand(0, h),
-                vx: rand(-14, 14), vy: rand(-14, 14),
+                vx: rand(-16, 16), vy: rand(-16, 16),
                 r: rand(1, 2.2),
+                ph: rand(0, Math.PI * 2),
+                pulse: rand(0, Math.PI * 2),
             }));
         } else if (type === 'flow') {
-            const count = Math.round(Math.min(420, (w * h) / 4200) * intensity);
+            const count = Math.round(Math.min(520, (w * h) / 3600) * intensity);
             particles = Array.from({ length: count }, spawnFlowParticle);
         } else if (type === 'warp') {
             const count = Math.round(Math.min(220, (w * h) / 9000) * intensity);
@@ -123,6 +126,17 @@
             }));
         } else if (type === 'mesh') {
             seedMesh();
+        } else if (type === 'petals') {
+            const count = Math.round(Math.min(70, (w * h) / 26000) * intensity);
+            particles = Array.from({ length: count }, () => ({
+                x: rand(-40, w + 40), y: rand(-h * 0.25, h),
+                r: rand(3.5, 8),
+                vy: rand(16, 44),
+                sway: rand(0.5, 1.5), phase: rand(0, Math.PI * 2),
+                rot: rand(0, Math.PI * 2), vr: rand(-0.9, 0.9),
+                a: rand(0.35, 0.9),
+                warm: Math.random() > 0.45,
+            }));
         }
     }
 
@@ -283,9 +297,10 @@
     }
 
     // drifting nodes wired to their neighbours, with the cursor pulling them in
-    function drawNetwork(dt) {
+    function drawNetwork(dt, t) {
         const color = cssVar('--effect-color', '#7dd3fc');
-        const maxSpeed = 26;
+        const glow = makeSprite(64, color);
+        const maxSpeed = 30;
 
         for (const p of particles) {
             p.x += p.vx * dt;
@@ -299,10 +314,12 @@
                 const dx = pointer.x - p.x;
                 const dy = pointer.y - p.y;
                 const d2 = dx * dx + dy * dy;
-                if (d2 < 220 * 220 && d2 > 1) {
+                if (d2 < 260 * 260 && d2 > 1) {
                     const d = Math.sqrt(d2);
-                    p.vx += (dx / d) * 8 * dt;
-                    p.vy += (dy / d) * 8 * dt;
+                    const pull = (1 - d / 260) * 26 * dt;
+                    // lean in, but keep a little orbit so they never stack up
+                    p.vx += (dx / d) * pull + (-dy / d) * pull * 0.55;
+                    p.vy += (dy / d) * pull + (dx / d) * pull * 0.55;
                 }
             }
 
@@ -311,9 +328,11 @@
                 p.vx = (p.vx / speed) * maxSpeed;
                 p.vy = (p.vy / speed) * maxSpeed;
             }
+            p.pulse += dt * 1.6;
         }
 
-        const link = 130;
+        // links between nodes; ones near the cursor burn brighter
+        const link = 140;
         ctx.lineWidth = 1;
         ctx.strokeStyle = color;
         for (let i = 0; i < particles.length; i++) {
@@ -324,7 +343,17 @@
                 const dy = a.y - b.y;
                 const d2 = dx * dx + dy * dy;
                 if (d2 > link * link) continue;
-                ctx.globalAlpha = (1 - Math.sqrt(d2) / link) * 0.35;
+                const base = 1 - Math.sqrt(d2) / link;
+                let alpha = base * 0.42;
+                if (pointer.active) {
+                    const mx = (a.x + b.x) / 2 - pointer.x;
+                    const my = (a.y + b.y) / 2 - pointer.y;
+                    const md2 = mx * mx + my * my;
+                    if (md2 < 220 * 220) {
+                        alpha += base * 0.55 * (1 - Math.sqrt(md2) / 220);
+                    }
+                }
+                ctx.globalAlpha = Math.min(0.95, alpha);
                 ctx.beginPath();
                 ctx.moveTo(a.x, a.y);
                 ctx.lineTo(b.x, b.y);
@@ -332,13 +361,29 @@
             }
         }
 
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = color;
-        for (const p of particles) {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-            ctx.fill();
+        // spider lines: everything near the cursor ties to it
+        if (pointer.active) {
+            for (const p of particles) {
+                const dx = p.x - pointer.x;
+                const dy = p.y - pointer.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 > 210 * 210) continue;
+                ctx.globalAlpha = (1 - Math.sqrt(d2) / 210) * 0.6;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(pointer.x, pointer.y);
+                ctx.stroke();
+            }
         }
+
+        // glowing, breathing nodes
+        ctx.globalCompositeOperation = 'lighter';
+        for (const p of particles) {
+            const r = p.r * (1 + 0.3 * Math.sin(p.pulse + p.ph));
+            ctx.globalAlpha = 0.5;
+            ctx.drawImage(glow, p.x - r * 3, p.y - r * 3, r * 6, r * 6);
+        }
+        ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;
     }
 
@@ -360,29 +405,39 @@
     function drawFlow(dt, t) {
         const cool = cssVar('--effect-color', '#c084fc');
         const warm = cssVar('--accent-secondary', '#f472b6');
-        ctx.lineWidth = 1.1;
+        ctx.lineCap = 'round';
 
         for (const p of particles) {
-            const angle = flowAngle(p.x, p.y, t);
-            let vx = Math.cos(angle) * 42;
-            let vy = Math.sin(angle) * 42;
+            const angle = flowAngle(p.x, p.y, t) + Math.sin(t * 0.2) * 0.3;
+            let vx = Math.cos(angle) * 46;
+            let vy = Math.sin(angle) * 46;
 
             if (pointer.active) {
                 const dx = p.x - pointer.x;
                 const dy = p.y - pointer.y;
                 const d = Math.hypot(dx, dy);
-                if (d < 170 && d > 1) {
-                    const f = (170 - d) / 170;
+                if (d < 190 && d > 1) {
+                    const f = (190 - d) / 190;
                     // swirl around the cursor instead of pushing straight out
-                    vx += (-dy / d) * 110 * f;
-                    vy += (dx / d) * 110 * f;
+                    vx += (-dy / d) * 160 * f;
+                    vy += (dx / d) * 160 * f;
                 }
             }
 
             const nx = p.x + vx * dt;
             const ny = p.y + vy * dt;
+
+            // wet under-stroke + crisp core: reads like ink on paper
             ctx.strokeStyle = p.warm ? warm : cool;
-            ctx.globalAlpha = 0.4;
+            ctx.lineWidth = 2.6;
+            ctx.globalAlpha = 0.10;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(nx, ny);
+            ctx.stroke();
+
+            ctx.lineWidth = 1.0;
+            ctx.globalAlpha = 0.55;
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(nx, ny);
@@ -394,6 +449,48 @@
             if (p.age > p.life || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
                 Object.assign(p, spawnFlowParticle());
             }
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // cherry petals: slow fall, tumble, and a gust away from the cursor
+    function drawPetals(dt, t) {
+        const soft = cssVar('--effect-color', '#ef9db0');
+        const pale = cssVar('--accent-secondary', soft);
+
+        for (const p of particles) {
+            p.y += p.vy * dt;
+            p.x += Math.sin(t * p.sway + p.phase) * 26 * dt;
+            p.rot += p.vr * dt;
+
+            if (pointer.active) {
+                const dx = p.x - pointer.x;
+                const dy = p.y - pointer.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < 150 * 150 && d2 > 1) {
+                    const d = Math.sqrt(d2);
+                    const f = ((150 - d) / 150) * 150 * dt;
+                    p.x += (dx / d) * f;
+                    p.y += (dy / d) * f;
+                }
+            }
+
+            if (p.y > h + 24) {
+                p.y = -24;
+                p.x = rand(-40, w + 40);
+            }
+            if (p.x < -60) p.x = w + 40;
+            else if (p.x > w + 60) p.x = -40;
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.globalAlpha = p.a;
+            ctx.fillStyle = p.warm ? soft : pale;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.r, p.r * 0.52, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
         }
         ctx.globalAlpha = 1;
     }
@@ -473,17 +570,19 @@
 
         if (type === 'embers') drawEmbers(dt, t);
         else if (type === 'stars') drawStars(t);
-        else if (type === 'network') drawNetwork(dt);
+        else if (type === 'network') drawNetwork(dt, t);
         else if (type === 'flow') drawFlow(dt, t);
         else if (type === 'warp') drawWarp(dt);
         else if (type === 'bokeh') drawBokeh(dt, t);
         else if (type === 'mesh') drawMesh(dt, t);
+        else if (type === 'petals') drawPetals(dt, t);
 
         raf = requestAnimationFrame(frame);
     }
 
     function start() {
         ensureCanvas();
+        canvas.classList.toggle('is-overlay', overlay);
         resize();
         seed();
         last = performance.now();
@@ -512,6 +611,7 @@
         const nextType = effects && effects.type ? String(effects.type) : null;
         const nextIntensity = effects && effects.intensity != null ? (Number(effects.intensity) || 1) : 1;
         const nextTrail = effects && effects.trail != null ? Math.max(0, Math.min(0.5, Number(effects.trail))) : 0;
+        const nextOverlay = !!(effects && effects.overlay);
 
         if (!nextType || !CANVAS_TYPES.has(nextType)) {
             // includes "aurora", which is pure CSS
@@ -519,12 +619,13 @@
             type = null;
             return;
         }
-        if (nextType === type && nextIntensity === intensity && nextTrail === trailAlpha) return;
+        if (nextType === type && nextIntensity === intensity && nextTrail === trailAlpha && nextOverlay === overlay) return;
 
         stop();
         type = nextType;
         intensity = nextIntensity;
         trailAlpha = nextTrail;
+        overlay = nextOverlay;
         if (!reduced.matches && !document.hidden) start();
     }
 

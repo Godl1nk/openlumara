@@ -10,6 +10,12 @@
     pointer-events: none;
 }
 
+/* themes with opaque surfaces can float the effect above the page instead
+   (still below modals, which start at z-index 1000) */
+#theme-effect-canvas.is-overlay {
+    z-index: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
     #theme-effect-canvas {
         display: none;
