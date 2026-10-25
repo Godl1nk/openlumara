@@ -44,6 +44,6 @@ document.addEventListener('alpine:init', () => {
         match: /^coder_(folder|file)_grep$/,
         view: 'grep'
         // the "n matches · m files" header hint is backend-owned now
-        // (_metadata.result_summary via coder's _tool_summary)
+        // (_metadata.result_summary via coder's on_tool_summary)
     });
 });

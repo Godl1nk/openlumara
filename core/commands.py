@@ -494,11 +494,11 @@ class Commands:
         return f"channel {'enabled' if new_state else 'disabled'}\nrestart required - run /restart"
 
     async def cmd_library(self, args: list):
-        """manage external module libraries: sync repos, browse, install, update and remove modules, channels, skills and themes"""
+        """manage external content libraries"""
         mm = self.channel.manager.module_manager
 
         if not args:
-            lines = ["== module libraries =="]
+            lines = ["== content libraries =="]
             repos = mm.list_repos()
             if repos:
                 lines.append("configured repos:")
@@ -542,37 +542,29 @@ class Commands:
             if not available:
                 return "no installable modules found - run /library sync first"
 
-            # map cloned library folder names back to their source urls for display.
-            # prefer each clone's actual git origin (always correct), fall back to
-            # the configured repo list, then to the folder name
-            url_by_lib = {mm.repo_name(repo): repo for repo in mm.list_repos()}
-
-            git = mm._find_git()
-            if git:
-                for lib_name, lib_path in mm.list_libraries().items():
-                    code, origin = await mm._run_git(git, ["-C", lib_path, "remote", "get-url", "origin"])
-                    if code == 0 and origin:
-                        url_by_lib[lib_name] = origin
-
             groups = {}
             for entry in available:
-                groups.setdefault(entry["library"], []).append(entry)
+                groups.setdefault(entry["type"], []).append(entry)
 
             # installed entries first within each group, then alphabetically by name
             for entries in groups.values():
                 entries.sort(key=lambda e: (not e["installed"], e["name"].lower()))
 
+            kind_order = ["module", "channel", "skill", "theme"]
+            ordered_kinds = [k for k in kind_order if k in groups] + \
+                sorted(set(groups) - set(kind_order))
+
             # NOTE: no square brackets anywhere in this output - the CLI channel prints
             # command results through rich with markup enabled, which swallows [text] as style tags
-            lines = ["== available from libraries =="]
-            for lib_name, entries in groups.items():
-                url = url_by_lib.get(lib_name, lib_name)
-                lines.append(f"\n{url}:")
-                for entry in entries:
+            lines = []
+            for kind in ordered_kinds:
+                lines.append(f"== {kind}s ==")
+                for entry in groups[kind]:
                     flag = " (installed)" if entry["installed"] else ""
                     doc = f" - {entry['doc']}" if entry["doc"] else ""
-                    lines.append(f"  {entry['name']} ({entry['type']}){flag}{doc}")
-            return "\n".join(lines)
+                    lines.append(f"  {entry['name']} ({entry['library']}){flag}{doc}")
+                lines.append("")
+            return "\n".join(lines).rstrip("\n")
 
         if subcmd == "add":
             if len(args) < 2:
@@ -591,10 +583,6 @@ class Commands:
             core.config.config.save()
             return f"added {url} - run /library sync to clone it"
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
-        # install/update/remove are kind-aware now: mm returns (success, message, kind)
-        # and skills/themes install into the skills/ and themes/ folders (no pip deps,
-        # no restart needed beyond a /skills reload or a page refresh).
         def _kind_done_note(kind, target):
             if kind == "theme":
                 return f"{target}\nit appears in Settings -> Appearance after a page reload"

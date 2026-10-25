@@ -70,6 +70,6 @@ document.addEventListener('alpine:init', () => {
         match: /^shell_run$/,
         view: 'shell'
         // the "exit N" header hint is backend-owned now
-        // (_metadata.result_summary via shell's _tool_summary)
+        // (_metadata.result_summary via shell's on_tool_summary)
     });
 });

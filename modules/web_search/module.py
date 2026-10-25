@@ -336,9 +336,9 @@ class WebSearch(modules.http.Http):
     # one-line RESULT hint for the webui tool header (port of the old JS
     # summary callback): how many results came back. private by naming
     # convention (the loader only registers @core.module.tool methods).
-    # called by turns.TurnCollector._result_summary once a response exists;
+    # called by turns.TurnCollector.on_result_summary once a response exists;
     # crashes are swallowed by the caller and output is flattened/capped there.
-    def _tool_summary(self, name, args, response):
+    def on_tool_summary(self, name, args, response):
         match name:
             case ("web_search_text" | "web_search_images" | "web_search_news"
                   | "web_search_videos" | "web_search_books"):

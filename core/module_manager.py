@@ -1,4 +1,4 @@
-# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara
+# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-24) harness:openlumara status:reviewed
 import os
 import regex as re
 import ast
@@ -7,7 +7,7 @@ import asyncio
 import core
 
 # cloned library repos live here (inside the data folder)
-LIBRARY_SUBFOLDER = "module_libraries"
+LIBRARY_SUBFOLDER = "content_libraries"
 
 # Every installable kind and how it must be laid out inside a library repo.
 # A library repo must mirror openlumara's own folder layout:

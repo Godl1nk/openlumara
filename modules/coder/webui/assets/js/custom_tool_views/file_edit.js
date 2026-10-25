@@ -203,6 +203,6 @@ document.addEventListener('alpine:init', () => {
         match: /^coder_file_edit$/,
         view: 'coder-file-edit'
         // the +N −M header hint is backend-owned now (_metadata.result_summary
-        // via coder's _tool_summary) - see renderers/tool_display.js
+        // via coder's on_tool_summary) - see renderers/tool_display.js
     });
 });

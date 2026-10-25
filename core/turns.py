@@ -6,13 +6,6 @@ import re
 
 import partial_json_parser
 
-# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-# parse streamed tool-call arguments with partial_json_parser (same
-# approach as core/channel.py): the backend parses what it can at every
-# yield point and stamps `args_parsed` onto each tool call, so channels
-# only ever render a plain object. a `_raw` fallback mirrors the old
-# frontend behaviour for non-JSON argument blobs.
-
 def parse_lenient_json(raw):
     """parse a (possibly incomplete) JSON object string into a plain dict.
     never raises: falls back to {'_raw': text} for non-JSON input."""
@@ -28,13 +21,9 @@ def parse_lenient_json(raw):
 
 
 def turn_hash(turn):
-    """stable content hash for a grouped turn. channels can reuse their
-    existing turn object when the hash is unchanged instead of deep-diffing
-    every message on every history reload."""
+    """stable content hash for a grouped turn"""
     parts = []
     for message in turn.get("messages", []):
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        # display annotations live under the tool call's _metadata key
         calls = ",".join(
             f"{tc.get('id')}:{(tc.get('_metadata') or {}).get('response')}"
             for tc in (message.get("tool_calls") or [])
@@ -55,6 +44,8 @@ class TurnCollector:
     """
     this takes a raw openAI messages array and turns it into a grouped list of dicts,
     where a "turn" is a group of any assistant/tool messages inbetween a user's request
+    
+    (but now we use steps, which is like a sub-turn.. where it groups reasoning, content, and its associated toolcalls together into one "step")
 
     so basically, a user makes their request, then the response gets grouped into one single object
     that contains multiple messages, grouped by type (reasoning, content, toolcall, etc)
@@ -65,54 +56,48 @@ class TurnCollector:
     now available in the core for any channel to use :)
     """
 
-    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
     def __init__(self, channel=None):
-        # the channel is used to resolve which module owns a tool (via
-        # tool_loader.catalog + manager.modules) so that module's
-        # _tool_summary hook can be asked for a one-line result hint.
-        # optional: a collector without a channel simply never stamps
-        # result summaries instead of crashing.
         self.channel = channel
 
-    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-    def _result_summary(self, tool, meta):
+    def on_result_summary(self, tool, meta):
         """ask the module that owns this tool for a one-line result hint.
 
-        a module may define  _tool_summary(self, name, args, response) -> str;
-        it is only consulted once the tool response exists (args alone are
-        never interesting for a RESULT summary, and skipping while running
-        keeps the per-token stream path free of any hook cost).
-
-        bounded and crash-proof on purpose: a silly module can never break
-        a tool round or blow out a header - crashes degrade to no summary,
-        output is flattened to one line and capped at 120 chars.
+        a module may define  on_tool_summary(self, name, args, response) -> str;
         """
         try:
             if "response" not in meta:
                 return ""
+            
             # bridged (tools_call) calls summarize as the tool they wrap
             name = meta.get("display_name") or (tool.get("function") or {}).get("name")
+            
             if not name:
                 return ""
+            
             loader = getattr(self.channel, "tool_loader", None)
             if loader is None:
                 return ""
+            
             entry = loader.catalog.get(name)
             if entry is None:
                 return ""
+            
             module = self.channel.manager.modules.get(entry["module"])
-            hook = getattr(module, "_tool_summary", None)
+            hook = getattr(module, "on_tool_summary", None)
             if not callable(hook):
                 return ""
+            
             response = meta.get("response")
             if isinstance(response, str):
                 try:
                     response = json.loads(response)
                 except (json.JSONDecodeError, ValueError):
                     pass
+                
             text = hook(name, meta.get("args_parsed") or {}, response)
             if not text:
                 return ""
+            
             text = str(text).strip()
             if not text:
                 return ""
@@ -129,12 +114,6 @@ class TurnCollector:
         current_assistant_turn = None
 
         for index, msg in enumerate(history):
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-            # copy the message before stamping anything onto it: turns hold
-            # references to the stored chat messages, and in-place annotations
-            # (index, and the tool call annotations further down) rewrote chat
-            # storage, which changed already-sent context and invalidated the
-            # provider-side prompt cache on the next build.
             msg = dict(msg)
 
             role = msg.get('role')
@@ -185,30 +164,21 @@ class TurnCollector:
 
             for msg in turn["messages"]:
                 if msg.get("tool_calls"):
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                    # rebuild the tool_calls list with copies of each call: the
-                    # original dicts are shared with chat storage (shallow copies
-                    # all the way down), so annotating in place rewrote stored
-                    # history and invalidated the provider-side prompt cache.
                     annotated_tools = []
                     for tool in msg["tool_calls"]:
                         tool = dict(tool)
-                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                        # all display annotations go under _metadata (mirroring
-                        # the message-level convention). context.get() strips
-                        # _metadata off tool calls before the API call, so even
-                        # a leaked copy can never bloat requests or invalidate
-                        # the provider-side prompt cache.
                         meta = {}
                         tool["_metadata"] = meta
                         if tool.get("id") in response_map:
                             meta["response"] = response_map[tool["id"]]
                         # precompute the failed flag so channels don't
                         # re-parse every response just to tint a card
+                        
                         meta["failed"] = self._tool_call_failed(tool)
                         # ... and the parsed arguments (plus the one-line arg
                         # summary for headers). tools_call proxies are unwrapped
                         # so the card shows the proxied call, not the wrapper.
+                        
                         raw_args = (tool.get("function") or {}).get("arguments")
                         parsed_args = parse_lenient_json(raw_args)
                         bridge_name, bridge_args = self._bridge_from_args(
@@ -223,22 +193,14 @@ class TurnCollector:
                         else:
                             meta["args_parsed"] = parsed_args
                             meta["summary"] = self._tool_call_summary(tool)
-                        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-                        # module-owned one-line result hint (see _result_summary)
-                        meta["result_summary"] = self._result_summary(tool, meta)
+                            
+                        meta["result_summary"] = self.on_result_summary(tool, meta)
                         annotated_tools.append(tool)
                     msg["tool_calls"] = annotated_tools
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # stamp a content hash per turn so channels can keep their existing
-        # turn objects (and their render caches) on reloads by comparing
-        # one string instead of deep-diffing every message.
         for turn in turns:
             turn["hash"] = turn_hash(turn)
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # fold each assistant turn's chain into display steps so channels
-        # don't re-derive the agentic-step grouping themselves.
         for turn in turns:
             if turn["role"] != "assistant":
                 continue
@@ -248,28 +210,22 @@ class TurnCollector:
 
         return turns
 
-    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-    # -- step model: ports of the webui frontend's chainDisplay()/
-    # -- historyTurnSplit() grouping. a step = one reasoning/content run
-    # -- plus the tool calls it leads to (or a tool-less thinking-only step).
-    # -- steps carry precomputed "modules" display data so templates only
-    # -- need to render, never to group.
-
     @staticmethod
     def _tool_call_failed(tool):
         # a tool call failed when its parsed response is {status: "error"}
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
         # response lives under the call's _metadata key
         response = (tool.get("_metadata") or {}).get("response")
+        
         if response is None:
             return False
+        
         try:
             parsed = json.loads(response) if isinstance(response, str) else response
         except (json.JSONDecodeError, TypeError):
             return False
+        
         return isinstance(parsed, dict) and parsed.get("status") == "error"
 
-    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
     # one-line arg summary for completed tool call headers, ported from
     # the webui frontend's toolCallArgsSummary(): the single most
     # informative argument value, paths keep their tail.
@@ -304,12 +260,8 @@ class TurnCollector:
             return "false"
         return str(value)
 
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
     # tools_call (and friends) proxy the real call as {name, params}.
-    # display-wise we unwrap that: the card shows the proxied call's name
-    # and arguments, never the wrapper. unwrap results live under the call's
-    # _metadata (display_name + swapped args_parsed), so requests and stored
-    # history are untouched.
+    # display-wise we unwrap that
     BRIDGE_TOOLS = ("tools_call",)
 
     @classmethod
@@ -325,28 +277,9 @@ class TurnCollector:
         if tool_name not in cls.BRIDGE_TOOLS or not isinstance(wrapper_args, dict):
             return None, None
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-        # trust the name only once it is terminated in the raw stream: the
-        # JSON is complete (history / final delta) or the value is closed by
-        # its own quote ("name": "foo"). the old "a sibling key parsed beside
-        # it" heuristic was order-dependent: with arguments-before-name the
-        # completed arguments sibling let the still-growing name value
-        # ("c" -> "co" -> ...) through, flickering the header and registry
-        # match during the last ~1% of the stream.
         name = wrapper_args.get("name")
         name = name.strip() if isinstance(name, str) and name.strip() else None
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # partial_json_parser can choke on wrapper payloads dominated by one
-        # huge escaped string (the string-typed params transport): the lenient
-        # parse degrades to {_raw: ...} and the name - even though it completed
-        # long ago - never surfaces, so _bridge_from_args returns (None, None)
-        # and the card stays the raw tools_call wrapper for the whole live turn
-        # (custom views match the UNWRAPPED name only; it fixes itself on the
-        # next history reload, which is why this looked intermittent).
-        # json_repair reads those payloads fine, so retry with it whenever the
-        # lenient wrapper parse yielded no usable name. The termination check
-        # below still gates still-growing values, so headers never flicker.
         if name is None and raw:
             try:
                 repaired_wrapper = json_repair.loads(raw)
@@ -380,20 +313,10 @@ class TurnCollector:
             if not complete:
                 name = None
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # the bridge args key is 'params' now (sorts after 'name' so models emit
-        # the name first); 'arguments' stays supported for old chat history.
         inner = wrapper_args.get("params")
         if inner is None:
             inner = wrapper_args.get("arguments")
         if isinstance(inner, str):
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-            # transport format: arguments rides as a JSON-encoded string so the
-            # provider streams it token by token (object-typed nested values
-            # arrive as one atomic chunk - bridge debug log 2026-10-21). the
-            # lenient parser surfaces the partial string value; json_repair
-            # then decodes whatever of the inner json exists so far into a
-            # growing dict (it never raises).
             inner_parsed = parse_lenient_json(inner)
             if "_raw" in inner_parsed:
                 try:
@@ -403,15 +326,8 @@ class TurnCollector:
             inner = inner_parsed if isinstance(inner_parsed, dict) else None
         elif inner is not None and not isinstance(inner, dict):
             inner = None
+            
         if inner is None and raw:
-            # partial-JSON parsers can DROP an in-progress nested value
-            # entirely: while the wrapper's "arguments" object is unclosed
-            # it may never surface in the lenient wrapper parse, leaving the
-            # unwrap blind until the JSON completes - which is precisely why
-            # long bridged args showed nothing while streaming. slice the
-            # inner value out of the raw text and parse it ON ITS OWN: a
-            # top-level partial object hits the same lenient path that makes
-            # native (unbridged) tool args stream.
             started = re.search(r'"(?:arguments|params)"\s*:\s*[{"\[]', raw)
             if started:
                 chunk = raw[started.end() - 1:]
@@ -419,12 +335,6 @@ class TurnCollector:
                 if isinstance(sliced, dict) and "_raw" not in sliced:
                     inner = sliced
                 else:
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-                    # string-typed params transport: the slice starts at a QUOTE,
-                    # so it parses to a plain str (or {_raw}) and used to be
-                    # dropped here - raw wrapper card again. two-step it instead:
-                    # decode the (partial) string literal, then json_repair the
-                    # embedded json it holds into a growing dict.
                     try:
                         cand = json_repair.loads(chunk)
                         if isinstance(cand, str):
@@ -460,10 +370,6 @@ class TurnCollector:
 
     @classmethod
     def _tool_call_summary(cls, tool):
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # lenient parse instead of strict json.loads: headers can now show
-        # the arg summary LIVE while arguments stream in, not only once
-        # the full JSON is complete.
         raw = (tool.get("function") or {}).get("arguments")
         if not isinstance(raw, str):
             return ""
@@ -476,9 +382,6 @@ class TurnCollector:
         counts = {}
         order = []
         for tool in tool_calls or []:
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-            # prefer the unwrapped bridge name so proxied calls group under
-            # their real module ("Calendar: add event", not "Tools: call")
             fn = TurnCollector._display_name(tool)
             if not fn:
                 continue
@@ -693,13 +596,6 @@ class TurnCollector:
 
         stream_response_map = {}
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
-        # -- step assembler state. a step object is materialized the moment
-        # -- its first visible content arrives, then upserted (re-yielded in
-        # -- full, shaped exactly like a history step) on every change.
-        # -- provisional_final: the content run currently rendered as the
-        # -- turn's final answer bubble; it retracts into its step as soon
-        # -- as a reasoning or tool_calls segment follows it.
         step_num = 0
         step_has_tools = False
         steps = []
@@ -708,17 +604,9 @@ class TurnCollector:
         provisional_final = None
         last_token_type = None
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # monotonic args_parsed cache keyed by tool call id: a mid-stream
-        # parse can never yield fewer keys than what was already sent.
+        # args_parsed cache keyed by tool call id
         args_cache = {}
-        # same idea for unwrapped bridge calls: the inner arguments object
-        # resolved from the raw wrapper stream (see _bridge_from_args).
         inner_cache = {}
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # once a bridge call's real name resolved mid-stream, keep it: a later
-        # token whose parse hiccups (or drops the name) must never regress the
-        # card from the unwrapped view back to the raw tools_call wrapper.
         name_cache = {}
 
         def _stamp_args(tool):
@@ -730,12 +618,7 @@ class TurnCollector:
                 parsed = prev
             else:
                 args_cache[tool_id] = parsed
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-            # annotations live under the call's _metadata key
             meta = tool.setdefault("_metadata", {})
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-            # unwrap tools_call proxies order-agnostically so bridged calls
-            # render as the real call while streaming too (mirrors history)
             bridge_name, bridge_args = self._bridge_from_args(
                 (tool.get("function") or {}).get("name"), parsed, raw
             )
@@ -764,11 +647,6 @@ class TurnCollector:
                     meta["display_name"] = name_cache[tool_id]
                 meta["args_parsed"] = bridge_args if bridge_args is not None else {}
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
-        # -- step assembler helpers. these close over the state above; the
-        # -- machine below only mutates objects and collects what to emit.
-        # -- every folding rule mirrors build_steps() so the live chain and
-        # -- the history chain never disagree after a reload.
         emit_steps = []
         queued_ids = set()
 
@@ -875,9 +753,9 @@ class TurnCollector:
                     meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
                 else:
                     meta["summary"] = self._tool_call_summary(tool)
-                # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+                    
                 # module-owned one-line result hint, live path (mirrors group_history)
-                meta["result_summary"] = self._result_summary(tool, meta)
+                meta["result_summary"] = self.on_result_summary(tool, meta)
 
         def merge_tool_calls(step, incoming_calls):
             existing_calls = step["tool_calls"]
@@ -906,9 +784,7 @@ class TurnCollector:
             # copy the token so we don't mutate it
             token = dict(raw_token)
 
-            # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            # enrich prompt progress with precomputed percent + ETA so
-            # channels render the indicator without doing the math
+            # enrich prompt progress with precomputed percent + ETA
             if token.get("type") == "prompt_progress" and isinstance(token.get("content"), dict):
                 progress = dict(token["content"])
                 cache = progress.get("cache") or 0
@@ -928,8 +804,6 @@ class TurnCollector:
             yield {"type": "token", "content": token}
 
             # skip grouping for non-display tokens
-            # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            # model_load_progress: llama.cpp router load progress, passthrough
             if token.get("type") in ['prompt_progress', 'token_usage', 'timings', 'user_message', 'model_load_progress']:
                 continue
 

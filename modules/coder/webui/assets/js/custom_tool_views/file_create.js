@@ -12,6 +12,6 @@ document.addEventListener('alpine:init', () => {
         match: /^coder_file_create$/,
         view: 'file-create'
         // the "N lines" header hint is backend-owned now
-        // (_metadata.result_summary via coder's _tool_summary)
+        // (_metadata.result_summary via coder's on_tool_summary)
     });
 });

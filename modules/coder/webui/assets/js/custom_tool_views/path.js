@@ -45,7 +45,7 @@ document.addEventListener('alpine:init', () => {
         match: /^coder_glob$/,
         view: 'coder-path'
         // the "n files" header hint is backend-owned now
-        // (_metadata.result_summary via coder's _tool_summary)
+        // (_metadata.result_summary via coder's on_tool_summary)
     });
 
     // coder move/delete/folder_delete: running sandbox/path one-liner

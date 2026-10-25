@@ -47,7 +47,7 @@ function toolDisplayView(tool) {
 // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
 // one-line result hint for the completed tool call header. fully
 // backend-owned now: core/turns.py asks the owning module's
-// _tool_summary(name, args, response) hook and stamps the ready-made line
+// on_tool_summary(name, args, response) hook and stamps the ready-made line
 // as _metadata.result_summary (live stream AND history reloads). the JS
 // summary callbacks are gone - the registry only matches and names views,
 // and the frontend is a pure display sink. empty = show nothing.

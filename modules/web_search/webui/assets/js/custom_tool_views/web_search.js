@@ -37,6 +37,6 @@ document.addEventListener('alpine:init', () => {
         match: /^web_search_(text|images|news|videos|books)$/,
         view: 'web-search'
         // the "n results" header hint is backend-owned now
-        // (_metadata.result_summary via web_search's _tool_summary)
+        // (_metadata.result_summary via web_search's on_tool_summary)
     });
 });
