@@ -204,8 +204,8 @@
 
     function drawMesh(dt, t) {
         const color = cssVar('--effect-color', '#6ee7b7');
-        const stiffness = 54;
-        const damping = 8.5;
+        const stiffness = 60;
+        const damping = 12;
         const pushRadius = 150;
 
         ctx.fillStyle = color;
