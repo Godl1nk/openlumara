@@ -29,6 +29,13 @@
     let dpr = 1;
     let particles = [];
     let sprites = {};
+    // extra layers used by the livelier effects
+    let pulses = [];
+    let ripples = [];
+    let blooms = [];
+    let bloomClock = 0;
+    let pulseClock = 0;
+    let lastRippleAt = 0;
 
     const pointer = { x: -9999, y: -9999, active: false };
     const rand = (a, b) => a + Math.random() * (b - a);
@@ -105,11 +112,12 @@
                 x: rand(0, w), y: rand(0, h),
                 vx: rand(-16, 16), vy: rand(-16, 16),
                 r: rand(1, 2.2),
+                z: rand(0.55, 1.3),
                 ph: rand(0, Math.PI * 2),
                 pulse: rand(0, Math.PI * 2),
             }));
         } else if (type === 'flow') {
-            const count = Math.round(Math.min(520, (w * h) / 3600) * intensity);
+            const count = Math.round(Math.min(360, (w * h) / 5200) * intensity);
             particles = Array.from({ length: count }, spawnFlowParticle);
         } else if (type === 'warp') {
             const count = Math.round(Math.min(220, (w * h) / 9000) * intensity);
@@ -303,8 +311,8 @@
         const maxSpeed = 30;
 
         for (const p of particles) {
-            p.x += p.vx * dt;
-            p.y += p.vy * dt;
+            p.x += p.vx * dt * p.z;
+            p.y += p.vy * dt * p.z;
             if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
             else if (p.x > w) { p.x = w; p.vx = -Math.abs(p.vx); }
             if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); }
@@ -317,7 +325,6 @@
                 if (d2 < 260 * 260 && d2 > 1) {
                     const d = Math.sqrt(d2);
                     const pull = (1 - d / 260) * 26 * dt;
-                    // lean in, but keep a little orbit so they never stack up
                     p.vx += (dx / d) * pull + (-dy / d) * pull * 0.55;
                     p.vy += (dy / d) * pull + (dx / d) * pull * 0.55;
                 }
@@ -331,10 +338,9 @@
             p.pulse += dt * 1.6;
         }
 
-        // links between nodes; ones near the cursor burn brighter
+        // collect links once: needed for drawing, pulses and the cursor web
         const link = 140;
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = color;
+        const links = [];
         for (let i = 0; i < particles.length; i++) {
             const a = particles[i];
             for (let j = i + 1; j < particles.length; j++) {
@@ -349,16 +355,20 @@
                     const mx = (a.x + b.x) / 2 - pointer.x;
                     const my = (a.y + b.y) / 2 - pointer.y;
                     const md2 = mx * mx + my * my;
-                    if (md2 < 220 * 220) {
-                        alpha += base * 0.55 * (1 - Math.sqrt(md2) / 220);
-                    }
+                    if (md2 < 220 * 220) alpha += base * 0.55 * (1 - Math.sqrt(md2) / 220);
                 }
-                ctx.globalAlpha = Math.min(0.95, alpha);
-                ctx.beginPath();
-                ctx.moveTo(a.x, a.y);
-                ctx.lineTo(b.x, b.y);
-                ctx.stroke();
+                links.push({ a, b, alpha });
             }
+        }
+
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = color;
+        for (const l of links) {
+            ctx.globalAlpha = Math.min(0.95, l.alpha);
+            ctx.beginPath();
+            ctx.moveTo(l.a.x, l.a.y);
+            ctx.lineTo(l.b.x, l.b.y);
+            ctx.stroke();
         }
 
         // spider lines: everything near the cursor ties to it
@@ -376,11 +386,42 @@
             }
         }
 
-        // glowing, breathing nodes
+        // energy pulses riding the links toward each other
+        pulseClock += dt;
+        if (pulseClock > 0.16 && links.length) {
+            pulseClock = 0;
+            const l = links[(Math.random() * links.length) | 0];
+            pulses.push({ a: l.a, b: l.b, t: 0, speed: rand(0.6, 1.5) });
+            if (pulses.length > 40) pulses.shift();
+        }
         ctx.globalCompositeOperation = 'lighter';
+        for (const pulse of pulses) {
+            pulse.t += pulse.speed * dt;
+            const x = pulse.a.x + (pulse.b.x - pulse.a.x) * pulse.t;
+            const y = pulse.a.y + (pulse.b.y - pulse.a.y) * pulse.t;
+            const fade = Math.sin(Math.PI * Math.min(1, pulse.t));
+            ctx.globalAlpha = 0.85 * fade;
+            ctx.drawImage(glow, x - 9, y - 9, 18, 18);
+        }
+        pulses = pulses.filter((pulse) => pulse.t < 1);
+
+        // ripples left behind by the cursor
+        for (const ripple of ripples) {
+            ripple.age += dt;
+            const k = ripple.age / ripple.life;
+            const r = 8 + ripple.max * k;
+            ctx.globalAlpha = (1 - k) * 0.5;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(ripple.x, ripple.y, r, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ripples = ripples.filter((ripple) => ripple.age < ripple.life);
+
+        // glowing, breathing nodes
         for (const p of particles) {
-            const r = p.r * (1 + 0.3 * Math.sin(p.pulse + p.ph));
-            ctx.globalAlpha = 0.5;
+            const r = p.r * p.z * (1 + 0.3 * Math.sin(p.pulse + p.ph));
+            ctx.globalAlpha = 0.5 * p.z;
             ctx.drawImage(glow, p.x - r * 3, p.y - r * 3, r * 6, r * 6);
         }
         ctx.globalCompositeOperation = 'source-over';
@@ -407,6 +448,43 @@
         const warm = cssVar('--accent-secondary', '#f472b6');
         ctx.lineCap = 'round';
 
+        // ink blooms: soft stains that spread, curl and dissolve
+        bloomClock += dt;
+        if (bloomClock > 1.4) {
+            bloomClock = 0;
+            spawnBloom();
+        }
+        for (const bloom of blooms) {
+            bloom.age += dt;
+            const k = Math.min(1, bloom.age / bloom.life);
+            const grow = Math.sin(Math.PI * Math.min(1, k * 1.15));
+            const r = bloom.maxR * (0.2 + 0.8 * grow);
+            const stain = makeSprite(128, bloom.dark ? cool : warm);
+
+            const stainAlpha = 0.22 * (1 - k);
+            if (stainAlpha > 0.002) {
+                ctx.globalAlpha = stainAlpha;
+                ctx.drawImage(stain, bloom.x - r, bloom.y - r, r * 2, r * 2);
+            }
+
+            ctx.strokeStyle = bloom.dark ? cool : warm;
+            for (const f of bloom.filaments) {
+                const len = f.len * (0.35 + 0.65 * Math.min(1, k * 1.8));
+                const ex = bloom.x + Math.cos(f.angle) * len;
+                const ey = bloom.y + Math.sin(f.angle) * len;
+                const mx = bloom.x + Math.cos(f.angle + f.curve) * len * 0.55;
+                const my = bloom.y + Math.sin(f.angle + f.curve) * len * 0.55;
+                ctx.globalAlpha = 0.42 * (1 - k);
+                ctx.lineWidth = f.w;
+                ctx.beginPath();
+                ctx.moveTo(bloom.x, bloom.y);
+                ctx.quadraticCurveTo(mx, my, ex, ey);
+                ctx.stroke();
+            }
+        }
+        blooms = blooms.filter((bloom) => bloom.age < bloom.life);
+
+        // flowing tendrils
         for (const p of particles) {
             const angle = flowAngle(p.x, p.y, t) + Math.sin(t * 0.2) * 0.3;
             let vx = Math.cos(angle) * 46;
@@ -418,7 +496,6 @@
                 const d = Math.hypot(dx, dy);
                 if (d < 190 && d > 1) {
                     const f = (190 - d) / 190;
-                    // swirl around the cursor instead of pushing straight out
                     vx += (-dy / d) * 160 * f;
                     vy += (dx / d) * 160 * f;
                 }
@@ -451,6 +528,27 @@
             }
         }
         ctx.globalAlpha = 1;
+    }
+
+    function spawnBloom() {
+        const nearPointer = pointer.active && Math.random() < 0.45;
+        const x = nearPointer ? pointer.x + rand(-70, 70) : rand(w * 0.12, w * 0.88);
+        const y = nearPointer ? pointer.y + rand(-70, 70) : rand(h * 0.12, h * 0.88);
+        const filaments = Array.from({ length: 8 + Math.floor(Math.random() * 5) }, () => ({
+            angle: rand(0, Math.PI * 2),
+            len: rand(45, 150),
+            curve: rand(-1.1, 1.1),
+            w: rand(0.7, 2.4),
+        }));
+        blooms.push({
+            x, y,
+            age: 0,
+            life: rand(3.4, 5),
+            maxR: rand(55, 130),
+            dark: Math.random() > 0.45,
+            filaments,
+        });
+        if (blooms.length > 6) blooms.shift();
     }
 
     // cherry petals: slow fall, tumble, and a gust away from the cursor
@@ -597,6 +695,11 @@
     function stop() {
         pause();
         particles = [];
+        pulses = [];
+        ripples = [];
+        blooms = [];
+        bloomClock = 0;
+        pulseClock = 0;
         destroyCanvas();
     }
 
@@ -637,6 +740,16 @@
         pointer.x = event.clientX;
         pointer.y = event.clientY;
         pointer.active = true;
+
+        // the wire effect throws a ring out from the cursor as it moves
+        if (type === 'network') {
+            const now = performance.now();
+            if (now - lastRippleAt > 260) {
+                lastRippleAt = now;
+                ripples.push({ x: pointer.x, y: pointer.y, age: 0, life: 1.5, max: 110 });
+                if (ripples.length > 12) ripples.shift();
+            }
+        }
     }, { passive: true });
     window.addEventListener('pointerleave', () => { pointer.active = false; });
 
