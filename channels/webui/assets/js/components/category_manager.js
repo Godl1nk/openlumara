@@ -1,11 +1,3 @@
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-   logic for the sidebar's "manage categories" modal.
-
-   categories are derived from the chats that use them, so creating one
-   goes through /api/chats/categories/create (backend validation + a
-   fresh chat inside the new category). deleting goes through
-   /api/chats/categories/delete, which moves the category's chats to
-   'general'. */
 function categoryManager() {
     return {
         newCategory: '',
@@ -19,9 +11,7 @@ function categoryManager() {
         },
 
         async refresh() {
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            // counts come from the backend now; this used to fetch every
-            // chat (limit=100000) just to count them client-side.
+            // get the amount of categories
             try {
                 this.counts = await simpleApiFetch('/api/chats/categories/count') ?? {};
             } catch (err) {
@@ -39,10 +29,6 @@ function categoryManager() {
 
             this.busy = true;
             try {
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                // name validation (empty, ':' reserved for subcategories,
-                // duplicates) moved backend-side; the endpoint creates the
-                // new chat inside the new category, making it the active chat
                 await simpleApiPost('/api/chats/categories/create', { name: name });
 
                 await Alpine.store('chat').reloadCategories();

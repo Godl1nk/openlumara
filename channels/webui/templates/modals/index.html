@@ -4,8 +4,7 @@
     <div class="modal-overlay" @click="$store.ui.closeModal()"></div>
 </template>
 
-{# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-   admin lockdown: don't even ship the settings modal markup #}
+{# admin lockdown: don't even ship the settings modal markup #}
 {% if config.get("enable_admin_settings") %}
 {% include 'modals/settings/index.html' %}
 {% endif %}
@@ -14,8 +13,9 @@
 {% include 'modals/categories.html' %}
 {% include 'modals/move_chat.html' %}
 
-{# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-   auto-discovery: every .html under <module>/webui/templates/modals/ is included
+{# 
+   add any modals defined by modules (webui extensions)
+   every .html under <module>/webui/templates/modals/ is included
        
    the owning module's settings are exposed to the included template as
    `module_config` (a loop-scoped set is visible to includes)

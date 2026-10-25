@@ -67,17 +67,13 @@
         {% for file in css_files %}
         <link rel="stylesheet" href="{{ url_for('assets', path='css/'+file) }}" />
         {% endfor %}
-        {# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-           module-shipped stylesheets, already full urls #}
+        
         {% for url in ext_css_files %}
         <link rel="stylesheet" href="{{ url }}" />
         {% endfor %}
 
         <link rel="stylesheet" id="code-theme" href="{{ url_for('assets', path='css/code-themes/github-dark.css') }}">
 
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-             admin lockdown flag: lets the stores skip their (now blocked)
-             settings-related fetches instead of throwing on 403s -->
         {% if not config.get("enable_admin_settings") %}
         <script>window.ADMIN_SETTINGS_DISABLED = true;</script>
         {% endif %}
@@ -89,11 +85,6 @@
             we use alpine stores for data access across the app,
             as putting every possible thing in one massive data object was no fun
         -->
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-             the sidebar hide/show only fires when the mobile state
-             actually flips: focusing an input on mobile pops the soft
-             keyboard, which fires a resize event and used to slam the
-             overlay sidebar shut mid-search -->
         <div id="main" x-data="{}" @resize.window="
             const wasMobile = $store.ui.isMobile;
 
@@ -104,16 +95,10 @@
                 $store.ui.showSidebar = !$store.ui.isMobile;
             }
         ">
-            {# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-               above_page moved out of #main-wrapper (a flex ROW) into the
-               #main column, so page-level slots sandwich the app symmetrically #}
             {{ extension_slot("above_page") }}
 
             <section id="main-wrapper">
                 {% if config.get("enable_sidebar") %}
-                    <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
-                         'collapsed' shrinks the sidebar down to just its tab
-                         strip (toggled by clicking the active tab) -->
                     <section id="sidebar"
                         :class="{ 'collapsed': $store.ui.sidebarCollapsed && !$store.ui.isMobile }"
                         x-show="$store.ui.showSidebar"
@@ -122,9 +107,6 @@
                         x-transition:leave="transition ease-in duration-150"
                         x-transition:leave-end="-translate-x-full"
                     >
-                        <!-- 
-                        @click.away="$store.ui.showSidebar = false"
-                        -->
                         {% include 'sidebar.html' %}
                     </section>
                 {% endif %}
@@ -150,8 +132,8 @@
         {% for file in js_files %}
         <script src="{{ url_for('assets', path='js/'+file) }}"></script>
         {% endfor %}
-        {# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-           module-shipped scripts, already full urls #}
+        
+        {# scripts from modules (webui extensions) #}
         {% for url in ext_js_files %}
         <script src="{{ url }}"></script>
         {% endfor %}

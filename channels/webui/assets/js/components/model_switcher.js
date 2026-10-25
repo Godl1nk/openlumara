@@ -1,5 +1,5 @@
 /*
- * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+ * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) status:reviewed
  * quick model switcher for the chat header: reuses the settings store's
  * cached model list and the model.name setting field, so the dropdown in
  * the header and the one in the settings modal always stay in sync.
@@ -22,12 +22,6 @@ function modelQuickSwitch() {
             return cached;
         },
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-        // no more fetch on page init: a failing API poisoned
-        // modelsLoadError globally, which hid the "press refresh" hint in
-        // the settings modal before the user ever touched anything.
-        // the list is now fetched lazily when the header dropdown gets
-        // focus (and nothing is cached yet).
         lazyFetch() {
             const settings = Alpine.store('settings');
             if (!settings.cachedModels || settings.cachedModels.length === 0) {

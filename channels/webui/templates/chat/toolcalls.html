@@ -1,13 +1,9 @@
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) -->
+<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) status:reviewed -->
 <div class="flex fullwidth nogaps">
     {% set scope = 'step' if toolcard_in_step else 'message' %}
     <template x-for="(tool, toolIdx) in {{ scope }}.tool_calls">
         <div>
             <div class="tool-calls-container"
-                 {# -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
-                    'collapse tool calls by default' is gone: card folding is
-                    the built-in rhythm now (open while running, auto-fold
-                    when the response lands). #}
                  x-data="{ collapsed: {% if toolcard_in_step %}($store.stream.state === 'idle' ? toolIdx > 0 : !!(tool._metadata?.response)){% else %}$store.stream.state === 'idle' || !!(tool._metadata?.response){% endif %}, autoCollapsed: !!(tool._metadata?.response), cacheKey: tool.id ?? ({{ scope }}.tool_call_id + ':' + toolIdx) }"
                  x-effect="if (tool._metadata?.response && !autoCollapsed) { autoCollapsed = true; collapsed = true }"
             >

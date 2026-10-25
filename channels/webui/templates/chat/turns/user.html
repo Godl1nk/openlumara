@@ -4,12 +4,6 @@
             <div class="multimodal-content">
                 <template x-for="(block, blockIndex) in message.content" :key="'block-' + blockIndex">
                     <div>
-                        <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-                             security: this used to be x-html="block.text", which
-                             injected uploaded-file text (e.g. PDF contents) into the
-                             DOM unsanitized = stored XSS. routed through the x-md
-                             directive instead: raw mode = plain escaped text, exactly
-                             like the string-content path below -->
                         <template x-if="blockIndex === 0">
                             <div x-md="{ message: { content: block.text }, live: false, raw: true }"></div>
                         </template>
@@ -33,10 +27,6 @@
 
         {{ extension_slot("above_message") }}
 
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-             switched from x-html+renderMarkdown to the x-md directive: uses the
-             per-message cache, skips Alpine's initTree walk on the injected
-             subtree, and avoids re-parsing markdown whenever the effect re-runs -->
         <template x-if="typeof message.content === 'string'">
             <div x-md="{ message: message, live: false, raw: message._metadata?.is_cmd }" :class="{'command': message._metadata?.is_cmd}"></div>
         </template>
