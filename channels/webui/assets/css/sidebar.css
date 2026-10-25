@@ -1,8 +1,4 @@
 #sidebar {
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       the category pane is gone, the chat list fills the sidebar.
-       flex-basis + shrink 0 + grow 0 so the width is locked to 22%
-       regardless of how long chat titles/content are */
     flex: 0 0 288px;
     width: 288px;
     max-width: 288px;
@@ -13,16 +9,9 @@
     overflow: hidden;
     border-right: 1px solid var(--border-color);
 
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
-       smooth width change when collapsing/expanding */
     transition: flex-basis 0.15s ease, width 0.15s ease;
 }
 
-/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
-   collapsed sidebar (active tab clicked): panels are hidden via x-show,
-   only the vertical tab strip remains - shrink to exactly its width.
-   the strip carries its own border-right, so #sidebar's own is dropped
-   to avoid a double line eating into the strip. */
 #sidebar.collapsed {
     flex: 0 0 46px;
     width: 46px;
@@ -40,10 +29,6 @@
     }
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
-   sidebar tab shell: flex row holding the (optional) tab bar plus exactly
-   one visible panel (chat list or an extension panel). takes over the
-   layout job from #sidebar itself so #sidebar keeps its fixed width. */
 .sidebar-shell {
     display: flex;
     flex-direction: row;
@@ -120,12 +105,6 @@
     background: var(--bg-primary);
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
-   mobile: the sidebar is a full-width overlay, so the vertical strip
-   rotates into a horizontal top bar (native tab pattern) with 44px
-   touch targets. lives here (not responsive.css) because css loads
-   alphabetically and this file must win the specificity tie. display
-   stays owned by the :has() rule above - this only restyles. */
 @media (max-width: 768px) {
     .sidebar-shell {
         flex-direction: column;
@@ -164,11 +143,6 @@
     background: var(--bg-primary);
     border-left: 1px solid var(--border-color);
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       category dropdown, sits above the search box (replaces the old
-       category sidebar pane). now a custom button + teleported menu
-       (native options can't hold icons); trigger styling mirrors the
-       old select look. menu styles live top-level below. */
     .category-select {
         padding: 0px;
 
@@ -223,11 +197,6 @@
                 transform: rotate(180deg);
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-               while open, the trigger and the teleported menu form ONE
-               box: drop the bottom corners/border (menu overlaps by 1px
-               and continues the side borders), keep the accent border
-               on the remaining sides */
             &.open {
                 border-color: var(--border-color);
                 border-bottom: 1px solid transparent;
@@ -255,10 +224,6 @@
     .chats {
         display: flex;
         flex-direction: column;
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-           grow into all leftover height (min-height:0 so it can shrink
-           below content size) - this is what pushes .sidebar-footer to
-           the bottom instead of scattered margin-top:auto gaps */
         flex: 1;
         min-height: 0;
         width: 100%;
@@ -266,15 +231,9 @@
         overflow-y: scroll;
         gap: 4px;
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-           collapsible relative-day headers. header is sticky so the
-           current group's label stays visible while scrolling through
-           its chats. */
         .day-group {
             display: flex;
             flex-direction: column;
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-               header hugs its chat rows (was 7px theme gap) */
             gap: 2px;
             flex-shrink: 0;
         }
@@ -318,8 +277,6 @@
                 white-space: nowrap;
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-               chat count per day, right-aligned in the header */
             .day-count {
                 margin-left: auto;
                 flex-shrink: 0;
@@ -335,17 +292,10 @@
         .day-chats {
             display: flex;
             flex-direction: column;
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-               dense rows: 7px theme gap -> 2px, so a day-group reads as
-               one tight block instead of a spread-out column */
             gap: 2px;
         }
 
         .item {
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-               5px vertical pad + 24px title + border = ~36px row, with
-               the 2px gap that's a ~38px pitch on desktop (mobile gets
-               a 44px touch-target override in responsive.css) */
             padding: 5px 14px;
             margin-left: 4px;
             background: none;
@@ -367,9 +317,6 @@
             flex-shrink: 0;
             min-width: 0;
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-               reveal tag icon + action dots when hovering anywhere on
-               the card */
             &:hover {
                 .tag-icon-wrap,
                 .item-actions {
@@ -416,9 +363,6 @@
                 text-overflow: ellipsis;
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-               3-line content snippet shown under search results when
-               content search is toggled on */
             .snippet.snippet-3 {
                 display: -webkit-box;
                 -webkit-line-clamp: 3;
@@ -439,18 +383,11 @@
                 font-style: normal;
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-02)
-               query matches inside search-result titles (backend wraps
-               them in <strong class="search-highlight">) */
             .title .search-highlight {
                 color: var(--accent);
                 font-weight: 700;
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-               single-line chat row: title fills the left, tag icon and
-               three-dot actions sit right. (the old .meta line with the
-               date/pill is gone - dates live in the day headers now) */
             .title-row {
                 display: flex;
                 align-items: center;
@@ -463,9 +400,6 @@
                 }
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-               tag icon: hidden until card hover (same reveal as the
-               action dots); hover popup is the shared .tag-popup */
             .tag-icon-wrap {
                 display: inline-flex;
                 align-items: center;
@@ -621,9 +555,6 @@
         flex-wrap: nowrap;
         gap: 8px;
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-           magnifier inside the field, left side; absolute so it stays
-           out of the flex row, vertically centered on the 36px input */
         .search-icon {
             position: absolute;
             left: 11px;
@@ -641,10 +572,6 @@
             }
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-02)
-           spinner shown in place of the magnifier while a search request
-           is in flight; margin-top centering (not translateY) so it
-           doesn't clash with the rotate animation */
         .search-spinner {
             position: absolute;
             left: 11px;
@@ -700,8 +627,6 @@
             box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-           toggle for searching message content in addition to titles */
         .search-toggle {
             flex-shrink: 0;
             display: flex;
@@ -735,10 +660,6 @@
         }
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-       tag filter panel: collapsed by default, toggled by the tag button
-       in the search row. sits between search and the chat list, shows
-       the category's tags as toggleable chips. */
     .tag-filter {
         flex-shrink: 0;
         display: flex;
@@ -812,12 +733,6 @@
     }
 }
 
-
-
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-   sidebar footer: extension bottom_of_chat_list + buttons slots and the
-   New Chat button, pinned to the bottom; .chats (flex:1) absorbs the
-   leftover height above it */
 .sidebar-footer {
     margin-top: auto;
     flex-shrink: 0;
@@ -836,9 +751,6 @@
     border-top: 1px solid var(--border-color);
     color: var(--text-primary, #eee);
     cursor: pointer;
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-       pinning moved to .sidebar-footer; margin-top:auto here split the
-       leftover space between extension buttons and New Chat */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -849,23 +761,10 @@
     }
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-   overflow-tag popup: teleported to body (chat cards transform on
-   hover, which would trap a fixed child), so it needs a top-level
-   rule. position comes from the tag cluster's viewport rect. */
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-   reveal the three-dot button when hovering anywhere on the card */
 .item:hover .item-actions {
     opacity: 1;
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-   category dropdown menu; teleported to body like the chat action
-   menu, positioned from the trigger's viewport rect. icons: home.svg
-   for 'general', folder.svg for all other categories.
-   designed as the trigger's continuation: same width/background,
-   accent side+bottom borders, no top border or top corners, and it
-   overlaps the trigger by 1px so the seam is invisible. */
 .category-menu {
     display: flex;
     flex-direction: column;
@@ -874,19 +773,12 @@
     z-index: 1000;
     max-height: 60vh;
     overflow-y: auto;
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       no top padding: the trigger's own 10px bottom padding already
-       sits above the seam, adding more pushed the first row too far
-       down from the header item. */
     padding: 0 4px 4px;
     background: var(--bg-primary, #1a1a1a);
     border: 1px solid var(--border-color);
     border-top: none;
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       rows match the trigger's metrics (14px font) and share its
-       11px icon inset, so icons and labels line up with the header. */
     .category-option {
         display: flex;
         align-items: center;
@@ -936,9 +828,6 @@
     }
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-   dropdown for the chat item actions; teleported to body, so
-   positioned from the dots button's viewport rect */
 .chat-action-menu {
     display: flex;
     flex-direction: column;

@@ -43,9 +43,6 @@
         }
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       wrench icon in em (16px = 1.18em at 0.85rem) so headers scale
-       with font size like the timeline nodes */
     .icon {
         width: 1.18em;
         height: 1.18em;
@@ -69,9 +66,6 @@
         }
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       completed-call arg summary: smaller + fainter than the tool name,
-       hard single line (ellipsis eats the overflow) */
     .call-args {
         font-size: 0.78rem;
         color: var(--text-secondary);
@@ -92,7 +86,6 @@
         flex: 0 0 auto;
         white-space: nowrap;
     }
-
 
     /* body: generous vertical rhythm. left border/indent removed - the
        timeline spine of the agent chain provides the structure now */
@@ -117,10 +110,6 @@
         font-weight: 500;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-         max-height is ALWAYS on (so overflow can actually be detected and
-         autoscroll works); x-box only toggles the soft background for values
-         that overflow. single-line values stay plain text on the row. */
     .arg-value {
         color: var(--text-primary);
         word-break: break-word;
@@ -148,8 +137,6 @@
         gap: 2px;
     }
 
-
-
     .raw-response {
         font-family: var(--code-font);
         white-space: pre-wrap;
@@ -160,9 +147,6 @@
         font-size: 0.84rem;
         line-height: 1.7;
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-           keyless row for a response's unwrapped `content` field: spans the
-           FULL row width, no key column */
         .content-row {
             display: flex;
             line-height: 1.7;
@@ -185,8 +169,6 @@
             }
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-           fields after the content block, separated by a hairline */
         .response-rest {
             border-top: 1px solid var(--border-color);
             margin-top: 8px;
@@ -209,9 +191,6 @@
             color: var(--text-muted);
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-           kv rows mirror the tool argument rows exactly: same key column,
-           gap and rhythm, no border-left on values */
         .kv-row {
             display: flex;
             align-items: baseline;

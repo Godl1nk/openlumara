@@ -1,7 +1,3 @@
-/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-   Module Library tab in the settings modal. Fully self-contained styling:
-   the shared .footer-btn/.unified-card rules are scoped to their own
-   containers, so this tab ships its own buttons, chips and cards. */
 
 @keyframes library-spin {
     to { transform: rotate(360deg); }
@@ -308,11 +304,6 @@
     }
 }
 
-/* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-23) harness:openlumara
-   pre-install code review overlay. sits above the settings modal (1001) and
-   below the restart banner (2000). the gutter rows and the code share an
-   exact 19px line height - the jump-to-line scroll math depends on it, so
-   no wrapping and no line-height changes! */
 .library-audit-overlay {
     position: fixed;
     inset: 0;

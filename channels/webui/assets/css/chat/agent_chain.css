@@ -1,4 +1,3 @@
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) status:reviewed harness:openlumara */
 /* collapsible "Process" wrapper around the agentic chain, rendered as a
    timeline: a spine starts under the header chevron, every chain segment is
    a station with a node dot on it, and the chain terminates on a finish
