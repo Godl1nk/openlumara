@@ -8,12 +8,38 @@
 const _turnHeights = new WeakMap();
 
 /*
- * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) (02:45)
- * per-element lerp-chase state (active rAF id) and a marker for elements
- * whose user-input interrupt listeners are already wired up
+ * -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+ * marker for elements whose user-input interrupt listeners are already
+ * wired up (the streaming pump gives up the follow on wheel/touch)
  */
-const _chases = new WeakMap();
 const _interruptBound = new WeakSet();
+
+/*
+ * -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+ * THE NATIVE PUMP (mirrored in directives/autoscroll.js for x-auto-scroll
+ * boxes): native smooth scroll has no speed/duration parameter, so the
+ * pump re-aims browser-eased hops at only a fraction of the remaining gap,
+ * every animation frame. per-frame retargeting keeps Chrome's velocity-
+ * blended smooth-scroll animation continuously in cruise; re-reading the
+ * bottom per hop folds streamed growth into one glide. the browser owns
+ * 100% of the easing, the pump only picks the targets.
+ *
+ * knobs, read fresh per hop so they can be tweaked live from the devtools
+ * console (first file to load initialises the shared defaults):
+ *   window.NATIVE_AUTOSCROLL_DAMP  fraction of the gap closed per hop AT A
+ *                                  60HZ REFERENCE - converted by actual
+ *                                  frame time (see _nativeDamp), so the
+ *                                  glide runs at the same speed on 60/90/
+ *                                  120/144Hz screens and through refresh
+ *                                  hiccups. 1 = plain hop, 0.15 = relaxed
+ *                                  glide, 0.07 = very languid
+ *   window.NATIVE_PUMP_MS          throttle: 0 = every frame; raise it
+ *                                  only to deliberately cut retarget
+ *                                  frequency (DAMP then needs raising to
+ *                                  keep the overall speed)
+ */
+window.NATIVE_AUTOSCROLL_DAMP ??= 0.15;
+window.NATIVE_PUMP_MS ??= 0;
 
 UI_STORE = {
     scrollThreshold: 50,
@@ -24,95 +50,129 @@ UI_STORE = {
     shouldScroll: true,
     scrollToTurnIndex: null,
 
-    /*
-     * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) (02:45)
-     * lerp-chase streaming autoscroll: instead of native smooth scroll (no
-     * speed control), each animation frame moves scrollTop a fraction of the
-     * remaining distance toward the bottom. the target is re-read every
-     * frame, so tokens arriving mid-chase are folded into the same glide.
-     * scrollFollowSpeed is the knob: 0.2 = glidey, 0.5 = snappy, 1 = instant.
-     * while a chase is in flight its intermediate positions are suppressed
-     * from bottom-detection (they would flip shouldScroll off and stall the
-     * follow); a real wheel/touch cancels the chase and resumes tracking.
-     */
-    scrollFollowSpeed: 0.2,
+    // while the pump runs, its intermediate positions are suppressed from
+    // bottom-detection (they would flip shouldScroll off and stall the
+    // follow); a real wheel/touch gives up the pump and resumes tracking
     _suppressScroll: false,
+    // pump state: rAF id + element of the re-aiming smooth hop loop (see
+    // _nativeHop / _nativePumpStep) + last hop timestamp for the
+    // NATIVE_PUMP_MS throttle; runs until the bottom settles, then
+    // releases the scroll suppression via _stopPump
+    _nativePump: null,
+    _nativePumpEl: null,
+    _nativePumpLast: 0,
 
     _updateShouldScroll(el) {
         const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
         this.shouldScroll = distFromBottom < this.scrollThreshold;
     },
 
-    _stopChase(el) {
-        const chase = _chases.get(el);
-        if (!chase) return;
-        if (chase.raf) cancelAnimationFrame(chase.raf);
-        if (chase.mo) chase.mo.disconnect();
-        _chases.delete(el);
+    // stop the streaming follow: kills a running pump so an instant jump
+    // (or user interrupt) is never followed by stale hops dragging back
+    // down, and releases bottom-tracking again
+    _stopPump() {
+        if (this._nativePump !== null) cancelAnimationFrame(this._nativePump);
+        this._nativePump = null;
         this._suppressScroll = false;
     },
 
-    _chaseScrollToBottom(el) {
+    /*
+     * -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+     * one hop of the native pump: a browser-smooth scrollTo aimed at
+     * DAMP of the remaining gap. the browser owns the easing, the pump
+     * just re-aims every NATIVE_PUMP_MS - which also folds streamed
+     * growth into one continuous glide (the bottom is re-read per hop).
+     * returns false once settled, which stops the interval and releases
+     * the scroll suppression.
+     */
+    _nativeHop(dt) {
+        const el = this._nativePumpEl;
+        if (!el) return false;
+
+        const bottom = el.scrollHeight - el.clientHeight;
+        const remaining = bottom - el.scrollTop;
+        if (remaining <= 1) {
+            el.scrollTo({ top: bottom, behavior: 'instant' });
+            this._stopPump();
+            this._updateShouldScroll(el);
+            return false;
+        }
+        el.scrollTo({ top: el.scrollTop + remaining * this._nativeDamp(dt),
+                      behavior: 'smooth' });
+        return true;
+    },
+
+    /*
+     * -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+     * DAMP is a per-hop fraction at a 60Hz reference, but rAF fires at the
+     * display's real refresh rate - so convert by elapsed frame time:
+     * 1 - (1-DAMP)^(dt/16.67ms). mathematically identical at 60Hz, and on
+     * a 120Hz panel each hop automatically shrinks so the glide runs at
+     * the same on-screen speed instead of compounding double-fast. dt is
+     * capped so a backgrounded tab or long stall converges with one big
+     * eased hop instead of an instant teleport.
+     */
+    _nativeDamp(dt) {
+        const base = window.NATIVE_AUTOSCROLL_DAMP;
+        if (base >= 1) return 1;
+        return 1 - Math.pow(1 - base, Math.min(dt, 100) / (1000 / 60));
+    },
+
+    /*
+     * -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+     * rAF driver of the native pump: hop every animation frame (throttled
+     * by NATIVE_PUMP_MS, 0 = unthrottled). per-frame re-aims keep the
+     * browser's velocity-blended retargeting continuous - slower re-aim
+     * rates let each short hop finish its ease-out between aims, which
+     * reads as micro stop-and-go (cooldown experiment: rejected by nose).
+     */
+    _nativePumpStep(now) {
+        // dt from the rAF timestamps: hop size adapts to whatever refresh
+        // rate - or hiccup - the display throws at it (see _nativeDamp)
+        const dt = now - this._nativePumpLast;
+        if (dt >= window.NATIVE_PUMP_MS) {
+            this._nativePumpLast = now;
+            if (!this._nativeHop(dt)) {
+                this._nativePump = null;
+                return;
+            }
+        }
+        this._nativePump = requestAnimationFrame((t) => this._nativePumpStep(t));
+    },
+
+    _pumpScrollToBottom(el) {
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-            this._stopChase(el);
+            this._stopPump();
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
             // instant: global scroll-behavior:smooth would animate this jump
             el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
             return;
         }
 
-        let chase = _chases.get(el);
-        if (!chase) {
-            chase = { raf: null, mo: null };
-            _chases.set(el, chase);
-            this._suppressScroll = true;
-
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            // keep gliding while content grows: streamed tokens mutate the
-            // dom without re-calling scrollToBottom, so without this the
-            // chase dies the moment remaining < 1 and a later token restarts
-            // it from scratch (visible stutter). cheap coalesced re-arm.
-            chase.mo = new MutationObserver(() => {
-                if (chase.raf === null) chase.raf = requestAnimationFrame(step);
-            });
-            chase.mo.observe(el, { childList: true, subtree: true });
-
-            // user input wins: give up the chase and let onScroll track
-            // their real position again. bound once per element.
-            if (!_interruptBound.has(el)) {
-                _interruptBound.add(el);
-                const stop = () => {
-                    this._stopChase(el);
-                    this._updateShouldScroll(el);
-                };
-                el.addEventListener('wheel', stop, { passive: true });
-                el.addEventListener('touchstart', stop, { passive: true });
-            }
+        // streaming follow (also entered per token via scrollToBottom):
+        // a wheel/touch gives up the pump immediately (listeners bound
+        // once per element), then the pump starts if it isn't running -
+        // hops re-read the bottom, so streamed growth folds into one
+        // glide. intermediate positions of the browser's own easing are
+        // suppressed from bottom-detection and released when it settles.
+        if (!_interruptBound.has(el)) {
+            _interruptBound.add(el);
+            const stop = () => {
+                this._stopPump();
+                this._updateShouldScroll(el);
+            };
+            el.addEventListener('wheel', stop, { passive: true });
+            el.addEventListener('touchstart', stop, { passive: true });
         }
 
-        if (chase.raf) return; // already chasing; the step re-reads the target
-
-        const step = () => {
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            // scrollTo with behavior:'instant' overrides the global
-            // scroll-behavior:smooth. with plain scrollTop writes, each frame
-            // spawned a fresh browser smooth-scroll animation that the next
-            // frame interrupted: the chase double-eased (our lerp + browser
-            // easing) and read back lagging animated positions, so it crawled
-            // and turned choppy as scroll deltas grew with the chat.
-            // instant writes make the lerp the only easing in play.
-            const target = el.scrollHeight - el.clientHeight;
-            const remaining = target - el.scrollTop;
-            if (Math.abs(remaining) < 1) {
-                el.scrollTo({ top: target, behavior: 'instant' });
-                this._stopChase(el);
-                this._updateShouldScroll(el);
-                return;
-            }
-            el.scrollTo({ top: el.scrollTop + remaining * this.scrollFollowSpeed, behavior: 'instant' });
-            chase.raf = requestAnimationFrame(step);
-        };
-        chase.raf = requestAnimationFrame(step);
+        this._suppressScroll = true;
+        this._nativePumpEl = el;
+        if (this._nativePump === null) {
+            // seed with the current time so the very first hop sees a real
+            // frame-sized dt instead of "time since page load"
+            this._nativePumpLast = performance.now();
+            this._nativePump = requestAnimationFrame((t) => this._nativePumpStep(t));
+        }
     },
 
     /*
@@ -390,8 +450,8 @@ UI_STORE = {
     /*
      * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) (23:30)
      * instant jump-to-bottom, shared by forceScrollToBottom() and the
-     * instant variant of scrollToBottom(). cancels any in-flight chase so
-     * its per-frame writes don't fight the jumps.
+     * instant variant of scrollToBottom(). cancels any in-flight pump so
+     * its next hop doesn't fight the jumps.
      *
      * lazy-mounted turns change scrollHeight asynchronously: the
      * intersectionobserver only mounts placeholders into real dom a
@@ -402,7 +462,7 @@ UI_STORE = {
      * aborts if the user grabs the scrollbar mid-flight.
      */
     async _jumpToBottom(el) {
-        this._stopChase(el);
+        this._stopPump();
 
         let lastHeight = -1;
         for (let i = 0; i < 24; i++) {
@@ -427,7 +487,7 @@ UI_STORE = {
 
     /*
      * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) (23:30)
-     * instant=true skips the lerp-chase glide entirely and jumps straight
+     * instant=true skips the pump glide entirely and jumps straight
      * to the bottom: use this after chat reloads (e.g. stream_complete)
      * where a smooth scroll across the whole chat looks awful.
      */
@@ -442,10 +502,10 @@ UI_STORE = {
             return;
         }
 
-        // lerp chase for the streaming follow; tokens arriving mid-chase
-        // just extend the glide since the target is re-read every frame
+        // pump for the streaming follow; tokens arriving mid-glide just
+        // extend it since every hop re-reads the bottom
         Alpine.nextTick(() => {
-            this._chaseScrollToBottom(el);
+            this._pumpScrollToBottom(el);
         });
     },
 
@@ -471,9 +531,9 @@ UI_STORE = {
         const container = document.getElementById('messages');
         if (!container) return;
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) (02:45)
-        // a running chase would fight the re-centering loop below
-        this._stopChase(container);
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+        // a running pump would fight the re-centering loop below
+        this._stopPump();
 
         let lastTop = -1;
         for (let i = 0; i < 24; i++) {

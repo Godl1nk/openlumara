@@ -583,10 +583,10 @@ async function handleWebSocketMessage(data) {
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
             // the handoff now mounts the history turn with the same content
             // the streaming DOM had, so the remaining distance is only the
-            // action-row/finish-flag delta: glide it with the lerp chase
-            // instead of snapping. the chase re-reads the target every frame
-            // and survives content swaps via its MutationObserver, so the
-            // finalized-turn reload landing mid-chase just extends the glide.
+            // action-row/finish-flag delta: glide it with the native pump
+            // instead of snapping. every hop re-reads the bottom and the
+            // pump re-arms per token, so the finalized-turn reload landing
+            // mid-glide just extends the glide.
             await ui.scrollToBottom('messages');
 
             // and finally, sync back up with the backend
