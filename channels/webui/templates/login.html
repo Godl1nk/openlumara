@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - OpenLumara</title>
+    <title>Login - Aegis</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="stylesheet" href="{{ url_for('assets', path='css/base/base.css') }}">
     <link rel="stylesheet" href="{{ url_for('assets', path='css/base/variables.css') }}">
     <link rel="stylesheet" href="{{ url_for('assets', path='css/login.css') }}">
@@ -16,7 +18,8 @@
 <body>
     <div class="login-wrapper">
         <div class="login-card">
-            <h1>OpenLumara</h1>
+            <img class="login-logo" src="/favicon.svg" alt="" width="56" height="56">
+            <h1>Aegis</h1>
             <form method="POST" action="/login" @submit="loading = true">
                 {{ extension_slot("top") }}
 

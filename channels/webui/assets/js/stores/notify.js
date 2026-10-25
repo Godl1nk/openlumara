@@ -60,7 +60,7 @@ const NOTIFY_STORE = {
         if (this.permission !== "granted") return false;
 
         try {
-            new Notification("OpenLumara", {
+            new Notification("Aegis", {
                 body: body,
                 icon: icon,
                 badge: icon,

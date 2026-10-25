@@ -21,6 +21,14 @@
       color: var(--accent, #00d4ff);
     }
 
+    .login-logo {
+      display: block;
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 0.75rem auto;
+      border-radius: 14px;
+    }
+
     .form-group {
       margin-bottom: 1rem;
 

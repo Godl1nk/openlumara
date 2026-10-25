@@ -117,7 +117,7 @@ async function connectWebSocket() {
             // make the disconnect actually diagnosable: the close code tells
             // auth failures apart from server restarts, and the generic
             // "is it running?" notice made all of them look identical.
-            let notice = "Not connected to the backend server! Is OpenLumara running?";
+            let notice = "Not connected to the backend server! Is Aegis running?";
             if (event.code === 4001) {
                 notice = "Login session no longer accepted (expired, or the session secret changed). Log out and back in.";
             } else if (event.code === 4003) {

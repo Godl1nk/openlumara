@@ -87,7 +87,7 @@ class Webui(core.channel.Channel):
             "depends": "enable_chat_header"
         },
         "title": {
-            "default": "OpenLumara",
+            "default": "Aegis",
             "depends": {"enable_chat_header": True, "enable_title": True}
         },
         "enable_model_switcher": {
@@ -2838,6 +2838,14 @@ async def create_fastapi(channel):
     async def icon_512():
         """Serve the 512x512 icon for PWA."""
         return fastapi.responses.FileResponse(os.path.join(channel.path, "icon-512.png"))
+
+    @app.get('/favicon.svg')
+    async def favicon_svg():
+        """Serve the scalable favicon."""
+        return fastapi.responses.FileResponse(
+            os.path.join(channel.path, "favicon.svg"),
+            media_type="image/svg+xml"
+        )
 
     @app.get('/favicon.ico')
     async def favicon():
