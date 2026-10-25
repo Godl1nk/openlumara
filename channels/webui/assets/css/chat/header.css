@@ -35,7 +35,7 @@ header {
             gap: 0.24em;
             flex-shrink: 0;
             /* fixed width: the readout must not jiggle the header as digits change */
-            min-width: 62px;
+            min-width: 68px;
             padding: 4px 7px;
             border: 1px solid var(--border-color);
             border-radius: var(--radius-sm);
