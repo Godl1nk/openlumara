@@ -675,6 +675,7 @@ class QtChatWindow(QtWidgets.QMainWindow):
             "segs": {},
             "order": [],
             "errors": [],
+            "final": [],
         }
 
         cursor = self.chat.textCursor()
@@ -710,22 +711,26 @@ class QtChatWindow(QtWidgets.QMainWindow):
         self._live["progress"] = None
         self._request_live_render()
 
-    def apply_segment(self, segment):
-        """accumulate one turn segment (reasoning / content / tool calls) and
-        re-render the live region: streamed tool args update in place"""
-        if self.closed or not self._live or not isinstance(segment, dict):
+    def apply_step(self, step):
+        """step-based stream"""
+        if self.closed or not self._live or not isinstance(step, dict):
             return
 
-        seg_type = segment.get("type")
-        if seg_type not in ("reasoning", "content", "tool_calls"):
+        step_no = step.get("step") or 1
+        if step_no not in self._live["order"]:
+            self._live["order"].append(step_no)
+        self._live["segs"][f"{step_no}:step"] = step
+
+        self._request_live_render()
+        self.set_status("generating...")
+
+    def apply_final(self, messages):
+        """authoritative snapshot of the turn's final answer bubbles
+        (an empty list retracts the provisional bubble back into its step)"""
+        if self.closed or not self._live:
             return
 
-        step = segment.get("step") or 1
-        key = f"{step}:{seg_type}"
-        if key not in self._live["segs"] and step not in self._live["order"]:
-            self._live["order"].append(step)
-        self._live["segs"][key] = segment
-
+        self._live["final"] = [m for m in (messages or []) if isinstance(m, dict)]
         self._request_live_render()
         self.set_status("generating...")
 
@@ -848,37 +853,60 @@ class QtChatWindow(QtWidgets.QMainWindow):
             bar.setValue(prev_scroll)
 
     def _live_pieces(self, live):
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+        # step-based stream: one folded step object per step number, plus
+        # the live final bubbles (keyed by their step number).
         pieces = []
 
         show_reasoning = bool(self.channel._val("show_reasoning", False))
 
-        for step in live["order"]:
-            reasoning = live["segs"].get(f"{step}:reasoning")
-            content = live["segs"].get(f"{step}:content")
-            tools = live["segs"].get(f"{step}:tool_calls")
+        final_by_step = {}
+        for message in live.get("final", []):
+            final_by_step[message.get("step") or 0] = message.get("content") or ""
 
-            if reasoning is not None:
-                text = (reasoning.get("reasoning_content") or "").strip()
-                if text and show_reasoning:
+        for step in live["order"]:
+            seg = live["segs"].get(f"{step}:step") or {}
+            reasoning_text = (seg.get("reasoning_content") or "").strip()
+            tools = seg.get("tool_calls") or []
+
+            # the step's own content plus its live final bubble: the two
+            # never overlap (a retract moves the final text into the step
+            # exactly when the final snapshot empties), but belt & braces
+            # against an in-flight event pair
+            parts = [
+                p for p in (seg.get("content") or "", final_by_step.get(step, ""))
+                if p.strip()
+            ]
+            content_text = "\n\n".join(parts)
+            final_by_step.pop(step, None)
+
+            if reasoning_text:
+                if show_reasoning:
                     # still streaming? stays open. settled? tucks itself away
                     settled = (
-                        bool((content or {}).get("content", "").strip())
-                        or tools is not None
-                        or step != live["order"][-1]
+                        bool(content_text.strip())
+                        or bool(tools)
+                        or not seg.get("reasoning_live")
                     )
-                    pieces.append(("reason_collapsed" if settled else "reason_open", text))
-                elif text and not (content or {}).get("content", "").strip():
+                    pieces.append(("reason_collapsed" if settled else "reason_open", reasoning_text))
+                elif not content_text.strip():
                     # reasoning hidden: show a placeholder until the answer comes
                     pieces.append(("running", "Thinking...\n"))
 
-            if content is not None:
-                text = content.get("content") or ""
-                if text.strip():
-                    pieces.append(("plain", text.rstrip() + "\n"))
+            if content_text.strip():
+                pieces.append(("plain", content_text.rstrip() + "\n"))
 
-            if tools is not None:
-                for tool in tools.get("tool_calls") or []:
-                    pieces.append(("tool_card", tool))
+            for tool in tools:
+                pieces.append(("tool_card", tool))
+
+        # final bubble of a step that never materialized: a pure content
+        # answer streams with no step events at all
+        for message in live.get("final", []):
+            if (message.get("step") or 0) in set(live["order"]):
+                continue
+            text = message.get("content") or ""
+            if text.strip():
+                pieces.append(("plain", text.rstrip() + "\n"))
 
         for err in live["errors"]:
             pieces.append(("fail", "\u2717 " + err + "\n"))
