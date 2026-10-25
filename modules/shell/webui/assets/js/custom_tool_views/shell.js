@@ -67,11 +67,8 @@ document.addEventListener('alpine:init', () => {
     // blinking cursor, output lands below it once the call completes
     registerToolDisplay({
         match: /^shell_run$/,
-        view: 'shell',
-        summary: (res, tool, cacheKey) => {
-            if (!res) return '';
-            const code = res.content?.exit_code;
-            return typeof code === 'number' && code !== 0 ? `exit ${code}` : '';
-        }
+        view: 'shell'
+        // the "exit N" header hint is backend-owned now
+        // (_metadata.result_summary via shell's _tool_summary)
     });
 });

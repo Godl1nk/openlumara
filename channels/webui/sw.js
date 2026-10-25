@@ -1,10 +1,5 @@
 const CACHE_NAME = 'openlumara-{{VERSION}}';
 
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-// the backend replaces {{FILE_LIST}} with a JSON array of the webui asset
-// urls. it used to be injected as raw array entries, which made this file
-// unparseable as JS until rendered (and uneditable by tooling); embedded
-// as a JSON *string* instead, so the template itself stays valid JS.
 const ASSETS_TO_CACHE = JSON.parse('{{FILE_LIST}}').concat([
     '/manifest.json',
     '/icon-192.png',
@@ -17,7 +12,7 @@ console.log('Service Worker loaded: {{VERSION}}');
 self.addEventListener('install', (event) => {
   console.log('Installing Service Worker...');
 
-  // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+  // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
   // activate as soon as install finishes instead of waiting for every tab
   // of the app to close. without this, a new webui build parks in the
   // "waiting" state indefinitely while the old worker keeps serving its
@@ -69,7 +64,7 @@ self.addEventListener('activate', (event) => {
     })
     .then(() => self.clients.claim())
     .then(() => {
-      // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
+      // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
       // claim() takes control of already-open pages right after the old
       // caches are deleted, so the fresh cache serves them immediately
       // (this is what fires controllerchange in init.js).

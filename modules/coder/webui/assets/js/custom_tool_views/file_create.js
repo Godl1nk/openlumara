@@ -9,13 +9,8 @@ document.addEventListener('alpine:init', () => {
     // coder file creates: the new file's content, highlighted, streamed live
     registerToolDisplay({
         match: /^coder_file_create$/,
-        view: 'file-create',
-        summary: (res, tool, cacheKey) => {
-            if (res?.status !== 'success') return '';
-            const content = toolArgs(tool, cacheKey).content;
-            if (!content) return '';
-            const n = content.replace(/\n$/, '').split('\n').length;
-            return `${n} line${n === 1 ? '' : 's'}`;
-        }
+        view: 'file-create'
+        // the "N lines" header hint is backend-owned now
+        // (_metadata.result_summary via coder's _tool_summary)
     });
 });

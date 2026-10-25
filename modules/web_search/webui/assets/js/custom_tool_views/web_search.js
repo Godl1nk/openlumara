@@ -35,10 +35,8 @@ document.addEventListener('alpine:init', () => {
     // web searches: render results as titled link cards
     registerToolDisplay({
         match: /^web_search_(text|images|news|videos|books)$/,
-        view: 'web-search',
-        summary: res => {
-            const n = searchResults(res).length;
-            return n ? `${n} result${n === 1 ? '' : 's'}` : '';
-        }
+        view: 'web-search'
+        // the "n results" header hint is backend-owned now
+        // (_metadata.result_summary via web_search's _tool_summary)
     });
 });

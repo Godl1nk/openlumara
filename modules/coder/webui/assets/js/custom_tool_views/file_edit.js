@@ -200,22 +200,8 @@ document.addEventListener('alpine:init', () => {
     // coder file edits: show the change as a diff, live while the args stream
     registerToolDisplay({
         match: /^coder_file_edit$/,
-        view: 'coder-file-edit',
-        summary: (res, tool, cacheKey) => {
-            if (res?.status !== 'success') return '';
-            const args = toolArgs(tool, cacheKey);
-            if (!args.original_code || !args.replacement_code) return '';
-            // full diff per reactive flush adds up (x-text evaluates even
-            // while collapsed) - memoize it like the view itself
-            return streamMemo('edit-sum:' + cacheKey,
-                [args.original_code, args.replacement_code], () => {
-                    let add = 0, del = 0;
-                    for (const [sign] of diffLines(args.original_code, args.replacement_code)) {
-                        if (sign === '+') add++;
-                        else if (sign === '-') del++;
-                    }
-                    return `+${add} \u2212${del}`;
-                });
-        }
+        view: 'coder-file-edit'
+        // the +N −M header hint is backend-owned now (_metadata.result_summary
+        // via coder's _tool_summary) - see renderers/tool_display.js
     });
 });

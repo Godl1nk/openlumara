@@ -42,11 +42,9 @@ document.addEventListener('alpine:init', () => {
     // sandbox/path one-liner shows too; the result rows stay default)
     registerToolDisplay({
         match: /^coder_glob$/,
-        view: 'coder-path',
-        summary: res => {
-            const n = globFiles(res).length;
-            return n ? `${n} file${n === 1 ? '' : 's'}` : '';
-        }
+        view: 'coder-path'
+        // the "n files" header hint is backend-owned now
+        // (_metadata.result_summary via coder's _tool_summary)
     });
 
     // coder move/delete/folder_delete: running sandbox/path one-liner

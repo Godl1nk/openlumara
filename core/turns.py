@@ -65,6 +65,61 @@ class TurnCollector:
     now available in the core for any channel to use :)
     """
 
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    def __init__(self, channel=None):
+        # the channel is used to resolve which module owns a tool (via
+        # tool_loader.catalog + manager.modules) so that module's
+        # _tool_summary hook can be asked for a one-line result hint.
+        # optional: a collector without a channel simply never stamps
+        # result summaries instead of crashing.
+        self.channel = channel
+
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    def _result_summary(self, tool, meta):
+        """ask the module that owns this tool for a one-line result hint.
+
+        a module may define  _tool_summary(self, name, args, response) -> str;
+        it is only consulted once the tool response exists (args alone are
+        never interesting for a RESULT summary, and skipping while running
+        keeps the per-token stream path free of any hook cost).
+
+        bounded and crash-proof on purpose: a silly module can never break
+        a tool round or blow out a header - crashes degrade to no summary,
+        output is flattened to one line and capped at 120 chars.
+        """
+        try:
+            if "response" not in meta:
+                return ""
+            # bridged (tools_call) calls summarize as the tool they wrap
+            name = meta.get("display_name") or (tool.get("function") or {}).get("name")
+            if not name:
+                return ""
+            loader = getattr(self.channel, "tool_loader", None)
+            if loader is None:
+                return ""
+            entry = loader.catalog.get(name)
+            if entry is None:
+                return ""
+            module = self.channel.manager.modules.get(entry["module"])
+            hook = getattr(module, "_tool_summary", None)
+            if not callable(hook):
+                return ""
+            response = meta.get("response")
+            if isinstance(response, str):
+                try:
+                    response = json.loads(response)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            text = hook(name, meta.get("args_parsed") or {}, response)
+            if not text:
+                return ""
+            text = str(text).strip()
+            if not text:
+                return ""
+            return text.splitlines()[0][:120]
+        except Exception:
+            return ""
+
     async def group_history(self, history):
         """
         Groups all finalized messages from history into turns.
@@ -168,6 +223,9 @@ class TurnCollector:
                         else:
                             meta["args_parsed"] = parsed_args
                             meta["summary"] = self._tool_call_summary(tool)
+                        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+                        # module-owned one-line result hint (see _result_summary)
+                        meta["result_summary"] = self._result_summary(tool, meta)
                         annotated_tools.append(tool)
                     msg["tool_calls"] = annotated_tools
 
@@ -817,6 +875,9 @@ class TurnCollector:
                     meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
                 else:
                     meta["summary"] = self._tool_call_summary(tool)
+                # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+                # module-owned one-line result hint, live path (mirrors group_history)
+                meta["result_summary"] = self._result_summary(tool, meta)
 
         def merge_tool_calls(step, incoming_calls):
             existing_calls = step["tool_calls"]
