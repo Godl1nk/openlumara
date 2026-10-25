@@ -1043,6 +1043,19 @@ const CODER_PANEL = {
         }
     },
 
+    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25)
+       swap the diff/marker spec on a LIVE editor without reloading the
+       buffer: deslop re-marks its file after every save so highlights and
+       F8 points follow marker deletions/edits in place (a full openFile
+       would throw away the caret position and undo history). pass null to
+       just strip the marks. */
+    setDiffMarks(marks) {
+        this.clearDiffMarks();
+        if (!marks) return;
+        CODER_DIFF.spec = marks;
+        this.applyDiffMarks();
+    },
+
     /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: 2026-10-13
        cycle through the diff points (F8 / shift+F8 / header buttons).
        NOTE: CM5 line handles have NO live .line property - the number is
@@ -1493,6 +1506,13 @@ const CODER_PANEL = {
             this.editor.content = content;
             this.editor.dirty = false;
             this.editor.saved = "saved ✓";
+
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25)
+            // broadcast the save so watchers (deslop's live marker sync)
+            // can re-check what now lives on disk.
+            window.dispatchEvent(new CustomEvent("coder-saved", {
+                detail: { sandbox: this.sandbox, path: this.editor.path },
+            }));
         } catch (e) {
             if (e && typeof e === "object" && e.errors) {
                 this.editor.error = (e.message ? e.message + "\n" : "") + e.errors.join("\n");
@@ -1572,6 +1592,13 @@ const CODER_PANEL = {
             this.editor.dirty = false;
             this.editor.saved = "reverted ✓";
             this._cancelAutosave();
+
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25)
+            // the disk content changed too: same broadcast as save(), so
+            // deslop re-checks its markers after a revert as well.
+            window.dispatchEvent(new CustomEvent("coder-saved", {
+                detail: { sandbox: this.sandbox, path: this.editor.path },
+            }));
 
             // swap into the live editor
             if (CODER_CM) {
