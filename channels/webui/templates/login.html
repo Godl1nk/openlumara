@@ -39,13 +39,16 @@
                 }
 
                 const theme = await get(family);
-                if (!theme) return;
+                // families without dark/light are upstream placeholders (e.g.
+                // "monochrome"): keep the base palette instead of guessing
+                const alternate = mode === 'dark' ? 'light' : 'dark';
+                const vars = theme && (theme[mode] || theme[alternate]);
+                if (!vars) return;
 
-                const vars = theme[mode] || theme.dark || theme.light || {};
                 for (const [key, value] of Object.entries(vars)) {
                     if (key.startsWith('--')) root.style.setProperty(key, value);
                 }
-                root.dataset.themeMode = theme[mode] ? mode : (theme.dark ? 'dark' : 'light');
+                root.dataset.themeMode = theme[mode] ? mode : alternate;
 
                 // theme sidecar (extra CSS for that family)
                 const link = document.createElement('link');
