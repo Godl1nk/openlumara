@@ -1,8 +1,7 @@
 /* alpine.js directive that adds autoscrolling to any element
  * by adding x-auto-scroll to your element
  */
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
-// THE NATIVE PUMP (same mechanism as the chat follow in stores/ui.js):
+// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara status:reviewed
 // native smooth scroll exposes no speed/duration parameter - the curve
 // belongs to the browser - so instead of one hop at the true bottom, the
 // pump re-aims a browser-eased hop at a FRACTION of the remaining gap

@@ -1,4 +1,4 @@
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
+/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) status:reviewed
  * alpine directive that toggles a .boxed class on an element whenever its
  * content overflows its max-height. used by tool call arg values so the
  * soft background container only appears for values that actually scroll,

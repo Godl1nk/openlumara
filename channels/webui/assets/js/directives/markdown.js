@@ -20,7 +20,7 @@
 function markdownRender(el, { expression }, { evaluateLater, effect, cleanup }) {
     let lastHtml = null;
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15) status:reviewed
     // streaming garbage control: each token carries the FULL accumulated
     // content, so intermediate renders are redundant - only the newest one
     // matters. live paints are coalesced per animation frame instead of per
@@ -31,7 +31,7 @@ function markdownRender(el, { expression }, { evaluateLater, effect, cleanup }) 
     let pendingLen = 0;
     let rafId = null;
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) status:reviewed
     // per-token fade via the shared timeline machinery (fade_tail.js):
     // everything streamed within the last window gets re-wrapped in
     // .token-fade spans with negative animation-delays, so fades continue
@@ -74,7 +74,7 @@ function markdownRender(el, { expression }, { evaluateLater, effect, cleanup }) 
                 // worst-case latency is a single frame (~8ms on 120hz),
                 // which is far below perception.
 
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
+                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) status:reviewed
                 // record the content length so each paint frame becomes a
                 // timeline sample for the fade continuation logic.
                 pendingHtml = renderMarkdownFor(data.message, true, raw);
