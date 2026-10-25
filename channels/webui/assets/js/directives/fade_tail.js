@@ -1,4 +1,4 @@
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
+// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) status:reviewed
 /* shared machinery for the streamed-token fade-in.
 
    every streaming paint replaces the element's content wholesale, which
@@ -14,7 +14,7 @@
 
 const TOKEN_FADE_DEFAULT_MS = 350;
 
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
+// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) status:reviewed
 // user-configurable fade duration (settings modal -> appearance).
 // read fresh on every paint so changes apply without a reload.
 // 0 (or disabled) means no fade at all.

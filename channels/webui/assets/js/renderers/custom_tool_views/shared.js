@@ -1,4 +1,4 @@
-// -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+// -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara status:reviewed
 // shared machinery for the custom tool views, owned by the webui itself:
 // the streaming render memo + the generic highlight/line helpers that more
 // than one module's views lean on, plus the shared error text helper.
@@ -84,7 +84,6 @@ function highlightedCode(code, lang) {
     try {
         if (lang && hljs.getLanguage(lang))
             return hljs.highlight(code, { language: lang }).value;
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
         // auto-detect runs EVERY grammar in hljs - catastrophic on big
         // files with unknown extensions. only guess for small snippets.
         if (code.length > 20000) return esc;
@@ -140,7 +139,6 @@ function codeLinesHtml(code, lang, startLine, cacheKey) {
 }
 
 // -- shared: error text below any custom view ----------------------------------
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
 // every registered view shows a failed call's error text below its markup,
 // in the error color (see .display-error in custom_tool_views.css). parses
 // the response itself so view scopes only need `tool`; content is usually
@@ -150,7 +148,6 @@ function toolDisplayError(tool) {
     if (!resp || resp.status !== 'error') return '';
     const c = resp.content;
     if (typeof c === 'string') return c;
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
     // structured error payloads (eg. sandboxed shell: timeouts, output
     // truncation) fail the call while keeping stdout/stderr in content -
     // show just the human-readable errors lines instead of dumping the

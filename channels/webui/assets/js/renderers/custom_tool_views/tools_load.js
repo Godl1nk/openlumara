@@ -1,4 +1,4 @@
-// -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+// -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara status:reviewed
 // tools_load view: the core meta-tool that fetches tool schemas stays a
 // webui-owned view (it belongs to the framework, not to any module).
 // Shared memo/highlight machinery lives in ./shared.js; markup in
@@ -42,7 +42,7 @@ function toolLoadGroups(tool, cacheKey) {
 
 document.addEventListener('alpine:init', () => {
     // tools_load: which modules' tools just got loaded
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) status:reviewed
     // summary dropped: the module chips in the view tell the whole story,
     // repeating them in the collapsed header was redundant
     registerToolDisplay({
