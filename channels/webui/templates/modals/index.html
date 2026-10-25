@@ -1,11 +1,5 @@
 {# this file just auto includes all modals #}
 
-{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
-   the blurred backdrop veil, rendered once whenever any modal is open
-   (previously a ::before on .modal, which couldn't both cover the page
-   and stay behind the modal's own background - see modals.css).
-   z-index 1000 sits under every modal (1001); clicking it closes the
-   modal, same as the close button. #}
 <template x-if="$store.ui.currentModal">
     <div class="modal-overlay" @click="$store.ui.closeModal()"></div>
 </template>
@@ -21,10 +15,11 @@
 {% include 'modals/move_chat.html' %}
 
 {# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-   auto-discovery: every .html under <module>/webui/templates/modals/ is included #}
-{# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+   auto-discovery: every .html under <module>/webui/templates/modals/ is included
+       
    the owning module's settings are exposed to the included template as
-   `module_config` (a loop-scoped set is visible to includes) #}
+   `module_config` (a loop-scoped set is visible to includes)
+#}
 {% for modal in extension_modals() %}
 {% set module_config = modal.config %}
 {% include modal.template %}
