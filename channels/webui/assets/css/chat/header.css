@@ -171,3 +171,13 @@ header {
         }
     }
 }
+
+/* reduced motion: state changes are instant, no easing */
+@media (prefers-reduced-motion: reduce) {
+    header,
+    header * {
+        transition-duration: 0.001ms !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

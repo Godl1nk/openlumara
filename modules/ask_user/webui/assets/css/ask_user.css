@@ -149,3 +149,13 @@
     background: rgba(239, 68, 68, 0.1);
     border-radius: 6px;
 }
+
+/* reduced motion: the answer card still repaints, just without easing */
+@media (prefers-reduced-motion: reduce) {
+    .ask-user-card,
+    .ask-user-card * {
+        transition-duration: 0.001ms !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
