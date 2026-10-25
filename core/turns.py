@@ -896,8 +896,13 @@ class TurnCollector:
             # full replacement).
             # ----
             if token_type == 'reasoning':
-                for demoted in bump_step():
-                    queue(demoted)
+                # step numbers bump on SEGMENT boundaries only (the old
+                # type-switch rule): continuation tokens of a live run must
+                # never re-bump - bump_step looks at step_has_tools, which
+                # this very machine mutates mid-run
+                if last_token_type != 'reasoning':
+                    for demoted in bump_step():
+                        queue(demoted)
                 step = get_step()
 
                 if provisional_final is not None:
@@ -957,8 +962,13 @@ class TurnCollector:
             elif token_type == 'tool_calls':
                 if provisional_final is not None:
                     retracted = retract_final()
-                for demoted in bump_step():
-                    queue(demoted)
+                # boundary-gated bump (same rule as reasoning): without
+                # this, the tool_has_tools flag set by this very branch
+                # makes every streamed argument delta mint a brand new
+                # step (the exact cascade the 2026-10-25 first cut shipped)
+                if last_token_type != 'tool_calls':
+                    for demoted in bump_step():
+                        queue(demoted)
                 step = get_step()
 
                 step["reasoning_live"] = False

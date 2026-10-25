@@ -1,71 +1,50 @@
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-     one collapsible header per agentic STEP. steps arrive precomputed on
-     BOTH paths (core/turns.py): history via group_history's turn.steps,
-     streaming via the step-based stream's turn.steps - same objects.
-     header = numbered
-     circle + thought snippet (last reasoning sentence) with "Module ×N"
-     provenance chips right-aligned; thought-less steps fall back to
-     module-grouped tool names. {% set combined_stream = true %} switches
-     to the streaming behaviour: activity dots while this is the newest
-     step, auto-collapse once done (mirrors reasoning.html).
-
-     -- 2026-10-25: the "migrate to backend" TODO is done. core/turns.py
-     step-streams these step objects directly (same shape as history);
-     what remains here is UI state (collapse prefs) and the thought-snippet
-     preview - display logic that intentionally stays per-channel.
--->
 <div class="combined-block" :class="{collapsed: collapsed, expanded: !collapsed}"
     {% if combined_stream %}
-     x-data="{ collapsed: $store.stream.state === 'idle' || localStorage.getItem('collapseStepsDefault') === 'true' || (localStorage.getItem('collapseThinkingDefault') === 'true' && message.reasoning_live), autoCollapsed: false, done: $store.stream.state === 'idle',
-               // activity only while the step's own status is open: a
-               // finished tool step at the end of the chain (waiting for
-               // the model's next step) must not keep pulsing
-               get active() { return !this.done && (message.status === 'thinking' || message.status === 'running') } }"
-     x-effect="const hasNewerStep = (turn.steps ?? []).some(s => s.step != null && s.step > message.step); done = $store.stream.state === 'idle' || hasNewerStep || message.status === 'done' || message.status === 'failed' || message.status === 'thoughts'; if (done && !autoCollapsed) { autoCollapsed = true; if (localStorage.getItem('collapseStepsDefault') !== 'true') collapsed = true }"
+     x-data="{
+                 collapsed: $store.stream.state === 'idle'
+                 ||
+                 localStorage.getItem('collapseStepsDefault') === 'true'
+                 ||
+             	 (localStorage.getItem('collapseThinkingDefault') === 'true'
+                    && message.reasoning_live
+                 ),
+             
+                 autoCollapsed: false,
+             	 done: $store.stream.state === 'idle',
+             
+                 // a finished tool step at the end of the chain (waiting for
+                 // the model's next step) must not keep pulsing
+                 get active() {
+                 	return !this.done && (message.status === 'thinking' || message.status === 'running')
+                 }
+             }
+     "
+     x-effect="
+               const hasNewerStep = (turn.steps ?? []).some(s => s.step != null && s.step > message.step);
+               done = $store.stream.state === 'idle' || hasNewerStep || message.status === 'done' || message.status === 'failed' || message.status === 'thoughts';
+               if (done && !autoCollapsed) {
+                   autoCollapsed = true;
+                   if (localStorage.getItem('collapseStepsDefault') !== 'true') collapsed = true
+               }
+    "
     {% else %}
      x-data="{ collapsed: true }"
     {% endif %}>
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-         timeline node = status light: green when done, accent glow while
-         the step is live, red on failure. the chevron is gone - the dot
-         (and the whole header) is still the expand/collapse toggle -->
     <div class="node-dot" :class="{ 'dot-done': message.status === 'done' || message.status === 'thoughts', 'dot-failed': message.status === 'failed', 'dot-live': message.status === 'thinking' || message.status === 'running' }" @click.stop="collapsed = !collapsed"></div>
     <div class="header" @click="collapsed = !collapsed">
         <svg class="standalone-chevron" :class="{'expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 6 15 12 9 18"></polyline>
         </svg>
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-             numbered step badge removed: the status dot already marks the
-             node, the second circle was pure noise -->
         <span class="text">
             <span class="dots" {% if combined_stream %}x-show="active && (message.modules?.length > 0 || message.reasoning_live)"{% else %}x-show="false"{% endif %}><span aria-hidden="true">&nbsp;</span><span aria-hidden="true">&nbsp;</span><span aria-hidden="true">&nbsp;</span></span>
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                 thought-snippet header: when the step has reasoning, the
-                 first thought line IS the story beat, so the tool names
-                 drop out of the header and shrink into provenance chips
-                 on the right edge ("Coder ×2 · Memory ×1", counts summed
-                 from step.modules). Thought-less steps keep the classic
-                 tool-names header in the branch below. -->
             <template x-if="(message.reasoning_content || '').trim() !== ''">
                 <span class="thought-header">
-                    <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
-                         thought-header policy: the last-sentence snippet IS
-                         the header for finished thoughts, collapsed or not -
-                         the old "Thoughts and actions" label is gone. only
-                         while a thought is actively STREAMING does the header
-                         stay anonymous (its final line churns with every
-                         token): plain "Thinking.." until the thought lands. -->
                     {% if combined_stream %}
                     <span class="step-thought" x-show="!message.reasoning_live" x-text="thoughtSnippet(message.reasoning_content)"></span>
                     <span class="tool-names thinking-label" x-show="message.reasoning_live">Thinking..</span>
                     {% else %}
                     <span class="step-thought" x-text="thoughtSnippet(message.reasoning_content)"></span>
                     {% endif %}
-                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                         full provenance list instead of "Module ×N":
-                         "Coder: file read, file edit x2 · Web: search".
-                         count badge only when a function ran more than
-                         once; commas between actions come from css -->
                     <span class="step-modules" x-show="message.modules?.length > 0">
                         <template x-for="(group, gi) in message.modules" :key="'mod-'+gi">
                             <span class="module-chip">
@@ -78,12 +57,8 @@
                     </span>
                 </span>
             </template>
-            <!-- thought-less step: classic header - module-grouped tool
-                 names ("Coder: file edit x2 · Memory create", separators
-                 via css) or, when tool-less, a label; a single call's
-                 arg + result summaries ride along (same helpers +
-                 cacheKey the tool card uses; args show LIVE while
-                 streaming, the result summary waits for tool.response) -->
+            
+            <!-- thought-less step -->
             <template x-if="(message.reasoning_content || '').trim() === ''">
                 <span class="bare-header">
                     <span class="tool-names" x-show="message.modules?.length > 0">
@@ -104,7 +79,6 @@
                           {% else %}
                           x-text="message.reasoning_content ? 'Thoughts' : 'writing'"></span>
                           {% endif %}
-                    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13): annotations moved under tool._metadata #}
                     <span class="step-args" x-show="message.tool_calls?.length === 1"
                           x-text="message.tool_calls?.[0]?._metadata?.summary ?? ''"></span>
                     <span class="step-summary" x-show="message.tool_calls?.length === 1 && message.tool_calls[0]._metadata?.response"
@@ -124,18 +98,11 @@
                  narrating before/while it calls tools) -->
             <template x-if="message.content">
                 {% if combined_stream %}
-                <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25)
-     the backend stamps is_tail on the open step (replaces the old
-     identity check against the raw segment list): markdown stays in
-     live mode while this step is the open end of the chain -->
-<div class="step-content" x-md="{ message: message, live: message.is_tail === true }"></div>
+                <div class="step-content" x-md="{ message: message, live: message.is_tail === true }"></div>
                 {% else %}
                 <div class="step-content" x-md="{ message: message, live: false }"></div>
                 {% endif %}
             </template>
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                 flag for toolcalls.html: its first card defaults to expanded
-                 inside steps - see toolcalls.html -->
             {% set toolcard_in_step = True %}
             {% include 'chat/toolcalls.html' %}
         </div>

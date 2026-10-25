@@ -427,6 +427,19 @@ async function handleWebSocketMessage(data) {
 
             break;
 
+        // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        // event-driven context pill: the backend pushes these after every
+        // context change - in-stream token_usage tokens still arrive nested
+        // under 'token', while out-of-stream changes (connect, chat switch,
+        // settings save, model switch, reconnect) arrive as these top-level
+        // events. no REST is involved anywhere on the pill's path.
+        case "token_usage":
+            chat.currentTokenUsage = data.content;
+            break;
+        case "context_size":
+            chat.contextBreakdown = data.content;
+            break;
+
         case "sync":
             // make sure we sync chat
             chat.turnHistory = [];

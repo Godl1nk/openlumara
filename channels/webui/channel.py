@@ -659,11 +659,8 @@ class Webui(core.channel.Channel):
                         # drive the UI's "what is the AI doing" indicator.
                         # set_stream_state is deduped, so hitting it on every
                         # streamed token costs nothing beyond the transition.
+                        push_context_size = False
                         match token_type:
-                            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
-                            # the step-based stream carries no segment-type
-                            # events anymore, so thinking/streaming derive
-                            # from the raw tokens themselves
                             case "reasoning":
                                 await self.websocket_manager.set_stream_state("thinking")
                             case "content":
@@ -682,11 +679,23 @@ class Webui(core.channel.Channel):
                                 await self.websocket_manager.set_stream_state("calling_tools")
                             case "tool_calls":
                                 await self.websocket_manager.set_stream_state("calling_tools")
+                            case "token_usage":
+                                push_context_size = True
 
                         await self.websocket_manager.broadcast({
                             "type": "token",
                             "content": token
                         })
+
+                        if push_context_size:
+                            try:
+                                size = serialize_for_json(await self.context.get_size())
+                                await self.websocket_manager.broadcast({
+                                    "type": "context_size",
+                                    "content": size,
+                                })
+                            except Exception as e:
+                                self.log(self.name, f"error sending context size: {core.detail_error(e)}")
 
             elif partial.get("type") == "step":
                 # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
@@ -1733,6 +1742,10 @@ async def create_fastapi(channel):
         chat = dict(channel.context.chat.get())
         chat["turn_history"] = await channel.group_history()
         chat["token_usage"] = await channel.context.get_total_tokens()
+        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        # switching chat swapped the whole context: push fresh usage +
+        # breakdown, so every open tab's context pill follows along.
+        await channel.websocket_manager.push_context_update()
         return api_result(chat, success=True)
 
     @app.get("/api/chat/current")
@@ -2072,6 +2085,9 @@ async def create_fastapi(channel):
                 return api_result(error, success=False)
 
         new_id = await op_chat_new(channel, category=category)
+        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        # a new chat (re)sets the context: push the (near-empty) breakdown.
+        await channel.websocket_manager.push_context_update()
         return api_result({"id": new_id})
 
     @app.post("/api/chat/rename/{chat_id}")
@@ -2200,6 +2216,10 @@ async def create_fastapi(channel):
             return api_result("Model name cannot be empty", success=False)
 
         channel.manager.API.set_model(name)
+        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        # a different model can mean a different max_context: push updated
+        # usage + breakdown for the context pill.
+        await channel.websocket_manager.push_context_update()
         return api_result({"name": name}, success=True)
 
     # -- POST
@@ -2253,6 +2273,14 @@ async def create_fastapi(channel):
         # their webui/templates folder, and cached templates must be dropped
         channel.setup_ui_extensions()
 
+        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        # settings can reshape the context without a single stream token:
+        # system prompt edits, tool/module changes, thresholds... push the
+        # fresh breakdown so the context pill updates on the spot (when a
+        # restart is still required, the reconnect's connect-push will do
+        # the final update after the server is back).
+        await channel.websocket_manager.push_context_update()
+
         return api_result({
             "requires_restart": requires_restart,
             "requires_reconnect": requires_reconnect,
@@ -2264,6 +2292,11 @@ async def create_fastapi(channel):
         result = await channel.manager.API.reconnect()
         if isinstance(result, core.api.APIError):
             return api_result(str(result), success=False)
+
+        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        # a fresh connection can report a new max_context: push updated
+        # usage + breakdown for the context pill.
+        await channel.websocket_manager.push_context_update()
 
         return api_result(success=True)
 
@@ -2886,6 +2919,27 @@ class WebSocketManager:
         is itself meaningful: it records that nothing is final right now)"""
         self.turn_final = messages
 
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    async def push_context_update(self, connection=None):
+        """push the authoritative token usage and the full context breakdown
+        over the websocket. called on every context-changing event that
+        happens OUTSIDE the turn stream (client connect, chat switch/new,
+        settings save, model switch, reconnect), so the context pill is
+        fully event-driven and never has to ask over REST."""
+        try:
+            size = serialize_for_json(await self.channel.context.get_size())
+            messages = [
+                {"type": "token_usage", "content": size["total_tokens"], "source": "estimation"},
+                {"type": "context_size", "content": size},
+            ]
+            for message in messages:
+                if connection is not None:
+                    await connection.send_json(message)
+                else:
+                    await self.broadcast(message)
+        except Exception as e:
+            self.channel.log(self.channel.name, f"error pushing context update: {core.detail_error(e)}")
+
     async def set_stream_state(self, state: str):
         """update the authoritative stream state and notify all clients.
         deduped, so high-frequency token paths can set it every token for free."""
@@ -2939,6 +2993,12 @@ class WebSocketManager:
                 "type": "turn_final",
                 "messages": self.turn_final
             })
+
+        # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+        # event-driven context pill: push the token usage + breakdown to the
+        # fresh connection right away, so clients (and reconnects after a
+        # blip) are never missing context data - no REST fetch needed.
+        await self.push_context_update(connection=websocket)
 
         asyncio.create_task(self.queue_ready_signal())
 
