@@ -6,7 +6,8 @@
 // lives in the template file.
 //
 // THE VIEWS THEMSELVES (per-tool helpers + registry entries) live in
-// js/renderers/custom_tool_views.js - this file is system only, so the
+// js/renderers/custom_tool_views/ + the per-module
+    // webui/assets/js/custom_tool_views/ folders - this file is system only, so the
 // whole view collection can grow/ship separately (and eventually be
 // replaced/extended by plugins).
 //
@@ -63,7 +64,8 @@ function toolCallResultSummary(tool, cacheKey) {
 }
 
 // -- generic template helpers ----------------------------------------------
-// (view-specific data helpers belong in custom_tool_views.js, not here)
+// (view-specific data helpers belong in the per-module
+// custom_tool_views/ folders, not here)
 
 // parsed (possibly PARTIAL, mid-stream) arguments for a claimed tool
 // call, for use inside the view templates. {} until anything parses.
