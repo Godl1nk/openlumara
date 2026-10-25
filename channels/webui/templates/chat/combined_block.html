@@ -6,20 +6,21 @@
      provenance chips right-aligned; thought-less steps fall back to
      module-grouped tool names. {% set combined_stream = true %} switches
      to the streaming behaviour: activity dots while this is the newest
-     segment, auto-collapse once done (mirrors reasoning.html). -->
+     segment, auto-collapse once done (mirrors reasoning.html).
+	
+ 	 TODO: migrate most of this logic to backend
+-->
 <div class="combined-block" :class="{collapsed: collapsed, expanded: !collapsed}"
     {% if combined_stream %}
      x-data="{ collapsed: $store.stream.state === 'idle' || localStorage.getItem('collapseStepsDefault') === 'true' || (localStorage.getItem('collapseThinkingDefault') === 'true' && stepIsThinkingLive(message)), autoCollapsed: false, done: $store.stream.state === 'idle',
-               // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
                // reasoning is live only while the newest stream segment is
-               // this step's reasoning: once content/tools arrive the
-               // header reads Thoughts even though the step is still open
+               // this step's reasoning
                get thinkingActive() {
                    const msgs = $store.stream.turn?.messages ?? [];
                    const last = msgs[msgs.length - 1];
                    return !!last && last.step === message.step && last.type === 'reasoning';
                },
-               // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+             
                // activity only while the step's own status is open: a
                // finished tool step at the end of the chain (waiting for
                // the model's next step) must not keep pulsing
