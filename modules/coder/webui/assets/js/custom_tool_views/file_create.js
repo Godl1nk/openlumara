@@ -2,8 +2,9 @@
    coder module view: coder_file_create shows the new file's content,
    highlighted, streamed live from the args.
    codeLinesHtml lives in the webui's renderers/custom_tool_views/shared.js,
-   langForPath in this folder's shared.js; markup in the webui's
-   tool_displays.html; styling in css/chat/custom_tool_views.css. */
+   langForPath in this folder's shared.js; markup in this module's
+   templates/chat/tool_displays.html (tool_views slot); styling in this
+   folder's shared.css. */
 
 document.addEventListener('alpine:init', () => {
     // coder file creates: the new file's content, highlighted, streamed live

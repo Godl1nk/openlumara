@@ -1,8 +1,8 @@
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
    scheduler module view: scheduler_add_job renders as a card with clock,
    when + action.
-   markup in the webui's tool_displays.html; styling in
-   css/chat/custom_tool_views.css. */
+   markup in this module's templates/chat/tool_displays.html (tool_views
+   slot); styling in this folder's scheduler.css. */
 
 const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 

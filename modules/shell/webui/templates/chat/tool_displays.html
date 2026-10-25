@@ -1,0 +1,39 @@
+<!-- -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+   shell module tool view: the terminal. fills the "tool_views" slot of the
+   webui's templates/chat/tool_displays.html via the extension system;
+   helpers in webui/assets/js/custom_tool_views/shell.js, styling in
+   css/custom_tool_views/shell.css. `tool`/`cacheKey` come from the tool
+   card's Alpine scope, not from jinja. -->
+{% macro tool_views() %}
+
+<template x-if="toolDisplayView(tool) === 'shell'"
+          x-data="{ get info() { return shellViewInfo(tool, cacheKey) },
+                    get commandHtml() { return shellCommandHtml(this.info.command, cacheKey) } }">
+    <!-- single root element: x-if only renders the template's FIRST child -->
+    <div>
+    <div class="shell-box" x-auto-scroll>
+        <!-- terminal look: prompt symbol + command streaming in via token
+             fade, blinking cursor trails it until the output lands.
+             highlighted with the bash grammar while streaming too - hljs
+             tolerates partial input, tokens recolor as the command grows.
+             inline flow (no flex) so the cursor follows the LAST CHARACTER
+             across wrapped lines instead of hanging off the whole span -->
+        <div class="shell-prompt">
+            <span class="shell-prompt-symbol">$</span><span class="shell-command hljs" x-fade-html="commandHtml"></span><span class="shell-cursor" x-show="!info.done"></span>
+        </div>
+        <!-- dashed divider between a multiline command and its output, so
+             where the command ends stays clear; single-line commands need
+             no separator -->
+        <div class="shell-divider" x-show="info.multiline && info.output"></div>
+        <!-- output appears below the command once the call completes, as if
+             printed by the shell itself; cursor is gone by then -->
+        <div class="shell-output" x-show="info.output" x-fade-text="info.output"></div>
+    </div>
+    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
+         truncation is informational (the call succeeded): dim note under
+         the terminal box, same style as the other views' cap notes -->
+    <div class="grep-note" x-show="info.note" x-text="info.note"></div>
+    </div>
+</template>
+
+{% endmacro %}

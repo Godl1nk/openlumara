@@ -1,8 +1,9 @@
 /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
    coder module view: coder_folder_grep / coder_file_grep render as
    file-grouped match lists with line numbers + context.
-   markup in the webui's tool_displays.html; styling in
-   css/chat/custom_tool_views.css. */
+   markup in this module's templates/chat/tool_displays.html (tool_views
+   slot); styling in this folder's grep.css (the running one-liner shares
+   shared.css). */
 
 // normalize the grep response into [{ file, matches }]. content is a flat
 // array of match dicts, or { matches, note } when the max_matches cap hit.

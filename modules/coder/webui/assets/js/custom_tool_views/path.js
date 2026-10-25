@@ -2,8 +2,9 @@
    coder module view: the sandbox/path one-liner for coder_glob (plus its
    file list) and the running preview for coder_file_move / coder_file_delete
    / coder_folder_delete.
-   markup in the webui's tool_displays.html; styling in
-   css/chat/custom_tool_views.css. */
+   markup in this module's templates/chat/tool_displays.html (tool_views
+   slot); styling in this folder's path.css (the running one-liner shares
+   shared.css). */
 
 // running (no response yet) preview labels for the generic coder-path view:
 // "moving \u00b7 dev: foo/bar.py". path picks whichever arg the tool uses.
