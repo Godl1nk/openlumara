@@ -152,6 +152,13 @@ CHAT_STORE = {
 
     currentTokenUsage: 0,
 
+    // -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    // full context breakdown for the context pill: pushed by the backend as
+    // a 'context_size' ws event on every context change (connect, chat
+    // switch/new, settings save, model switch, reconnect, in-stream usage
+    // updates). purely event-driven - nothing fetches it over REST.
+    contextBreakdown: null,
+
     async load() {
         // called by Alpine.init
         await this.reloadCategories();
