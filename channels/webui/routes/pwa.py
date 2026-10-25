@@ -9,6 +9,9 @@ import fastapi
 
 import core
 
+def pwa_dir(channel):
+    return os.path.join(channel.path, "pwa")
+
 def generate_cache_version():
     # generate an sw.js cache version based on this file's last modified time
     # because bumping sw.js's version manually each time i update the webui
@@ -49,7 +52,7 @@ def register(app, channel):
                         files_to_cache.append('/assets/' + rel_path.replace(os.sep, "/"))
         files_to_cache.sort()
 
-        sw_template_path = os.path.join(base_path, 'sw.js')
+        sw_template_path = os.path.join(pwa_dir(channel), 'sw.js')
         with open(sw_template_path) as f:
             sw_code = f.read()
 
@@ -71,21 +74,21 @@ def register(app, channel):
     @app.get('/manifest.json')
     async def manifest():
         """Serve the PWA manifest."""
-        with open(os.path.join(channel.path, "manifest.json")) as f:
+        with open(os.path.join(pwa_dir(channel), "manifest.json")) as f:
             manifest_data = json.loads(f.read())
         return manifest_data
 
     @app.get('/icon-192.png')
     async def icon_192():
         """Serve the 192x192 icon for PWA."""
-        return fastapi.responses.FileResponse(os.path.join(channel.path, "icon-192.png"))
+        return fastapi.responses.FileResponse(os.path.join(pwa_dir(channel), "icon-192.png"))
 
     @app.get('/icon-512.png')
     async def icon_512():
         """Serve the 512x512 icon for PWA."""
-        return fastapi.responses.FileResponse(os.path.join(channel.path, "icon-512.png"))
+        return fastapi.responses.FileResponse(os.path.join(pwa_dir(channel), "icon-512.png"))
 
     @app.get('/favicon.ico')
     async def favicon():
         """Serve the favicon for the web interface."""
-        return fastapi.responses.FileResponse(os.path.join(channel.path, "favicon.ico"))
+        return fastapi.responses.FileResponse(os.path.join(pwa_dir(channel), "favicon.ico"))
