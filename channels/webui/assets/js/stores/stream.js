@@ -19,13 +19,30 @@ let STREAM_STORE = {
 
     // live generation speed (tokens/sec), estimated while streaming
     tokens_per_second: 0,
+    // "server" when the backend reported exact timings, "estimate" otherwise
+    tokens_per_second_source: "",
     _tokStart: 0,
     _tokChars: 0,
+    _tokClearTimer: null,
 
     resetTokenRate() {
+        clearTimeout(this._tokClearTimer);
+        this._tokClearTimer = null;
         this.tokens_per_second = 0;
+        this.tokens_per_second_source = "";
         this._tokStart = 0;
         this._tokChars = 0;
+    },
+
+    // llama.cpp & compatible servers attach exact generation timings
+    // (predicted_n tokens over predicted_ms) to the final chunk
+    applyServerTimings(timings) {
+        if (!timings) return;
+        const n = Number(timings.predicted_n);
+        const ms = Number(timings.predicted_ms);
+        if (!(n > 0) || !(ms > 0)) return;
+        this.tokens_per_second = Math.max(1, Math.round((n * 1000) / ms));
+        this.tokens_per_second_source = "server";
     },
 
     recordToken(token) {
@@ -45,6 +62,7 @@ let STREAM_STORE = {
         const span = (now - this._tokStart) / 1000;
         if (span >= 1) {
             this.tokens_per_second = Math.max(1, Math.round((this._tokChars / 4) / span));
+            this.tokens_per_second_source = "estimate";
         }
     },
 
@@ -53,6 +71,16 @@ let STREAM_STORE = {
         this.userMsg = null;
         this.processing = {};
         this.modelLoad = null;
-        this.resetTokenRate();
+
+        // keep the last speed on screen briefly so it can still be read after
+        // the turn ends, then let the pill disappear
+        clearTimeout(this._tokClearTimer);
+        this._tokStart = 0;
+        this._tokChars = 0;
+        this._tokClearTimer = setTimeout(() => {
+            this.tokens_per_second = 0;
+            this.tokens_per_second_source = "";
+            this._tokClearTimer = null;
+        }, 8000);
     }
 }

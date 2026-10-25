@@ -400,6 +400,10 @@ async function handleWebSocketMessage(data) {
                 case "token_usage":
                     chat.currentTokenUsage = token_content;
                     break;
+                case "timings":
+                    // exact generation speed from llama.cpp-style servers
+                    stream.applyServerTimings(token_content);
+                    break;
                 case "content":
                 case "reasoning":
                     stream.recordToken(token);

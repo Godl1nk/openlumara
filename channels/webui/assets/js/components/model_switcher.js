@@ -61,10 +61,63 @@ const MODEL_MANAGER_STORE = {
 function modelQuickSwitch() {
     return {
         saving: false,
+        effortSaving: false,
 
         get currentModel() {
             const store = Alpine.store("modelManager");
             return store?.currentChatModel || Alpine.store("settings")?.categories?.model?.settings?.name?.value || "";
+        },
+
+        get activeModelRef() {
+            const current = this.currentModel;
+            const store = Alpine.store("modelManager");
+            for (const prov of (store?.providers || [])) {
+                for (const m of (prov.models || [])) {
+                    if (m.id === current) return { prov, model: m };
+                }
+            }
+            return null;
+        },
+
+        // the effort that actually applies: a model's own override wins over
+        // the global preset (same precedence as core/api.py at request time)
+        get currentEffort() {
+            const own = String(this.activeModelRef?.model?.thinking_effort || "default").trim().toLowerCase();
+            if (own && own !== "default") return own;
+
+            const settings = Alpine.store("settings")?.categories?.model?.settings;
+            const custom = String(settings?.custom_reasoning_effort?.value || "").trim();
+            if (custom) return custom;
+
+            const preset = String(settings?.reasoning_effort?.value || "").trim().toLowerCase();
+            return preset && preset !== "none" ? preset : "default";
+        },
+
+        async setEffort(value) {
+            if (!value || this.effortSaving) return;
+            this.effortSaving = true;
+            try {
+                const ref = this.activeModelRef;
+                if (ref) {
+                    ref.model.thinking_effort = value;
+                    await simpleApiPost("/api/provider/model/update", {
+                        provider_id: ref.prov.id,
+                        model_id: ref.model.id,
+                        settings: { thinking_effort: value }
+                    });
+                } else {
+                    // no provider entry (legacy single-endpoint setup): fall
+                    // back to the global reasoning effort
+                    await simpleApiPost("/api/model/effort/set", {
+                        effort: value === "default" ? "none" : value,
+                        custom: ""
+                    });
+                }
+            } catch (err) {
+                alert("Failed to set reasoning effort: " + err);
+            } finally {
+                this.effortSaving = false;
+            }
         },
 
         get enabledOptions() {

@@ -133,6 +133,11 @@ header {
             }
         }
 
+        /* reasoning effort sits right next to the model picker */
+        .effort-select {
+            max-width: 150px;
+        }
+
     }
 
     .menu-btn {
