@@ -22,7 +22,7 @@ class Ntfy(core.channel.Channel):
         "title": {
             "type": "string",
             "description": "What title should show up in your notifications, above the notification text",
-            "default": "OpenLumara"
+            "default": "Aegis"
         }
     }
 

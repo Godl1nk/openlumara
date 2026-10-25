@@ -11,7 +11,7 @@ class Channel(core.module.Module):
         #     "default": True
         # },
         "enable_tutorial_prompts": {
-            "description": "Whether to insert channel instructions into the system prompt so that your AI can guide you when you're new to OpenLumara. You'll want to turn this off once you're used to openlumara, to save tokens.",
+            "description": "Whether to insert channel instructions into the system prompt so that your AI can guide you when you're new to Aegis. You'll want to turn this off once you're used to Aegis, to save tokens.",
             "default": False
         }
     }

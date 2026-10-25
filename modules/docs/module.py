@@ -3,7 +3,7 @@ import channels.webui.api as webui
 import os
 
 class Docs(core.module.Module):
-    """Allows your AI to grab documentation about anything you want. Has OpenLumara documentation included!"""
+    """Allows your AI to grab documentation about anything you want. Has Aegis documentation included!"""
 
     category = "core"
 

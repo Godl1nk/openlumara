@@ -71,7 +71,7 @@ class ImageTools(core.module.Module):
         "openai_api_key": {
             "type": "string",
             "default": "",
-            "description": "API key for image generation. If empty, falls back to the OpenLumara core api.key.",
+            "description": "API key for image generation. If empty, falls back to the Aegis core api.key.",
             "depends": "backend"
         },
         "openai_api_url": {
@@ -338,7 +338,7 @@ class ImageTools(core.module.Module):
         draw.rectangle([12, 12, w - 12, h - 12], outline=(255, 255, 255), width=2)
         summary = f"Prompt:\n{prompt[:120]}..." if len(prompt) > 120 else f"Prompt:\n{prompt}"
         draw.text((24, 24), summary, fill=(255, 255, 255))
-        draw.text((24, h - 36), f"{w}x{h} • OpenLumara ImageTools (Mock)", fill=(230, 230, 230))
+        draw.text((24, h - 36), f"{w}x{h} • Aegis ImageTools (Mock)", fill=(230, 230, 230))
         img.save(target_path, "PNG")
 
     async def _generate_openai(self, prompt: str, size: str, style: str, target_path: str, model: str = None):

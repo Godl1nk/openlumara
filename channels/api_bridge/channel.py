@@ -15,14 +15,14 @@ import fastapi.middleware.cors
 
 class ApiBridge(core.channel.Channel):
     """
-    Lets you use any application or UI (for example, koboldlite, openwebui, etc) to talk to your OpenLumara instance. Simply connect your chosen application to the port you specify in this channel's settings.
+    Lets you use any application or UI (for example, koboldlite, openwebui, etc) to talk to your Aegis instance. Simply connect your chosen application to the port you specify in this channel's settings.
     """
 
     settings = {
         "network_mode": {
             "type": "select",
             "options": {
-                "local": "Allows only the device OpenLumara is running on to access the API bridge (sets hostname to `localhost`)",
+                "local": "Allows only the device Aegis is running on to access the API bridge (sets hostname to `localhost`)",
                 "internet": "Allows any device to access the API bridge (sets hostname to `0.0.0.0`)",
                 "custom": "Use the custom hostname defined below"
             },
@@ -83,7 +83,7 @@ class ApiBridge(core.channel.Channel):
 
     async def run(self):
         """The main loop: Starts the FastAPI server."""
-        app = fastapi.FastAPI(title="OpenLumara OpenAI Bridge")
+        app = fastapi.FastAPI(title="Aegis OpenAI Bridge")
 
         # allow requests from any origin
         app.add_middleware(

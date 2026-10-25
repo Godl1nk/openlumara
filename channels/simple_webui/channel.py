@@ -242,7 +242,7 @@ class SimpleWebui(core.channel.Channel):
         "network_mode": {
             "type": "select",
             "options": {
-                "local": "Allows only the device OpenLumara is running on to access the WebUI (sets hostname to `localhost`)",
+                "local": "Allows only the device Aegis is running on to access the WebUI (sets hostname to `localhost`)",
                 "internet": "Allows any device to access the WebUI (sets hostname to `0.0.0.0`)",
                 "custom": "Use the custom hostname defined below"
             },
@@ -265,7 +265,7 @@ class SimpleWebui(core.channel.Channel):
             "default": True
         },
         "name": {
-            "default": "OpenLumara",
+            "default": "Aegis",
             "description": "The name of your webUI instance. Shows up in headers and the like."
         },
         "welcome_message": {

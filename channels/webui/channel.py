@@ -1,5 +1,5 @@
 """
-OpenLumara WebUI - manual rewrite
+Aegis WebUI - manual rewrite
 
 This is daunting, but i'm rewriting the entire WebUI from the ground up, manually, with minimal AI-generated code, due to high amount of unpredictable bugs in the previous version, and sheer difficulty of maintaining it
 
@@ -43,7 +43,7 @@ import secrets
 # Channel class
 # --------------------
 class Webui(core.channel.Channel):
-    """A full-featured, modern webUI for OpenLumara, providing you with a privacy-friendly option that doesn't depend on any external chat providers"""
+    """A full-featured, modern webUI for Aegis, providing you with a privacy-friendly option that doesn't depend on any external chat providers"""
     version = 2.0
 
     dependencies = [
@@ -63,7 +63,7 @@ class Webui(core.channel.Channel):
         "network_mode": {
             "type": "select",
             "options": {
-                "local": "Allows only the device OpenLumara is running on to access the WebUI (sets hostname to `localhost`)",
+                "local": "Allows only the device Aegis is running on to access the WebUI (sets hostname to `localhost`)",
                 "internet": "Allows any device to access the WebUI (sets hostname to `0.0.0.0`)",
                 "custom": "Use the custom hostname defined below"
             },
@@ -148,7 +148,7 @@ class Webui(core.channel.Channel):
         },
         "extra_allowed_origins": {
             "default": [],
-            "description": "Extra origins allowed to open WebSockets to this webui. You NEED this when OpenLumara sits behind a reverse proxy or HTTPS tunnel (e.g. https://mybox:8443 fronting 127.0.0.1:3000): the browser sends that public URL as the Origin, which no longer matches the bound host/port, and every websocket gets rejected. Scheme-less entries like \"crystal-ai:8006\" match that host+port over any scheme. Exact matches only - no wildcards."
+            "description": "Extra origins allowed to open WebSockets to this webui. You NEED this when Aegis sits behind a reverse proxy or HTTPS tunnel (e.g. https://mybox:8443 fronting 127.0.0.1:3000): the browser sends that public URL as the Origin, which no longer matches the bound host/port, and every websocket gets rejected. Scheme-less entries like \"crystal-ai:8006\" match that host+port over any scheme. Exact matches only - no wildcards."
         }
     }
 

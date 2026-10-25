@@ -794,7 +794,7 @@ class Http(core.module.Module):
 
     async def on_ready(self):
         self.default_headers = {
-            'User-Agent': 'OpenLumara/1.0',
+            'User-Agent': 'Aegis/1.0',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Encoding': 'gzip, deflate'
         }

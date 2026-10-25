@@ -3,8 +3,11 @@
 # work from the repo this script lives in, even when invoked from elsewhere
 cd "$(dirname "$0")" || exit 1
 
-# Ensure origin points to Godl1nk repository
-git remote set-url origin https://github.com/Godl1nk/openlumara.git 2>/dev/null
+# Configure the remote only when it's missing. Forcing the URL on every run
+# would fight a renamed repository or a mirror.
+if ! git remote get-url origin >/dev/null 2>&1; then
+    git remote add origin https://github.com/Godl1nk/openlumara.git 2>/dev/null
+fi
 
 echo "checking for updates..."
 if git fetch origin 2>/dev/null; then

@@ -45,7 +45,7 @@ def _theme_family_options():
 class Qt6Channel(core.channel.Channel):
     """
     A Qt6 desktop proof-of-concept channel using PySide6.
-    This opens a native Qt window and lets you chat with OpenLumara through it.
+    This opens a native Qt window and lets you chat with Aegis through it.
     """
 
     settings = {
@@ -61,7 +61,7 @@ class Qt6Channel(core.channel.Channel):
         "shutdown_on_close": {
             "type": "boolean",
             "default": True,
-            "description": "Shut down the OpenLumara server when the window is closed",
+            "description": "Shut down the Aegis server when the window is closed",
         },
         "follow_system_style": {
             "type": "boolean",
@@ -224,7 +224,7 @@ class Qt6Channel(core.channel.Channel):
 
         app = QtWidgets.QApplication.instance()
         if app is None:
-            app = QtWidgets.QApplication(sys.argv[:1] or ["openlumara"])
+            app = QtWidgets.QApplication(sys.argv[:1] or ["Aegis"])
 
         self._qapp = app
 

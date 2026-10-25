@@ -188,7 +188,7 @@ class Manager:
             self.coding_mode = True
 
         if not core.quiet:
-            self.log("core", "Starting OpenLumara")
+            self.log("core", "Starting Aegis")
 
         self.savedata = core.storage.StorageDict("save", "msgpack")
 

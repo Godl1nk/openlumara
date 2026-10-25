@@ -105,7 +105,7 @@ class QtSettingsDialog(QtWidgets.QDialog):
         self.dirty.setVisible(False)
 
         self.restart_button = QtWidgets.QPushButton("Restart Server")
-        self.restart_button.setToolTip("Restart OpenLumara, needed for module and channel changes")
+        self.restart_button.setToolTip("Restart Aegis, needed for module and channel changes")
         self.restart_button.setFixedHeight(34)
         # enter belongs to Save, never to whatever button got built first
         # (autoDefault would crown this one and hit restart on a keystroke)
@@ -847,7 +847,7 @@ class QtSettingsDialog(QtWidgets.QDialog):
         answer = QtWidgets.QMessageBox.question(
             self,
             "Restart Server",
-            "Restart OpenLumara now?",
+            "Restart Aegis now?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )

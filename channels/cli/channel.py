@@ -117,14 +117,14 @@ class Cli(core.channel.Channel):
         self.console = rich.console.Console()
         self.console.print(plaintext("-"*40))
 
-        self.console.print(f"[{accent_color}]Welcome to OpenLumara[/]")
+        self.console.print(f"[{accent_color}]Welcome to Aegis[/]")
         self.console.print(f"[italic]{random.choice(self.blurbs)}[/]")
         self.console.print()
 
         if core.firstrun:
             self.console.print("-"*40)
             self.console.print("[bold]First start detected![/bold]")
-            self.console.print("Welcome to OpenLumara! Here is a quick guide on how to get started:")
+            self.console.print("Welcome to Aegis! Here is a quick guide on how to get started:")
             if "webui" in self.manager.channels:
                 webui_chan = self.manager.channels["webui"]
                 self.console.print(f"1. Open the WebUI at the link indicated below")

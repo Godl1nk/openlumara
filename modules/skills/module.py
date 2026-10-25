@@ -155,7 +155,7 @@ class Skills(core.module.Module):
             return f"Skills reloaded ({len(self.index)} loaded)"
 
         if not self.index:
-            return "No skills installed. Add skills, then use `/skills reload` or restart OpenLumara."
+            return "No skills installed. Add skills, then use `/skills reload` or restart Aegis."
 
         lines = [f"Installed skills ({len(self.index)}):"]
         for name in self.index.keys():

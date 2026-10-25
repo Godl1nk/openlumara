@@ -6,7 +6,7 @@ import core
 
 class AutoBackup(core.module.Module):
     """
-    Automatically backs up the OpenLumara data folder at a set interval
+    Automatically backs up the Aegis data folder at a set interval
     """
 
     category = "system"
