@@ -2,7 +2,8 @@
  *  Custom tool call views
  *  styling for the inline markup views in templates/chat/tool_displays.html
  *  (see js/renderers/tool_display.js for the system, and
- *  js/renderers/custom_tool_views.js for the per-view helpers/registrations).
+ *  js/renderers/custom_tool_views/ plus the per-module
+ *  webui/assets/js/custom_tool_views/ folders for the helpers/registrations).
  *  scoped under .tool-call-card like the core tool call styles.
  *  ============================================================================= */
 

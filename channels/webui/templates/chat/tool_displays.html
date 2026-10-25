@@ -1,8 +1,12 @@
 <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
      custom body views for claimed tool calls. this file holds the VIEW
      MARKUP only; the display system lives in js/renderers/tool_display.js,
-     the per-view helpers/registrations in js/renderers/custom_tool_views.js,
-     and the view styling in css/chat/custom_tool_views.css.
+     the view styling in css/chat/custom_tool_views.css, and the per-view
+     helpers/registrations live with their owning modules:
+     core meta-tools in js/renderers/custom_tool_views/, coder views in
+     modules/coder/webui/assets/js/custom_tool_views/, plus shell,
+     scheduler and web_search in their own module folders (auto-loaded as
+     ext-assets JS).
      one branch per view name; toolDisplayView(tool) picks it. plugins will
      later contribute their own branches the same way. no html string
      generation anywhere - everything here is plain alpine markup.
@@ -245,7 +249,8 @@
     <div class="diff-container">
         <!-- both views render as html strings: token fade needs whole-content
              repaints (x-fade-html), which x-for rows can't survive. see
-             diffHtml()/diffSideHtml() in custom_tool_views.js. which one
+             diffHtml()/diffSideHtml() in coder's
+             custom_tool_views/file_edit.js. which one
              shows is a css container query on this .diff-container's width
              (custom_tool_views.css): side-by-side once the card is wide
              enough, unified below - follows the chat width setting -->
