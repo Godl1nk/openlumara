@@ -11,14 +11,14 @@ import starlette.middleware.sessions
 import core
 
 import channels.webui.utils as utils
-import channels.webui.routes_pages as pages_routes
-import channels.webui.routes_chats as chats_routes
-import channels.webui.routes_settings as settings_routes
-import channels.webui.routes_libraries as libraries_routes
-import channels.webui.routes_system as system_routes
-import channels.webui.routes_themes as themes_routes
-import channels.webui.routes_pwa as pwa_routes
-import channels.webui.routes_ws as ws_routes
+import channels.webui.routes.pages as pages_routes
+import channels.webui.routes.chats as chats_routes
+import channels.webui.routes.settings as settings_routes
+import channels.webui.routes.libraries as libraries_routes
+import channels.webui.routes.system as system_routes
+import channels.webui.routes.themes as themes_routes
+import channels.webui.routes.pwa as pwa_routes
+import channels.webui.routes.ws as ws_routes
 
 # endpoints that are blocked when enable_admin_settings is off.
 ADMIN_ONLY_ENDPOINTS = [
