@@ -493,21 +493,17 @@ class TurnCollector:
         return False
 
     def build_steps(self, messages):
-        # split a finalized assistant turn's messages into (steps, final).
-        # the last content-without-toolcalls message is the final answer;
-        # everything else is the chain. reasoning riding on the final
-        # answer becomes its own trailing Thoughts step (copies, the
-        # stored messages are never mutated).
-        final_index = -1
-        for i in range(len(messages) - 1, -1, -1):
-            if self._is_final_content(messages[i]):
-                final_index = i
-                break
+        """split a finalized assistant turn's messages into (steps, final)"""
+        final_indices = set()
+        i = len(messages) - 1
+        while i >= 0 and self._is_final_content(messages[i]):
+            final_indices.add(i)
+            i -= 1
 
         chain = []
         final = []
         for i, message in enumerate(messages):
-            if i == final_index:
+            if i in final_indices:
                 if isinstance(message.get("reasoning_content"), str) and message["reasoning_content"].strip():
                     chain_copy = dict(message)
                     chain_copy["content"] = ""
@@ -602,57 +598,57 @@ class TurnCollector:
 
     async def group_stream(self, stream_generator):
         """
-        this takes the raw stream generator and yields 'streaming turn' objects
-        as tokens come in.
+        this takes the stream object and yields the in-progress turn
+        as step objects (dicts), shaped exactly like the steps
+        build_steps() produces for history.
 
-        this way, we can display each segment throughout the UI, seperately,
-        using whatever layout and components we want!
+        events yielded:
+          {"type": "token", "content": raw_token}
+              unchanged passthrough of every raw token (user messages,
+              api errors, prompt progress, usage, ...)
+          {"type": "step", "content": step}
+              a step keyed by the step number. the step carries the same
+              fields as a history step (step, status, reasoning_content,
+              content, tool_calls, modules, label) plus two live-only flags:
+                reasoning_live: while the AI is still reasoning
+                is_tail:        while the step is the open end of the chain
+          {"type": "final", "content": [messages]}
+              a turn's final message(s), decided at the very end of the stream.
+              during the steam, there is no way to determine which message is final,
+              because a `content` token can at any time be followed up with `reasoning`
+              or `tool_calls`.
 
-        it's basically a state machine that groups tokens into segments.
-        a segment is just a group of tokens of the same type.
-
-        unlike normal streaming deltas, these tokens accumulate,
-        and are meant to be used in UI's where you can fully replace the content of a UI component
-        with the new content with the newly streamed tokens added
-
-        since an assistant response can contain multiple kinds of content in sequence,
-        like reasoning -> content -> tool_calls -> tool responses -> more reasoning -> final answer (reasoning+content)
-        we need to track when the type changes so we can create a new segment.
-
-        it creates a clear separation between types of content,
-        where all you ever need to do is create a new UI element when the segment type changes,
-        without worrying about merging the different types of tokens manually
+        values accumulate: every event carries
+        the full current text of the object it updates, so a UI can render
+        by full replacement, and a reconnecting client only ever needs the
+        latest snapshot per step number.
 
         this used to be exclusive to the webUI, handled in the frontend.
         but since this is now in the core, it can be used in *ANY* channel.
 
         usage: (from within your channel's run()):
-          async for partial_turn in self.get_streaming_turns(
-              self.send_stream("user's message") 
+          async for event in self.get_streaming_turns(
+              self.send_stream("user's message")
           ):
-              do_whatever_with(partial_turn)
-
-        the state machine works like this:
-        - if the token type changes, we create a new segment and start filling it
-        - if the token type stays the same, we keep appending to the current segment
-        - for tool responses, we don't yield them as segments,
-          instead we merge their responses back into the corresponding tool_calls segment
+              do_whatever_with(event)
         """
 
-        current_segment = None
-        last_segment_type = None
         stream_response_map = {}
-        last_tool_call_id = None
-        last_tool_calls_segment = None
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-1)
-        # -- step tracking: reasoning/content runs and the tool calls they
-        # -- lead to share one step number; the step increments when a new
-        # -- segment starts after the current one already attached tools
-        # -- (that step is then complete). consumers accumulate steps from
-        # -- the active-step-only yields by grouping on the step field.
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+        # -- step assembler state. a step object is materialized the moment
+        # -- its first visible content arrives, then upserted (re-yielded in
+        # -- full, shaped exactly like a history step) on every change.
+        # -- provisional_final: the content run currently rendered as the
+        # -- turn's final answer bubble; it retracts into its step as soon
+        # -- as a reasoning or tool_calls segment follows it.
         step_num = 0
         step_has_tools = False
+        steps = []
+        steps_by_num = {}
+        tools_owner = {}
+        provisional_final = None
+        last_token_type = None
 
         # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         # monotonic args_parsed cache keyed by tool call id: a mid-stream
@@ -710,6 +706,141 @@ class TurnCollector:
                     meta["display_name"] = name_cache[tool_id]
                 meta["args_parsed"] = bridge_args if bridge_args is not None else {}
 
+        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+        # -- step assembler helpers. these close over the state above; the
+        # -- machine below only mutates objects and collects what to emit.
+        # -- every folding rule mirrors build_steps() so the live chain and
+        # -- the history chain never disagree after a reload.
+        emit_steps = []
+        queued_ids = set()
+
+        def queue(step):
+            if step is not None and id(step) not in queued_ids:
+                queued_ids.add(id(step))
+                emit_steps.append(step)
+
+        def bump_step():
+            """open a new step number when the current one is closed off
+            (no step yet, or it already attached tools). demotes the old
+            tail so exactly one step ever carries is_tail."""
+            nonlocal step_num, step_has_tools
+
+            demoted = []
+            if step_num == 0 or step_has_tools:
+                for s in steps:
+                    if s.get("is_tail"):
+                        s["is_tail"] = False
+                        s["reasoning_live"] = False
+                        if not s["tool_calls"] and s["status"] == "thinking":
+                            s["status"] = "thoughts"
+                        stamp_label(s)
+                        demoted.append(s)
+                step_num += 1
+                step_has_tools = False
+            return demoted
+
+        def get_step():
+            step = steps_by_num.get(step_num)
+            if step is None:
+                step = {
+                    "step": step_num,
+                    "status": "thinking",
+                    "reasoning_content": "",
+                    "content": "",
+                    "tool_calls": [],
+                    "modules": [],
+                    "label": "",
+                    "reasoning_live": False,
+                    "is_tail": True,
+                }
+                steps.append(step)
+                steps_by_num[step_num] = step
+            return step
+
+        def stamp_step(step):
+            step["modules"] = self._modules_for(step["tool_calls"])
+            if step["tool_calls"]:
+                step["status"] = self._step_status(step["tool_calls"])
+            stamp_label(step)
+
+        def stamp_label(step):
+            # same builder as before, but a settled thought reads Thoughts
+            # (the idle-state rename the frontend used to do live-side only)
+            label = self._segment_label(step)
+            if label == "Thinking.." and not step["reasoning_live"]:
+                label = "Thoughts"
+            step["label"] = label
+
+        def step_is_visible(step):
+            return bool(
+                step["tool_calls"]
+                or step["reasoning_content"].strip()
+                or step["content"].strip()
+            )
+
+        def retract_final():
+            """fold the provisional final bubble back into its step
+            (build_steps joins a thought run's content with \n\n).
+            returns the step to re-emit, or None when nothing remained."""
+            nonlocal provisional_final
+
+            message = provisional_final
+            provisional_final = None
+
+            text = message.get("content") or ""
+            step = steps_by_num.get(step_num)
+            if step is None and not text.strip() and not message.get("is_cmd"):
+                return None
+
+            step = step or get_step()
+            if message.get("is_cmd"):
+                step["is_cmd"] = True
+            if text.strip():
+                step["content"] = (step["content"] + "\n\n" if step["content"] else "") + text
+            step["reasoning_live"] = False
+            step["is_tail"] = True
+            stamp_label(step)
+            return step
+
+        def refresh_tools(step):
+            for tool in step["tool_calls"]:
+                # annotations live under the call's _metadata key
+                meta = tool.setdefault("_metadata", {})
+                if tool.get("id") in stream_response_map:
+                    meta["response"] = stream_response_map[tool["id"]]
+                    # precomputed failed flag (mirrors group_history)
+                    meta["failed"] = self._tool_call_failed(tool)
+                # parsed args (mirrors group_history; unwraps tools_call)
+                _stamp_args(tool)
+                # arg summary on the (possibly unwrapped) args
+                if meta.get("bridge"):
+                    meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
+                else:
+                    meta["summary"] = self._tool_call_summary(tool)
+
+        def merge_tool_calls(step, incoming_calls):
+            existing_calls = step["tool_calls"]
+            for incoming_call in incoming_calls:
+                # copy on insert: shared with the stored message's tool calls
+                incoming_call = dict(incoming_call)
+                call_id = incoming_call.get("id")
+                if call_id:
+                    for idx, existing_call in enumerate(existing_calls):
+                        if existing_call.get("id") == call_id:
+                            existing_calls[idx] = incoming_call
+                            break
+                    else:
+                        existing_calls.append(incoming_call)
+                elif existing_calls and not existing_calls[-1].get("id"):
+                    # no id to match on: assume it continues the last
+                    # id-less call (providers that stream ids late/never)
+                    existing_calls[-1] = incoming_call
+                else:
+                    existing_calls.append(incoming_call)
+            for tc in existing_calls:
+                if tc.get("id"):
+                    tools_owner[tc["id"]] = step
+
         async for raw_token in stream_generator:
             # copy the token so we don't mutate it
             token = dict(raw_token)
@@ -745,162 +876,126 @@ class TurnCollector:
             if token.get("timings"):
                 token.pop("timings")
 
-            segment_type = token.get("type")
-            
+            token_type = token.get("type")
+
             # merge tool call deltas and toolcalls into one type
-            if segment_type in ['tool_call_delta', 'tool_calls']:
-                segment_type = 'tool_calls'
+            if token_type in ['tool_call_delta', 'tool_calls']:
+                token_type = 'tool_calls'
 
-            # determine whether this is a new tool response (different tool_call_id)
-            # since tool responses can arrive for multiple different tools in sequence,
-            # each needs its own response tracking
-            is_new_tool_response = (
-                segment_type == 'tool' and 
-                last_tool_call_id != token.get("tool_call_id")
-            )
-
-            # the grouping works like this:
-            # if the token type is different from the previous one,
-            # or if we're switching to a new tool response (different tool_call_id),
-            # we create a new segment.
-            #
-            # otherwise, we append to the existing segment that's currently
-            # being filled
-            if segment_type != last_segment_type or is_new_tool_response:
-                # create a new segment (message within the turn)
-                current_segment = token.copy()
-                current_segment["role"] = "assistant" if segment_type != 'tool' else "tool"
-                current_segment["type"] = segment_type
-
-                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                # step bookkeeping: a new assistant segment starts a new
-                # step only if the current one already attached tools (or
-                # no step exists yet); tool calls themselves join the
-                # reasoning run that preceded them
-                if segment_type != 'tool':
-                    if step_num == 0 or step_has_tools:
-                        step_num += 1
-                        step_has_tools = False
-                    if segment_type == 'tool_calls':
-                        step_has_tools = True
-                    current_segment["step"] = step_num
-                
-                if segment_type == 'reasoning':
-                    if "content" in current_segment.keys():
-                        # remove non-reasoning content from the reasoning segment
-                        current_segment.pop("content")
-
-                    current_segment.setdefault("reasoning_content", token.get("content", ''))
-                elif segment_type == 'content':
-                    current_segment.setdefault("content", token.get("content", ''))
-                elif segment_type == 'tool_calls':
-                    # copy the list since we mutate it in place during merges
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                    # also copy each call dict: these token dicts are shared with
-                    # the message the toolcall manager stores into chat history,
-                    # and the annotations below would rewrite stored history
-                    current_segment.setdefault("tool_calls", [dict(tc) for tc in token.get("tool_calls", [])])
-                    last_tool_calls_segment = current_segment  # remember this for later merging
-                elif segment_type == 'tool':
-                    current_segment["type"] = "tool_response"
-                    current_segment.setdefault("content", token.get("content", ''))
-                
-                last_segment_type = segment_type
-                last_tool_call_id = token.get("tool_call_id") if segment_type == 'tool' else None
-            
-            else:
-                # if it's the same token type as the last one,
-                # that means we're still working with the same segment,
-                # so here's where we do the streaming magic
-                # that merges new tokens into the existing segment
-                if segment_type == 'tool_calls':
-                    if token.get("tool_calls"):
-                        existing_calls = current_segment.setdefault("tool_calls", [])
-                        # merge the tool calls using their id
-                        # so that batched tool calls properly show up
-                        for incoming_call in token["tool_calls"]:
-                            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                            # copy on insert: shared with the stored message's tool calls
-                            incoming_call = dict(incoming_call)
-                            call_id = incoming_call.get("id")
-                            if call_id:
-                                for idx, existing_call in enumerate(existing_calls):
-                                    if existing_call.get("id") == call_id:
-                                        existing_calls[idx] = incoming_call
-                                        break
-                                else:
-                                    existing_calls.append(incoming_call)
-                            elif existing_calls and not existing_calls[-1].get("id"):
-                                # no id to match on: assume it continues the last
-                                # id-less call (providers that stream ids late/never)
-                                existing_calls[-1] = incoming_call
-                            else:
-                                existing_calls.append(incoming_call)
-                elif segment_type == 'tool':
-                    current_segment["content"] = (current_segment.get("content") or '') + (token.get("content") or '')
-                else:
-                    content_key = "reasoning_content" if segment_type == 'reasoning' else 'content'
-                    current_segment[content_key] = (current_segment.get(content_key) or '') + (token.get("content") or '')
-
-            # tool responses need to be merged back into their corresponding tool calls
-            # so we maintain a response map that accumulates tool response content by tool_call_id
-            if token.get("type") == 'tool':
-                stream_response_map[token["tool_call_id"]] = token.get("content", '')
+            # per-token emit bookkeeping (queue() dedupes by identity:
+            # step DICTS compare equal, retract+attach touch the same one)
+            emit_steps.clear()
+            queued_ids.clear()
+            emit_final = False
+            retracted = None
 
             # ----
-            # yield logic:
-            # - for normal segments (reasoning, content, tool_calls), yield the current segment
-            #   with any available tool responses merged into the tool calls
-            # - for tool_response segments, we don't yield them directly. instead,
-            #   we update the last_tool_calls_segment with the new response and re-yield it.
+            # per-token machine. every branch mirrors a build_steps()
+            # folding rule; after the branch, the emit phase ships whatever
+            # this token touched (accumulated, never deltas - render by
+            # full replacement).
             # ----
-            if current_segment.get("type") != 'tool_response':
-                # merge tool responses into tool calls for display
-                if current_segment.get("tool_calls"):
-                    for tool in current_segment["tool_calls"]:
-                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                        # annotations live under the call's _metadata key
-                        meta = tool.setdefault("_metadata", {})
-                        if tool.get("id") in stream_response_map:
-                            meta["response"] = stream_response_map[tool["id"]]
-                            # precomputed failed flag (mirrors group_history)
-                            meta["failed"] = self._tool_call_failed(tool)
-                        # parsed args (mirrors group_history; unwraps tools_call)
-                        _stamp_args(tool)
-                        # arg summary on the (possibly unwrapped) args
-                        if meta.get("bridge"):
-                            meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
-                        else:
-                            meta["summary"] = self._tool_call_summary(tool)
-                    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                    # live step status + precomputed module display data
-                    current_segment["step_status"] = self._step_status(current_segment["tool_calls"])
-                    current_segment["modules"] = self._modules_for(current_segment["tool_calls"])
+            if token_type == 'reasoning':
+                for demoted in bump_step():
+                    queue(demoted)
+                step = get_step()
+
+                if provisional_final is not None:
+                    retracted = retract_final()
+
+                if last_token_type != 'reasoning':
+                    # new reasoning run inside this step: build_steps joins
+                    # a thought run's segments with a blank line
+                    if step["reasoning_content"]:
+                        step["reasoning_content"] += "\n\n"
+                    step["reasoning_live"] = True
+                    step["is_tail"] = True
+                    if not step["tool_calls"] and step["status"] == "thoughts":
+                        # a thought that resumes after a retract/resume is
+                        # live again: un-settle it so the dot pulses
+                        step["status"] = "thinking"
+
+                if token.get("content"):
+                    step["reasoning_content"] += token["content"]
+
+                stamp_label(step)
+                queue(step)
+
+            elif token_type == 'content':
+                if last_token_type != 'content' or provisional_final is None:
+                    # a content run opens as the PROVISIONAL FINAL: while it
+                    # is the newest thing in the stream it renders as an
+                    # answer bubble - mid-stream there is no way to know
+                    # whether a later segment pulls it back into the chain
+                    for demoted in bump_step():
+                        queue(demoted)
+
+                    settled = steps_by_num.get(step_num)
+                    if settled is not None and settled.get("is_tail"):
+                        # the open step's reasoning just completed
+                        settled["is_tail"] = False
+                        settled["reasoning_live"] = False
+                        if not settled["tool_calls"] and settled["reasoning_content"].strip():
+                            settled["status"] = "thoughts"
+                        stamp_label(settled)
+                        queue(settled)
+
+                    provisional_final = {
+                        "role": "assistant",
+                        "type": "content",
+                        "step": step_num,
+                        "content": token.get("content") or "",
+                        "label": "writing",
+                    }
+                    if token.get("is_cmd"):
+                        provisional_final["is_cmd"] = True
                 else:
-                    current_segment["step_status"] = "thinking"
-                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                # stamp the collapsed-header label, and skip yielding
-                # segments with nothing visible: they'd be ghost stations
-                current_segment["label"] = self._segment_label(current_segment)
-                if self._has_visible_chain_content(current_segment):
-                    yield {"type": "turn", "content": current_segment}
-            elif last_tool_calls_segment:
-                # tool response segment: update and re-yield the tool_calls segment instead
-                for tool in last_tool_calls_segment["tool_calls"]:
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                    # annotations live under the call's _metadata key
-                    meta = tool.setdefault("_metadata", {})
-                    if tool.get("id") in stream_response_map:
-                        meta["response"] = stream_response_map[tool["id"]]
-                        meta["failed"] = self._tool_call_failed(tool)
-                    _stamp_args(tool)
-                    if meta.get("bridge"):
-                        meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
-                    else:
-                        meta["summary"] = self._tool_call_summary(tool)
-                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                # responses landed: refresh the re-yielded step's status
-                last_tool_calls_segment["step_status"] = self._step_status(last_tool_calls_segment["tool_calls"])
-                last_tool_calls_segment["label"] = self._segment_label(last_tool_calls_segment)
-                yield {"type": "turn", "content": last_tool_calls_segment}
+                    provisional_final["content"] += token.get("content") or ""
+
+                emit_final = True
+
+            elif token_type == 'tool_calls':
+                if provisional_final is not None:
+                    retracted = retract_final()
+                for demoted in bump_step():
+                    queue(demoted)
+                step = get_step()
+
+                step["reasoning_live"] = False
+                step["is_tail"] = True
+                if token.get("tool_calls"):
+                    merge_tool_calls(step, token["tool_calls"])
+                step_has_tools = True
+                refresh_tools(step)
+                stamp_step(step)
+                queue(step)
+
+            elif token_type == 'tool':
+                # responses accumulate per call; the OWNING step re-emits
+                # (a late response can never land on the wrong step, unlike
+                # the old last-segment guesswork)
+                stream_response_map[token["tool_call_id"]] = (
+                    stream_response_map.get(token["tool_call_id"]) or ""
+                ) + (token.get("content") or "")
+                step = tools_owner.get(token["tool_call_id"])
+                if step is not None:
+                    refresh_tools(step)
+                    stamp_step(step)
+                    queue(step)
+
+            last_token_type = token_type
+
+            # ----
+            # emit phase: changed steps first (ghosts without any visible
+            # content are skipped), then final-snapshot changes: a retraction
+            # yields an EMPTY list, a growing provisional final yields itself
+            # (once it has visible text).
+            # ----
+            for step in emit_steps:
+                if step_is_visible(step):
+                    yield {"type": "step", "content": step}
+            if retracted is not None:
+                yield {"type": "final", "content": []}
+            if emit_final and (provisional_final.get("content") or "").strip():
+                yield {"type": "final", "content": [provisional_final]}
 

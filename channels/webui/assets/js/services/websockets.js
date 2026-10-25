@@ -206,8 +206,14 @@ async function handleWebSocketMessage(data) {
         case "user_message_confirmed":
             break;
 
-        case "turn_stream":
-            const segment = data.turn;
+        case "turn_step":
+        case "turn_final": {
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+            // step-based stream: the backend upserts step objects (already
+            // folded exactly like history steps) and ships authoritative
+            // final-bubble snapshots, so the live turn lives in the history
+            // shape - {steps, final_messages} - from its very first event.
+            // streamSteps()/streamTurnSplit() folding is gone.
 
             if (stream.turn.length <= 0) {
                 // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
@@ -215,7 +221,7 @@ async function handleWebSocketMessage(data) {
                 // a persisted assistant turn after the last user turn (tool
                 // rounds get saved to chat storage before the answer is
                 // final). The live turn - rebuilt in full from the backend's
-                // segment replay - is that snapshot's superset, so drop the
+                // snapshot replay - is that snapshot's superset, so drop the
                 // trailing assistant turns instead of rendering them twice.
                 while (chat.turnHistory.length > 0 &&
                        chat.turnHistory[chat.turnHistory.length - 1].role === 'assistant' &&
@@ -225,77 +231,87 @@ async function handleWebSocketMessage(data) {
 
                 // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
                 // the live turn joins turnHistory the moment its first
-                // segment arrives, flagged live. the streaming templates
+                // event arrives, flagged live. the streaming templates
                 // render it as a branch inside the turn x-for (reading the
                 // same object), and stream_complete promotes it in place
                 // (live -> false) instead of removing a streaming node and
                 // appending a history node - so the alpine-animation FLIP
                 // watching #messages never sees a remove+add when a stream
                 // finishes.
-                stream.turn = {role: "assistant", live: true, messages: []};
+                stream.turn = {role: "assistant", live: true, steps: [], final_messages: []};
                 chat.turnHistory.push(stream.turn);
                 Alpine.store('ui').syncMountWindows();
             }
 
-            // check if this updates the last segment or starts a new one
-            const last_idx = stream.turn.messages.length - 1;
-            const last_segment = stream.turn.messages[last_idx];
+            if (data_type === "turn_step") {
+                const step = data.step;
+                const steps = stream.turn.steps;
+                const stepIdx = steps.findIndex(s => s.step === step.step);
 
-            // same type and same tool_call_id = update existing segment
-            const is_update = last_segment &&
-                              last_segment.type === segment.type &&
-                              last_segment.tool_call_id === segment.tool_call_id;
+                let grew = false;
+                if (stepIdx >= 0) {
+                    const prev = steps[stepIdx];
+                    grew = (step.reasoning_content || '').length !== (prev.reasoning_content || '').length
+                        || (step.content || '').length !== (prev.content || '').length;
+                    // backend sends FULL accumulated content: mutate the
+                    // existing step in place - alpine's proxy set-trap
+                    // fires the same way, and the markdown cache + lazy-
+                    // height WeakMaps keep their object identity (the
+                    // 2026-09-16 lesson).
+                    Object.assign(prev, step);
+                } else {
+                    // steps arrive in order; sorting only ever matters for
+                    // late refreshes of an older step (a tool response
+                    // landing after the chain moved on)
+                    steps.push(step);
+                    steps.sort((a, b) => a.step - b.step);
+                    grew = true;
+                }
 
-            if (is_update) {
-                // backend sends FULL accumulated content.
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                // this used to swap in the fresh parsed segment object every
-                // token: pure garbage for the collector, and it churned the
-                // object identity that the markdown cache + lazy-height
-                // WeakMaps key on. mutate the existing message in place
-                // instead; alpine's proxy set-trap fires the same way.
-                Object.assign(last_segment, segment);
+                // token sounds ride actual text growth (a step re-emitted
+                // for a tool status flip stays silent, like the old
+                // tool-segment events were)
+                if (grew) {
+                    stream.processing = {};
+                    stream.modelLoad = null;
+                    AudioManager.stopProcessingSound();
+                    AudioManager.play("token");
+                    if (!responseSoundPlayed) {
+                        AudioManager.play("response_start");
+                        responseSoundPlayed = true;
+                    }
+                }
+
+                if (step.is_cmd) {
+                    await chat.reloadChats();
+                    await chat.reloadCategories();
+                }
             } else {
-                // new segment type (or new tool response), push it
-                stream.turn.messages.push(segment);
+                // authoritative final snapshot: replace wholesale, the
+                // empty list is a retract (content slid back into the chain)
+                stream.turn.final_messages = data.messages || [];
+
+                if (stream.turn.final_messages.length > 0) {
+                    stream.processing = {};
+                    stream.modelLoad = null;
+                    AudioManager.stopProcessingSound();
+                    AudioManager.play("token");
+                    if (!responseSoundPlayed) {
+                        AudioManager.play("response_start");
+                        responseSoundPlayed = true;
+                    }
+                }
+
+                if (stream.turn.final_messages.some(m => m.is_cmd)) {
+                    await chat.reloadChats();
+                    await chat.reloadCategories();
+                }
             }
 
             // scroll
             await ui.scrollToBottom();
-
-            // handle state based on the current segment
-            const current_segment = stream.turn.messages[stream.turn.messages.length - 1];
-            const segment_type = current_segment.type;
-
-            switch (segment_type) {
-                case "reasoning":
-                    stream.processing = {};
-                    stream.modelLoad = null;
-                    AudioManager.stopProcessingSound();
-                    AudioManager.play("token");
-                    if (!responseSoundPlayed) {
-                        AudioManager.play("response_start");
-                        responseSoundPlayed = true;
-                    }
-                    break;
-                case "content":
-                    stream.processing = {};
-                    stream.modelLoad = null;
-                    AudioManager.stopProcessingSound();
-                    AudioManager.play("token");
-                    if (!responseSoundPlayed) {
-                        AudioManager.play("response_start");
-                        responseSoundPlayed = true;
-                    }
-                    break;
-            }
-
-            if (current_segment.is_cmd) {
-                await chat.reloadChats();
-                await chat.reloadCategories();
-            }
-
             break;
+        }
 
         case "push":
             // it's a push messsage (like a scheduler reminder)
@@ -504,17 +520,25 @@ async function handleWebSocketMessage(data) {
                 else hist.push(userTurn);
             }
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-            // shape the streamed turn into the history format BEFORE pushing:
-            // a raw stream turn carries neither steps nor final_messages, so
-            // the pushed copy rendered as an empty bubble for the whole
-            // reloadChat round-trip below - the reply visibly collapsed and
-            // popped back in. streamSteps()/streamTurnSplit() are the exact
-            // folds the streaming templates use, so the history DOM mounts
-            // with identical content and the handoff frame is invisible.
-            const handoffSplit = streamTurnSplit(stream.turn);
-            stream.turn.steps = streamSteps(handoffSplit.chain);
-            stream.turn.final_messages = handoffSplit.final;
+            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+            // the live turn has been in the history shape (steps +
+            // final_messages, fed event by event by the backend step
+            // stream) since its first event, so there is no hand-off
+            // folding left to do. just flip the live-only flags off:
+            // reasoning headers drop their anonymous "Thinking.." state,
+            // the live-tail markdown mode ends, and a thought-only step
+            // gets the status history would give it. (the authoritative
+            // reloadChat below lands a frame later either way.)
+            (stream.turn.steps ?? []).forEach(s => {
+                s.reasoning_live = false;
+                s.is_tail = false;
+                if (s.status === 'thinking' && (!s.tool_calls || s.tool_calls.length === 0)) {
+                    s.status = 'thoughts';
+                }
+                if (s.label === 'Thinking..') {
+                    s.label = 'Thoughts';
+                }
+            });
 
             // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
             // promote the live turn in place: same object, same x-for

@@ -138,8 +138,16 @@ UI_STORE = {
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         // null-guard: a malformed/null message shouldn't kill the whole
         // lazy-mount placeholder computation
+        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara
+        // live turns are now step-shaped ({steps, final_messages}) with no
+        // raw messages list, so size those too
         const chars = (turn.messages || []).reduce(
             (n, m) => n + (m && typeof m.content === 'string' ? m.content.length : 200), 0
+        ) + (turn.steps || []).reduce(
+            (n, s) => n + (s && s.reasoning_content ? s.reasoning_content.length : 0)
+                + (s && s.content ? s.content.length : 0), 0
+        ) + (turn.final_messages || []).reduce(
+            (n, m) => n + (m && m.content ? m.content.length : 100), 0
         );
         return Math.min(400, Math.max(40, Math.round(chars / 6)));
     },
