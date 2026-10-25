@@ -1,9 +1,4 @@
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-   manage categories modal (opened from the sidebar's category dropdown) */
 .categories-modal {
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       fixed half-width / 40vh box; .categories-content scrolls when the
-       category list overflows */
     width: 50%;
     height: 40vh;
     max-width: 560px;

@@ -2,8 +2,6 @@
     #input {
         padding: 0;
         background: var(--bg-primary);
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-           positioning anchor for the context ring popup */
         position: relative;
         display: flex;
         flex-direction: column;
@@ -15,10 +13,6 @@
 
         .input-wrapper {
             display: flex;
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21)
-               stretch so the buttons fill the row's full height (and their
-               hover background reaches top to bottom) even while the
-               textarea autosizes taller */
             align-items: stretch;
             width: var(--chat-content-width);
             border: 1px solid var(--border-color);
@@ -29,9 +23,6 @@
         #upload {
             padding: 0;
             width: 48px;
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21)
-               stretches to the row's height; radius matches the wrapper's
-               left corners so its hover fill doesn't poke out of them */
             height: auto;
             border-radius: var(--radius-sm) 0 0 var(--radius-sm);
             background: none;
@@ -114,8 +105,6 @@
 
         #send, #stop {
             padding: 0 24px;
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21)
-               stretch to full row height, with the wrapper's right corners */
             height: auto;
             border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
             border: none;
@@ -218,9 +207,6 @@
 .indicator-dot:nth-child(1) { animation-delay: 0s; }
 .indicator-dot:nth-child(2) { animation-delay: 0.2s; }
 .indicator-dot:nth-child(3) { animation-delay: 0.4s; }
-
-
-
 
 /* ==========================================================================
  *  Token Bar Hidden State

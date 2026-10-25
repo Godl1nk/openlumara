@@ -85,9 +85,6 @@
                 gap: 2px;
                 padding: 0 8px;
 
-                /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-                   group separators between the core sections, the module
-                   block and the info-only sections */
                 .nav-divider {
                     border: none;
                     border-top: 1px solid var(--border-color);
@@ -126,10 +123,6 @@
                         box-shadow: inset 0 0 0 1px var(--border-color);
                     }
 
-                    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-                       per-category svg icon (see templates/modals/settings/
-                       sidebar.html). fixed slot so labels line up even for
-                       items without an icon (Restart Server, Logout) */
                     .item-icon {
                         display: inline-flex;
                         align-items: center;
@@ -157,10 +150,6 @@
                     gap: 1px;
                     padding: 4px 0 4px 12px;
 
-                    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-                       collapsible category headers for the module/channel sub-list.
-                       NOTE: rules here must out-specify the generic `.sub-list button`
-                       styling below, since the group header is a button too */
                     .sub-group {
                         display: flex;
                         flex-direction: column;
@@ -297,8 +286,6 @@
         color: var(--text-secondary);
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-       Manual-save footer: reset + save buttons, pinned below the body. */
     .settings-footer {
         display: flex;
         align-items: center;
@@ -358,8 +345,6 @@
         }
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-       Hint shown under the model field when no models are loaded yet. */
     .model-empty-note {
         margin: 4px 0 0 0;
         font-size: 13px;
@@ -367,9 +352,6 @@
         color: var(--text-muted);
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-       Unsaved-changes prompt: dims the modal and centers a small box
-       with save / don't save / cancel. clicking the dim backdrop cancels. */
     .close-prompt {
         position: fixed;
         inset: 0;
@@ -643,5 +625,4 @@
     }
 
 }
-
 

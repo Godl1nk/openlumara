@@ -35,8 +35,6 @@
         font-style: italic;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
-       tools_load: one soft chip per loaded module, box icon + name */
     .module-chips {
         display: flex;
         flex-wrap: wrap;
@@ -61,10 +59,6 @@
         }
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-       tools_load result: per-module sections, one row per fetched tool
-       (accent code name + dimmed description, ellipsised). rows form one
-       soft table via row borders; hover tint mirrors the grep box rows. */
     .tool-load-group {
         /* the (hidden) running-chips div stays a sibling, so separate on the
            group itself instead of relying on :first-child */
