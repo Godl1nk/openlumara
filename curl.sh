@@ -129,7 +129,10 @@ else
 fi
 
 cd "$INSTALL_DIR"
-say "${C_GRN}setup complete!${C_OFF} first launch installs dependencies into ./venv (this can take a minute)"
-say "to start OpenLumara later, just run: $INSTALL_DIR/run.sh"
+say "installing dependencies into ./venv (this can take a minute)..."
+sh ./install.sh < /dev/null || die "dependency install failed - see output above. retry with: sh $INSTALL_DIR/install.sh"
+
 echo
-exec sh ./run.sh "$@"
+say "${C_GRN}OpenLumara is installed!${C_OFF}"
+say "start it with:  $INSTALL_DIR/run.sh"
+say "tip: add a shortcut with:  ln -s \"$INSTALL_DIR/run.sh\" \"$HOME/.local/bin/openlumara\""
