@@ -12,7 +12,7 @@
 set -eu
 
 REPO_URL="${REPO_URL:-https://github.com/Rose22/openlumara}"
-BRANCH="${BRANCH:-main}"
+BRANCH="${BRANCH:-dev}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/openlumara}"
 MIN_PY="${MIN_PY:-3.12}"
 
