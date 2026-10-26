@@ -9,6 +9,8 @@ import random
 import concurrent.futures
 
 # prompt toolkit for better input, async prompting, command history, and so on
+import pygments.lexers
+
 import prompt_toolkit
 import prompt_toolkit.patch_stdout
 import prompt_toolkit.history
@@ -21,9 +23,13 @@ import rich
 import rich.console
 import rich.text
 import rich.status
+import rich.box
+import rich.panel
+import rich.padding
 import rich.progress
 import rich.markdown
 import rich.live
+import rich.syntax
 import rich.traceback
 
 # openlumara core
@@ -46,6 +52,24 @@ STATUS_ICONS = {
 
 # braille frames of rich's "dots" spinner
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+# tools whose code arguments deserve highlighting, and which of their
+# arguments are code (create streams one new blob, edit a before/after pair)
+CODE_ARGS_BY_TOOL = {
+    "coder_file_create": ("content",),
+    "coder_file_edit": ("original_code", "replacement_code"),
+}
+
+# file extension -> lexer name, mirroring the coder webui's READ_LANG_BY_EXT
+# map (modules/coder/webui/assets/js/custom_tool_views/shared.js)
+LEXER_BY_EXT = {
+    "py": "python", "js": "javascript", "mjs": "javascript", "ts": "typescript",
+    "json": "json", "html": "html", "xml": "xml", "css": "css", "scss": "scss",
+    "yml": "yaml", "yaml": "yaml", "md": "markdown", "rs": "rust", "go": "go",
+    "c": "c", "h": "c", "cpp": "cpp", "hpp": "cpp", "sh": "bash", "bash": "bash",
+    "toml": "ini", "ini": "ini", "sql": "sql", "java": "java", "rb": "ruby",
+    "php": "php", "txt": "text",
+}
 
 def tail_text(text, max_lines):
     """last max_lines lines of text, with a .. marker when lines were dropped.
@@ -84,8 +108,8 @@ def thought_snippet(text, limit=80):
 
 class StepTreeView:
     # live previews stay short so the live area never balloons past the screen
-    LIVE_REASONING_LINES = 2
-    LIVE_CONTENT_LINES = 4
+    LIVE_REASONING_LINES = 5
+    LIVE_CONTENT_LINES = 5
     LIVE_FINAL_LINES = 12
     LIVE_ARG_LINES = 6
 
@@ -97,6 +121,21 @@ class StepTreeView:
         self.progress = None
         self.progress_task = None
         self.show_progress = False
+        # parsed-markdown cache: {region key: (source, Markdown)}.
+        # the live area repaints far faster than tokens arrive, so only
+        # re-parse a region when its text actually changed
+        self.md_cache = {}
+        # same trick for highlighted code, keyed per tool call id so each
+        # streaming call keeps exactly one cached render
+        self.syntax_cache = {}
+
+    def _md(self, key, source):
+        cached = self.md_cache.get(key)
+        if cached is not None and cached[0] == source:
+            return cached[1]
+        rendered = rich.markdown.Markdown(source)
+        self.md_cache[key] = (source, rendered)
+        return rendered
 
     def _get_progress(self):
         if self.progress is None:
@@ -154,9 +193,47 @@ class StepTreeView:
 
         return line
 
+    def _syntax(self, tool_id, path, code):
+        # highlighter for a streaming code arg: lexer name picked from the
+        # file extension (same ext->lang map the coder webui uses), plain
+        # text as the last resort. cached per tool call: repaints outpace
+        # tokens.
+        cached = self.syntax_cache.get(tool_id)
+        if cached is not None and cached[0] == code:
+            return cached[1]
+
+        name = ""
+        if path and "." in path:
+            name = LEXER_BY_EXT.get(path.rsplit(".", 1)[-1].lower(), "")
+
+        # validate the name resolves in this pygments version (typescript
+        # etc. may be missing on older installs) before handing it to rich
+        if name:
+            try:
+                pygments.lexers.get_lexer_by_name(name)
+            except Exception:
+                name = ""
+        if not name:
+            try:
+                name = pygments.lexers.guess_lexer_for_filename(path or "x.py").name
+            except Exception:
+                name = "text"
+
+        # background_color=default: the border does the framing, so the
+        # theme's solid block background is off
+        rendered = rich.syntax.Syntax(code, name, word_wrap=False, background_color="default")
+        self.syntax_cache[tool_id] = (code, rendered)
+        return rendered
+
     def _arg_lines(self, tool):
+        # mirrors the webui tool card: one line per parsed argument, values
+        # growing as they stream (turns.py leniently parses partial args).
+        # long values show their tail only, like the card's auto-scroll.
         meta = tool.get("_metadata") or {}
         args = meta.get("args_parsed") or {}
+
+        tool_name = meta.get("display_name") or (tool.get("function") or {}).get("name")
+        code_args = CODE_ARGS_BY_TOOL.get(tool_name) or ()
 
         lines = []
         for key, value in args.items():
@@ -172,6 +249,19 @@ class StepTreeView:
                 text = str(value)
 
             shown = tail_text(text, self.LIVE_ARG_LINES)
+
+            # code args get their own highlighted block under the label,
+            # framed in a rounded border in the accent color
+            if key in code_args:
+                lines.append(rich.text.Text(f"      {key}:", style="dim"))
+                # cache per call AND arg: an edit streams two blocks with
+                # the same tool call id
+                syntax = self._syntax(f"{tool.get('id') or tool_name}:{key}", args.get("path") or "", shown)
+                accent = self.channel._get_accent_color()
+                panel = rich.panel.Panel(syntax, box=rich.box.ROUNDED, border_style=accent, padding=(0, 1))
+                lines.append(rich.padding.Padding(panel, (0, 0, 0, 4)))
+                continue
+
             first = True
             for ln in shown.splitlines():
                 arg = rich.text.Text()
@@ -211,16 +301,16 @@ class StepTreeView:
                 segments.append(("Thinking..", "italic"))
             else:
                 segments.append((thought_snippet(reasoning), ""))
-            if mods:
-                segments.append(("  " + mods, "dim"))
-            return segments
+            return segments, mods
 
-        if mods:
-            segments.append((mods, ""))
-        elif step.get("reasoning_live"):
-            segments.append(("Thinking..", "italic"))
-        else:
-            segments.append(("writing", "dim"))
+        # bare step: the chips themselves move to the right edge, so the
+        # left side keeps just the fallback label (or nothing at all when
+        # chips are there to identify the step)
+        if not mods:
+            if step.get("reasoning_live"):
+                segments.append(("Thinking..", "italic"))
+            else:
+                segments.append(("writing", "dim"))
 
         tool_calls = step.get("tool_calls") or []
         if len(tool_calls) == 1:
@@ -231,7 +321,7 @@ class StepTreeView:
             result = meta.get("result_summary") or ""
             if result:
                 segments.append(("  \u2192 " + result, "dim green"))
-        return segments
+        return segments, mods
 
     def _step_lines(self, step, live):
         accent = self.channel._get_accent_color()
@@ -246,12 +336,22 @@ class StepTreeView:
         else:
             icon, icon_style = STATUS_ICONS.get(status, ("·", "dim"))
 
+        segments, mods = self._header_segments(step)
+
         header = rich.text.Text()
         header.append(f" {icon} ", style=icon_style)
-        for i, (text, style) in enumerate(self._header_segments(step)):
+        for i, (text, style) in enumerate(segments):
             if i == 0 and is_tail:
                 style = (style + " " if style else "") + accent
             header.append(text, style=style)
+
+        # module chips pinned to the right edge of the terminal; the left
+        # part is ellipsis-truncated (and padded) to make room for them
+        if mods:
+            right_len = len(mods) + 1
+            avail = self.channel.console.width - right_len
+            header.truncate(max(avail, 8), overflow="ellipsis", pad=True)
+            header.append(" " + mods, style="dim")
 
         lines = [header]
 
@@ -266,8 +366,8 @@ class StepTreeView:
                     for ln in tail_text(reasoning, self.LIVE_REASONING_LINES).splitlines():
                         lines.append(rich.text.Text("     " + ln, style="dim italic"))
                 if content.strip():
-                    for ln in tail_text(content, self.LIVE_CONTENT_LINES).splitlines():
-                        lines.append(rich.text.Text("     " + ln))
+                    md = self._md(("step", step.get("step")), tail_text(content, self.LIVE_CONTENT_LINES))
+                    lines.append(rich.padding.Padding(md, (0, 0, 0, 4)))
 
                 for tool, tool_line in zip(step.get("tool_calls") or [], tool_lines):
                     lines.append(tool_line)
@@ -281,8 +381,8 @@ class StepTreeView:
             for ln in reasoning.rstrip().splitlines():
                 lines.append(rich.text.Text("     " + ln, style="dim italic"))
         if content.strip():
-            for ln in content.rstrip().splitlines():
-                lines.append(rich.text.Text("     " + ln))
+            md = self._md(("step", step.get("step")), content.rstrip())
+            lines.append(rich.padding.Padding(md, (0, 0, 0, 4)))
         if step.get("status") == "failed":
             lines.extend(tool_lines)
         return lines
@@ -298,12 +398,15 @@ class StepTreeView:
             lines.append(self.progress)
 
         if live:
-            for message in self.final_messages:
+            for i, message in enumerate(self.final_messages):
                 content = message.get("content") or ""
                 if not content.strip():
                     continue
-                for ln in tail_text(content, self.LIVE_FINAL_LINES).splitlines():
-                    lines.append(rich.text.Text(ln))
+                if message.get("is_cmd"):
+                    for ln in tail_text(content, self.LIVE_FINAL_LINES).splitlines():
+                        lines.append(rich.text.Text(ln))
+                else:
+                    lines.append(self._md(("final", i), tail_text(content, self.LIVE_FINAL_LINES)))
 
         if not lines:
             return rich.text.Text("")
