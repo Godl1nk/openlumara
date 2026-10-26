@@ -46,36 +46,43 @@ Here are some screenshots and videos of the Web UI:
 
 <!-- old webui: https://github.com/user-attachments/assets/c6bde601-022b-44c4-80b7-16ed6c7f74eb -->
 
+# Features
 > [!TIP]
 > Not sure how to use OpenLumara? Just ask your AI running on OpenLumara! It knows everything needed to get started.
 
-# Features
 Features:
 - Connects to any OpenAI API-compatible backend. That includes local AI (llamacpp, ollama, koboldcpp, and so on) and many cloud AI providers.
 - Fully private and self-hosted, if you want it to be. You could also run it on a cloud server.
-- Modular. You can turn any component on or off, including what other AI agent frameworks consider core components. Shell access is just a module and is disabled by default for security. Memory, the scheduler, time-awareness, token-awareness, and so on, are all modules and can all be turned off. You can turn absolutely everything off to the point your system prompt is empty and you're just talking to the base model!
-- To turn modules on and off, you can use the `/module` command, or edit the config file. Or, if the `modules` module is enabled (disabled by default for security), you can simply ask the AI to toggle a module for you.
+- Modular. You can turn any component on or off, including what other harnesses consider core components. Shell access is just a module and is disabled by default for security. Memory, the scheduler, time-awareness, token-awareness, and so on, are all modules and can all be turned off. You can turn absolutely everything off to the point your system prompt is empty and you're just talking to the base model!
+- To turn modules on and off, you can use the webui's settings dialog, or the `/module` command, or edit the config file. Or, if the `modules` module is enabled (disabled by default for security), you can simply ask the AI to toggle a module for you.
+- Modules can grant new tools to the AI, give you new `/commands` to use, and even [extend and modify the webui to a very extreme extent](https://www.reddit.com/r/LocalLLaMA/comments/1x26vvo/been_a_while_since_i_posted_about_my_harness/). 
 - Scheduler system that allows you to schedule tasks for the AI to do
 - Laser focused on token efficiency. You can see how big the context window (input tokens) is at any time using `/status`, and even see exactly what's being sent using `/context`.
 - Sandboxed shell (as a toggleable module) that runs inside a docker/podman container. You have fine-grained control over this container, including the ability to cut it off from the internet, and even what docker image to run
 - You can switch between models on the fly. The AI can see what models are available to it on your chosen API provider, and you can ask it to switch to a different model. You can also do it manually using the `/model` command, which is great if you've turned tools off.
-- Optional character system module. First, enable the `characters` module. Then you can add, edit and remove characters, switch between them, and set your user profile! Just ask the AI to do those things, or use the `/character` command. Can be used as a replacement to Character.AI, Janitor AI, SillyTavern, and so on. When a character is active, it disables all other prompts, so that the system prompt is purely your character! They are tied to your current chat session, so if you have a character active in the webUI for example, it won't mess with your telegram session. And if you load a chat that had a character active, it'll auto-load it again.
+- Optional character system module. First, enable the `characters` module. Then you can add, edit and remove characters, switch between them, and set your user profile! You'll have a special interface for it in the webui, thanks to webui extensions, but you can also just ask the AI to manage your characters, or use the `/character` command. Can be used as a replacement to Character.AI, Janitor AI, SillyTavern, and so on. When a character is active, it disables all other prompts, so that the system prompt is purely your character! They are tied to your current chat session, so if you have a character active in the webUI for example, it won't mess with your telegram session. And if you load a chat that had a character active, it'll auto-load it again.
 - Memory system! Works by letting the AI save memories, or having you ask it to. Also a module, so you can simply turn it off! Saves data in messagepack format, which is compact and very fast.
 - Command system that bypasses the AI completely. Lets you do things like force restart the server using `/restart` no matter what the AI is doing.
-- Modules are simple python classes with a few custom functions. Very easy to develop for! A proper plugin downloading system is coming later.
+- Modules are simple python classes with a few custom functions. Very easy to develop for!
 
 # How to install
 
-Either run this command for a quick and fast installation:
+Run this command for a fast and easy installation on Linux and Mac:
 ```
 curl -fsSL https://raw.githubusercontent.com/Rose22/openlumara/main/curl.sh | sh
+```
+
+You can inspect the script first if you don't trust it:
+```
+wget https://raw.githubusercontent.com/Rose22/openlumara/main/curl.sh
 ```
 
 Or manually do a git clone:
 ```
 git clone https://github.com/Rose22/openlumara
 ```
-Doing it this way will let update.sh (on linux) and update.bat (on windows) update your instance of openlumara easily. You can also choose to download the zip, but the update scripts won't work that way, because they use git.
+
+You can also choose to download the zip, but the update scripts won't work that way, because they use git.
 
 Once you have openlumara, run `run.sh` if you're on linux, `run.bat` if you're on windows!
 
