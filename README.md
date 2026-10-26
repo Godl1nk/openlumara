@@ -53,7 +53,12 @@ Features:
 
 # How to install
 
-Run this command in a terminal or your command prompt:
+Either run this command for a quick and fast installation:
+```
+curl -fsSL https://raw.githubusercontent.com/Rose22/openlumara/main/curl.sh | sh
+```
+
+Or manually do a git clone:
 ```
 git clone https://github.com/Rose22/openlumara
 ```
