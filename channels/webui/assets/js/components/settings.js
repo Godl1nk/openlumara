@@ -99,7 +99,7 @@ function settingsModal() {
         collapseChainDefault: localStorage.getItem('collapseChainDefault') === 'true',
         // 'Step display mode' dropdown: default | thinking | steps.
         stepDisplayMode: localStorage.getItem('stepDisplayMode') || 'default',
-        tokenFadeMs: localStorage.getItem('tokenFadeMs') || '500',
+        tokenFadeMs: localStorage.getItem('tokenFadeMs') || '750',
 
         get activeNavCategory() {
             return this.activeModule ? 'modules' : 
