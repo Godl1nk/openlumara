@@ -121,18 +121,20 @@ class StepTreeView:
         self.progress = None
         self.progress_task = None
         self.show_progress = False
-        # parsed-markdown cache: {region key: (source, Markdown)}.
         # the live area repaints far faster than tokens arrive, so only
         # re-parse a region when its text actually changed
         self.md_cache = {}
-        # same trick for highlighted code, keyed per tool call id so each
-        # streaming call keeps exactly one cached render
+        # same trick for highlighted code, keyed per tool call
         self.syntax_cache = {}
+        # fitted-live-render memo
+        self.dirty = 0
+        self.render_cache = None
 
     def _md(self, key, source):
         cached = self.md_cache.get(key)
         if cached is not None and cached[0] == source:
             return cached[1]
+        
         rendered = rich.markdown.Markdown(source)
         self.md_cache[key] = (source, rendered)
         return rendered
@@ -141,6 +143,7 @@ class StepTreeView:
         if self.progress is None:
             self.progress = rich.progress.Progress(expand=False, auto_refresh=False)
             self.progress_task = None
+            
         return self.progress
 
     def set_progress(self, desc, percent):
@@ -158,7 +161,9 @@ class StepTreeView:
             progress.update(self.progress_task, description=desc, completed=None, total=None)
         else:
             progress.update(self.progress_task, description=desc, completed=percent / 100, total=1)
+            
         self.show_progress = True
+        self.dirty += 1
 
     def update_step(self, step):
         num = step.get("step") or 0
@@ -168,9 +173,11 @@ class StepTreeView:
         
         # real content arrived: any progress bar is obsolete now
         self.show_progress = False
+        self.dirty += 1
 
     def set_final(self, messages):
         self.final_messages = messages or []
+        self.dirty += 1
 
     def _tool_line(self, tool):
         meta = tool.get("_metadata") or {}
@@ -194,10 +201,7 @@ class StepTreeView:
         return line
 
     def _syntax(self, tool_id, path, code):
-        # highlighter for a streaming code arg: lexer name picked from the
-        # file extension (same ext->lang map the coder webui uses), plain
-        # text as the last resort. cached per tool call: repaints outpace
-        # tokens.
+        """syntax highlighting"""
         cached = self.syntax_cache.get(tool_id)
         if cached is not None and cached[0] == code:
             return cached[1]
@@ -226,9 +230,7 @@ class StepTreeView:
         return rendered
 
     def _arg_lines(self, tool):
-        # mirrors the webui tool card: one line per parsed argument, values
-        # growing as they stream (turns.py leniently parses partial args).
-        # long values show their tail only, like the card's auto-scroll.
+        """parses streaming toolcalls"""
         meta = tool.get("_metadata") or {}
         args = meta.get("args_parsed") or {}
 
@@ -275,7 +277,7 @@ class StepTreeView:
         return lines
 
     def _modules_text(self, step):
-        # module chips, webui-style: "Coder: file edit x2, Shell: run"
+        # module chips: "Coder: file edit x2, Shell: run"
         groups = []
         for group in step.get("modules") or []:
             actions = []
@@ -283,12 +285,16 @@ class StepTreeView:
                 name = (action.get("name") or "").replace("_", " ")
                 if not name:
                     continue
+                    
                 count = action.get("count") or 1
                 if count > 1:
                     name += f" x{count}"
+                    
                 actions.append(name)
+                
             if actions:
                 groups.append(f"{group.get('module')}: {', '.join(actions)}")
+                
         return ", ".join(groups)
 
     def _header_segments(self, step):
@@ -303,9 +309,6 @@ class StepTreeView:
                 segments.append((thought_snippet(reasoning), ""))
             return segments, mods
 
-        # bare step: the chips themselves move to the right edge, so the
-        # left side keeps just the fallback label (or nothing at all when
-        # chips are there to identify the step)
         if not mods:
             if step.get("reasoning_live"):
                 segments.append(("Thinking..", "italic"))
@@ -316,9 +319,11 @@ class StepTreeView:
         if len(tool_calls) == 1:
             meta = tool_calls[0].get("_metadata") or {}
             summary = meta.get("summary") or ""
+            
             if summary:
                 segments.append((" " + summary, "dim"))
             result = meta.get("result_summary") or ""
+            
             if result:
                 segments.append(("  \u2192 " + result, "dim green"))
         return segments, mods
@@ -388,6 +393,12 @@ class StepTreeView:
         return lines
 
     def render(self, live=True):
+        cache_key = None
+        if live:
+            cache_key = (self.dirty, int(time.monotonic() * 8), self.channel.console.height)
+            if self.render_cache is not None and self.render_cache[0] == cache_key:
+                return self.render_cache[1]
+
         lines = []
 
         for num in self.order:
@@ -410,13 +421,41 @@ class StepTreeView:
 
         if not lines:
             return rich.text.Text("")
+        
+        if live:
+            lines = self._fit_viewport(lines)
+            group = rich.console.Group(*lines)
+            self.render_cache = (cache_key, group)
+            return group
+        
         return rich.console.Group(*lines)
 
     def final_answer_messages(self):
         return [m for m in self.final_messages if (m.get("content") or "").strip()]
 
+    def _height(self, renderables):
+        total = 0
+        for renderable in renderables:
+            total += len(self.channel.console.render_lines(renderable))
+        return total
+
+    def _fit_viewport(self, lines):
+        heights = [self._height([ln]) for ln in lines]
+        budget = self.channel.console.height - 1
+
+        total = sum(heights)
+        dropped = 0
+        if total > budget:
+            # the ".. N lines above" marker itself costs a line
+            while total + 1 > budget and len(lines) > 1:
+                total -= heights.pop(0)
+                lines.pop(0)
+                dropped += 1
+            lines.insert(0, rich.text.Text(f"  .. {dropped} lines above", style="dim"))
+        return lines
+
 class Cli(core.channel.Channel):
-    """A basic CLI channel for openlumara"""
+    """A CLI channel for openlumara"""
 
     running = True
 
@@ -593,7 +632,7 @@ class Cli(core.channel.Channel):
                     console=self.console,
                     refresh_per_second=60,
                     transient=True,
-                    vertical_overflow="visible",
+                    vertical_overflow="ellipsis",
                 )
                 live.start()
             else:
