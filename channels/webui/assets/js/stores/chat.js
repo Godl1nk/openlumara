@@ -1,13 +1,3 @@
-/*
- * -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
- * turns carry a backend-stamped content hash (core/turns.py turn_hash):
- * reloading a chat keeps the *existing* turn objects around for every
- * turn whose hash didn't actually change. alpine's x-for keys turns by
- * index, so handing it a fresh array of fresh objects re-seeds the scope
- * of every single turn, re-running every x-html (i.e. re-parsing the
- * markdown of your entire conversation on every reload). the old
- * deep-equality walk (turnsEqual) is gone: one string compare per turn.
- */
 function mergeTurnHistory(existing, incoming) {
     incoming = incoming || [];
     if (!Array.isArray(existing) || existing.length === 0) return incoming;
@@ -20,18 +10,6 @@ function mergeTurnHistory(existing, incoming) {
             : incoming[i];
     }
 
-    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-    // keep a live streaming turn across reloads. the old rule dropped the
-    // live tail whenever the incoming history merely *ended* on an
-    // assistant turn - but mid-stream, tool rounds are already persisted
-    // to chat storage, so the fetched history DOES end on an assistant
-    // turn while the stream is still running: the live turn got orphaned on
-    // every reload during a tool call and no further tokens rendered.
-    // the reliable marker is the last USER turn: every assistant turn after
-    // it in the incoming history is the backend-persisted (partial) snapshot
-    // of the response that is still streaming - a subset of the live turn,
-    // which is the fresh superset. replace that trailing run with the live
-    // tail instead of dropping it.
     const tail = existing[existing.length - 1];
     if (tail && tail.live === true) {
         let lastUser = -1;
@@ -47,9 +25,6 @@ function mergeTurnHistory(existing, incoming) {
     return merged;
 }
 
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-// safe read of the persisted tag filter: corrupt localStorage must not
-// break the whole store at init time.
 function parseStoredTags() {
     try {
         const parsed = JSON.parse(localStorage.getItem('sidebarTagFilter') || '[]');
@@ -64,20 +39,10 @@ CHAT_STORE = {
      * alpine.js store for chat state
      */
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       option d: the sidebar shows ALL day headers at once (cheap
-       /api/chats/days listing), and chats are fetched per-day only when
-       a group is expanded (paginated per day via /api/chats/day).
-       group shape: {key, label, count, chats, offset, hasMore, loading,
-       loaded}. the old flat visibleChats/chatOffset pagination is gone. */
     dayGroups: [],
     chatLimit: 10,
     dayFetchGen: 0,
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       the chat object the 'move to category' modal targets (the whole
-       object, not just the id: moved chats can come from search results,
-       which don't live in the day groups) */
     moveChatTarget: null,
 
     categories: [],
@@ -92,11 +57,6 @@ CHAT_STORE = {
     user_input: '',
     last_user_input: '',
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-    // shell-style input history (global across chats).
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-    // persisted backend-side now (/api/input_history); localStorage stays
-    // as an instant-display cache while the server copy loads.
     inputHistory: JSON.parse(localStorage.getItem('input_history') || '[]'),
     historyIndex: -1,
     draftValue: '',
@@ -152,6 +112,8 @@ CHAT_STORE = {
 
     currentTokenUsage: 0,
 
+    contextBreakdown: null,
+
     async load() {
         // called by Alpine.init
         await this.reloadCategories();
@@ -163,31 +125,11 @@ CHAT_STORE = {
         this.chat = result;
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        // resplit trailing content runs (pushed announcements) into separate
-        // assistant bubbles, same as reloadChat()
-        (result.turn_history || []).forEach(resplitHistoryTurn);
-
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        // merge, never blanket-assign: init connects the websocket BEFORE
-        // this fetch runs, so a mid-stream reload can already have a live
-        // turn in turnHistory (rebuilt from the backend's segment replay)
-        // by the time this resolves. a direct assignment orphaned it and
-        // every token after that updated a detached object - the original
-        // "reload during a stream shows nothing" regression.
         this.turnHistory = mergeTurnHistory(this.turnHistory, result.turn_history);
         this.currentTokenUsage = result.token_usage;
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-        // bottom-up: mount the tail of the chat before the initial
-        // scroll-to-bottom lands on it
         Alpine.store('ui').prepareBottomWindow();
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // only fetch the chat list AFTER selectedCategory is known: it
-        // used to load first (scoped to 'general'), then the category
-        // flipped to the loaded chat's category, and the x-if category
-        // filter hid every (wrongly-scoped) chat in the sidebar.
         await this.reloadChats();
 
         // ensure the chat exists in the visible sidebar list before scrolling
@@ -208,11 +150,6 @@ CHAT_STORE = {
 
         const ui = Alpine.store('ui');
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-        // full reset before the swap: x-for keys turns by index, so
-        // assigning straight away would reuse the previous chat's turn
-        // elements (and their per-turn dom state). clear, flush, then
-        // build the new chat from scratch.
         this.turnHistory = [];
         ui.resetTurnMounts();
         await Alpine.nextTick();
@@ -220,19 +157,12 @@ CHAT_STORE = {
         this.chat = result;
         this.selectedChat = chatId;
         this.selectedCategory = result.category;
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        // resplit trailing content runs (pushed announcements) into separate
-        // assistant bubbles, same as reloadChat()
-        (result.turn_history || []).forEach(resplitHistoryTurn);
         this.turnHistory = result.turn_history;
         this.currentTokenUsage = result.token_usage;
 
         // bottom-up: mount the tail of the chat before scrolling to it
         ui.prepareBottomWindow();
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-        // the open chat's day group must be expanded (and the chat
-        // itself loaded), so the active item is never hidden
         await this.ensureChatVisible(chatId);
 
         // make sure it always shows the bottom of the chat
@@ -242,20 +172,11 @@ CHAT_STORE = {
     /* ----------------------
      * sidebar search
      * ----------------------- */
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-    // searching now uses the backend /api/chats/search endpoint (the same
-    // one the global search modal uses): one request, all matches, no
-    // pagination. while searching, the paginated visibleChats list simply
-    // freezes (the scroll loader is hidden), so clearing the box is a pure
-    // mode switch back to it - no refetch needed.
     searchQuery: '',
     searchResults: [],
     searchLoading: false,
     searchDebounce: null,
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-    // content search is opt-in via the toggle button next to the search
-    // field (default: titles only), persisted across sessions.
     searchInContent: localStorage.getItem('sidebarSearchInContent') === 'true',
 
     get searching() { return Boolean(this.searchQuery.trim()); },
@@ -263,12 +184,6 @@ CHAT_STORE = {
     /* ----------------------
      * tag filter (sidebar)
      * ----------------------- */
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-       multi-select tag filter, toggled by the tag button next to the
-       search field; the panel lives above the chat list. AND semantics:
-       a chat must carry every selected tag. selection is persisted;
-       availableTags is scoped to the selected category and refreshed
-       with every list reload. */
     selectedTags: parseStoredTags(),
     availableTags: [],
 
@@ -277,12 +192,6 @@ CHAT_STORE = {
     },
 
     async loadTags() {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-        // never let a failed tag fetch break the chat list: on error we
-        // simply keep the previously known tags.
-        // catParam() yields '&category=..' (meant for URLs that already
-        // have a '?'): start the query string here, otherwise the param
-        // becomes part of the path itself and the request 404s.
         const qs = this.catParam();
         const url = `/api/chats/tags${qs ? `?${qs.slice(1)}` : ''}`;
 
@@ -326,11 +235,6 @@ CHAT_STORE = {
     /* ----------------------
      * day groups (sidebar)
      * ----------------------- */
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-       option d: /api/chats/days lists every day that has chats (cheap,
-       no chat data), so all headers render instantly. chats are only
-       fetched for EXPANDED groups, paginated per day. default: today
-       expanded, everything else collapsed; an explicit toggle wins. */
     collapsedDays: {},
 
     tzOffset() {
@@ -358,20 +262,11 @@ CHAT_STORE = {
         const collapse = !this.isGroupCollapsed(group);
         this.collapsedDays[group.key] = collapse;
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-        // on expand, fill the viewport: the per-group loader can appear
-        // already in view, and x-intersect (entry-only) won't fire for
-        // it. run the fill loop after the DOM updated.
         if (!collapse) {
             Alpine.nextTick(() => this.ensureDayChatsFilled(group));
         }
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-    // keep loading pages for one day group while its loader is visible
-    // in the .chats scroll container, so a newly expanded group always
-    // shows chats (and x-intersect can take over from there: once
-    // content pushes the loader out of view, entry events drive it).
     async ensureDayChatsFilled(group, el) {
         while (true) {
             // the x-if may have (re)rendered the loader: re-resolve it
@@ -407,10 +302,6 @@ CHAT_STORE = {
     displayGroups() {
         if (!this.searching) { return this.dayGroups; }
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        // results arrive newest-first with group_key/group_label already
-        // stamped by the backend (same grouping rules as /api/chats/days),
-        // so this is a pure bucketing pass - no date logic on this side.
         const groups = [];
         const byKey = {};
 
@@ -426,15 +317,9 @@ CHAT_STORE = {
         return groups;
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-    // fetch the day header list, then (re)load the chats of every group
-    // that is currently expanded. a generation counter discards stale
-    // in-flight requests when the list reloads again (fast category
-    // switches, deletes, etc).
     async reloadDayGroups() {
         const gen = ++this.dayFetchGen;
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
         // tagParam() narrows day counts to the active tag filter
         const groupList = await simpleApiFetch(
             `/api/chats/days?tz_offset=${this.tzOffset()}${this.catParam()}${this.tagParam()}`
@@ -445,8 +330,6 @@ CHAT_STORE = {
 
         this.dayGroups = (groupList ?? []).map(g => ({
             key: g.key,
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            // labels come pre-computed from the backend now
             label: g.label,
             count: g.count,
             chats: [],
@@ -461,9 +344,6 @@ CHAT_STORE = {
                 .map(g => this.loadDayChats(g))
         );
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-        // first pages are in: fill the viewport of every expanded group
-        // (a loader that renders already-visible never fires x-intersect)
         await Alpine.nextTick();
         await Promise.all(
             this.dayGroups.filter(g => !this.isGroupCollapsed(g))
@@ -508,9 +388,6 @@ CHAT_STORE = {
 
         // re-run the active search so the mode switch applies immediately
         clearTimeout(this.searchDebounce);
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-02)
-        // blank stale results while the re-run is in flight, same as
-        // setSearchQuery does
         if (this.searching) {
             this.searchResults = [];
             this.searchLoading = true;
@@ -530,10 +407,6 @@ CHAT_STORE = {
             return;
         }
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-02)
-        // wipe the previous query's results immediately so the stale
-        // list doesn't linger while the new search is pending (the
-        // 'searching..' row takes its place)
         this.searchResults = [];
         this.searchLoading = true;
 
@@ -543,8 +416,6 @@ CHAT_STORE = {
 
     async _runChatSearch(q) {
         this.searchLoading = true;
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-        // search respects the active tag filter
         const results = await this.searchGlobal(q, this.searchInContent, this.selectedCategory, this.selectedTags);
 
         // stale: query changed or was cleared while the request was in flight
@@ -554,14 +425,7 @@ CHAT_STORE = {
         this.searchLoading = false;
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-    // option d: reloading the sidebar = reloading the day header list
-    // (which re-fetches the chats of every expanded group). collapsed
-    // groups cost one cheap day-list request, nothing else.
     async reloadChats() {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-        // refresh the tag list alongside the chats (cheap): keeps the
-        // filter panel in sync with deletes/retags/category switches.
         await this.loadTags();
         await this.reloadDayGroups();
 
@@ -570,11 +434,6 @@ CHAT_STORE = {
         if (this.searching) { await this._runChatSearch(this.searchQuery.trim()); }
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-    // walk the day groups (newest first), loading each one's chats
-    // until the target chat shows up, then expand its group. usually it
-    // hits immediately in the already-loaded today group; opening an old
-    // chat walks back through the days (without expanding them).
     async ensureChatVisible(chatId) {
         for (const group of this.dayGroups) {
             if (group.chats.some(c => c.id === chatId)) {
@@ -602,11 +461,6 @@ CHAT_STORE = {
     },
 
     async newChat(category = null) {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // create the chat inside the given category, falling back to the
-        // currently selected one (the endpoint defaults to 'general' when
-        // nothing is sent). the category modal passes an explicit name to
-        // create a brand new category: a category exists once a chat uses it.
         await simpleApiPost('/api/chat/new', { category: category ?? this.selectedCategory });
 
         result = await simpleApiFetch('/api/chat/current');
@@ -617,18 +471,11 @@ CHAT_STORE = {
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
         this.currentTokenUsage = result.token_usage;
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        // resplit trailing content runs (pushed announcements) into separate
-        // assistant bubbles, same as reloadChat()
-        (result.turn_history || []).forEach(resplitHistoryTurn);
         this.turnHistory = result.turn_history;
 
         // the new chat may live in a category the dropdown doesn't list yet
         await this.reloadCategories();
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-        // a new chat always lives in 'today' - force that group open even
-        // if it was manually collapsed, so the new chat is visible
         this.collapsedDays[this.todayKey()] = false;
 
         await this.reloadChats();
@@ -640,10 +487,6 @@ CHAT_STORE = {
         await this.reloadChats();
     },
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       move a chat to another category. if it's the open chat, its own
-       category changed too - reload it and re-scope the sidebar list so
-       the moved chat (and the now-current category's chats) stay visible. */
     async moveChat(chat_id, category) {
         await simpleApiPost(`/api/chat/set-category/${chat_id}`, { category: category });
 
@@ -661,11 +504,6 @@ CHAT_STORE = {
 
         await simpleApiPost(`/api/chat/delete/${chat_id}`);
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // refreshing the category list after every delete keeps the
-        // dropdown in sync: if the last chat of a category was removed,
-        // its option disappears; if that was the selected category,
-        // fall back to 'general' (or the first remaining one).
         await this.reloadCategories();
 
         const cats = this.categories ?? [];
@@ -678,10 +516,6 @@ CHAT_STORE = {
         await this.reloadChats();
     },
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       delete a category: the backend moves all of its chats to 'general'.
-       if it was the selected category, fall back; reloadChat() because the
-       currently open chat may itself have just moved to 'general'. */
     async deleteCategory(name) {
         await simpleApiPost('/api/chats/categories/delete', { name: name });
 
@@ -712,31 +546,13 @@ CHAT_STORE = {
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        // re-split trailing runs of consecutive content-only assistant
-        // messages (the assistant's answer + pushed announcements) into one
-        // final bubble each, BEFORE merging: deterministic on the same
-        // messages, so hash-matched existing turns were resplit identically
-        // and keep their identity across reloads.
-        (result.turn_history || []).forEach(resplitHistoryTurn);
-
         // reuse the existing turn objects for every turn that didn't actually
         // change, so alpine doesn't re-render (and re-parse the markdown of)
         // the entire conversation on every single reload
         this.turnHistory = mergeTurnHistory(this.turnHistory, result.turn_history);
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-        // keep the lazy-mount windows in sync with the (possibly shifted)
-        // history: prune stale indices, mount the newest turns so a fresh
-        // message never flashes in as a placeholder, re-evaluate the
-        // near-viewport window
         Alpine.store('ui').syncMountWindows();
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // if the backend switched us to a chat in another category, the
-        // sidebar list is now scoped to the wrong category (everything
-        // would vanish behind the x-if filter) - refetch it, and make
-        // sure the newly selected chat is in the list.
         if (result.category !== prevCategory) {
             await this.reloadCategories();
             await this.reloadChats();
@@ -748,11 +564,6 @@ CHAT_STORE = {
         this.categories = await simpleApiFetch('/api/chats/categories');
     },
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-       the backend returns the list pre-sorted (alphabetical, 'general'
-       pinned first); all that's left here is guaranteeing the selected
-       category is present even if the backend list doesn't contain it
-       yet - a select whose value matches no option renders blank. */
     dropdownCategories() {
         let cats = [...(this.categories ?? [])];
         if (this.selectedCategory && !cats.includes(this.selectedCategory)) {
@@ -762,13 +573,6 @@ CHAT_STORE = {
         return cats;
     },
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-       the select's :value binding goes through this instead of
-       selectedCategory directly: touching this.categories makes alpine's
-       effect re-run when the option list changes, so the value is
-       re-applied even if it was set before the options existed (a plain
-       :value effect only tracks selectedCategory and would leave the
-       dropdown blank). */
     dropdownValue() {
         void (this.categories ?? []).length;
         return this.selectedCategory;
@@ -803,14 +607,9 @@ CHAT_STORE = {
             return;
         }
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
         // record the sent text in the input history before clearing the box
         this.pushInputHistory(text);
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-        // no optimistic state write: the backend announces message_sending
-        // via stream_state the moment it accepts the stream, so all open
-        // tabs flip together instead of only this one.
         await this.clearInput();
 
         // handle any files the user may have attached
@@ -841,7 +640,6 @@ CHAT_STORE = {
             files: files
         });
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
         // if the message never made it onto the socket, restore the draft
         // (and keep any attached files) so the user can retry
         if (success === false) {
@@ -888,10 +686,6 @@ CHAT_STORE = {
                 "type": "message_regenerate",
                 "index": turn.first_message_index
             });
-
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-            // no state write: the backend's start_stream announces
-            // message_sending over websocket once the regenerate begins.
         });
     },
 
@@ -926,7 +720,6 @@ CHAT_STORE = {
      * ----------------------- */
     async export() {
         try {
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
             // the backend returns {content, filename}: title->filename
             // sanitization moved server-side
             const result = await simpleApiFetch('/api/chat/export');
@@ -956,11 +749,6 @@ CHAT_STORE = {
      * ----------------------- */
     async searchGlobal(query, searchInContent = true, category = null, tags = [], sort = 'updated') {
         try {
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            // the backend returns results already sorted newest-first and
-            // stamped with group_key/group_label + pre-highlighted title
-            // and snippets; tz_offset lets it bucket days in our local
-            // calendar (JS getTimezoneOffset, minutes behind UTC).
             return await simpleApiPost('/api/chats/search', {
                 query: query,
                 search_in_content: searchInContent,
@@ -987,7 +775,6 @@ CHAT_STORE = {
      * chat-specific getters
      * ----------------------- */
     get promptprogress() {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         // llama.cpp router model-load progress takes over the indicator
         // while a model is being swapped in, before prompt eval begins.
         const load = Alpine.store("stream").modelLoad;
@@ -1014,10 +801,6 @@ CHAT_STORE = {
             };
         }
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        // percent + ETA are computed backend-side now (core/turns.py
-        // enriches every prompt_progress token); this getter only shapes
-        // the strings the indicator template consumes.
         const progressData = Alpine.store("stream").processing;
 
         const cache = progressData.cache || 0;

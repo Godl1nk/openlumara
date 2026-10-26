@@ -1,6 +1,6 @@
 /*
  * Multi-Provider API & Model Management Component
- * Controls the Header Quick Switcher and the Model Providers Management Modal.
+ * Controls the header quick switcher and the API settings page.
  */
 
 const PRESET_URLS = {

@@ -31,13 +31,6 @@ SETTINGS_STORE = {
             .sort(([a, catA], [b, catB]) => (catA.order || 0) - (catB.order || 0));
     },
 
-    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-    // (the old flat `filteredSubItems` getter was replaced by groupedSubItems)
-    // groups all (enabled + disabled) items of a module category by the category
-    // each module/channel declares on its class. returns [{ label, items }] with
-    // named categories sorted alphabetically and uncategorized items ("Other")
-    // last. the label is empty when there is nothing to group by (single unnamed
-    // group), so the templates can hide the header entirely in that case.
     get groupedSubItems() {
         return (cat, enabledOnly = false) => {
             const catData = this.categories[cat];
@@ -72,7 +65,6 @@ SETTINGS_STORE = {
 
     // --- Init & Load ---
     async init() {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         // admin lockdown: the settings endpoints are blocked server-side,
         // so skip loading them entirely instead of erroring on 403s.
         if (window.ADMIN_SETTINGS_DISABLED) return;
@@ -86,10 +78,6 @@ SETTINGS_STORE = {
         this.error = null;
 
         try {
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            // the backend now returns the fully merged, render-ready
-            // category tree (schemas + values), so the client-side
-            // structure builder and the module-info round-trip are gone.
             const payload = await simpleApiFetch('/api/settings/load');
 
             this.categories = payload.categories;
@@ -114,11 +102,6 @@ SETTINGS_STORE = {
         try {
             this.apiStatus = await simpleApiFetch("/api/check_connection");
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-            // once the api is reachable again, retire any stale model-load
-            // error (e.g. from the earlier blur-detect on the api url
-            // field). the "no models found" hint stays, since the list
-            // itself is still empty until the user presses refresh.
             if (this.apiStatus) {
                 this.modelsLoadError = null;
             }
@@ -154,11 +137,6 @@ SETTINGS_STORE = {
         console.log("saving settings to server..");
 
         try {
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            // send the (edited) category tree straight through; the
-            // backend flattens it back into raw config itself, and now
-            // also tells us whether the changes require a server restart
-            // or an API reconnect (the client-side config diffing is gone)
             const result = await simpleApiPost('/api/settings/save', {
                 categories: JSON.parse(JSON.stringify(this.categories)),
                 changed_modules: Array.from(this.changedModuleSettings)
@@ -203,18 +181,6 @@ SETTINGS_STORE = {
         }
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-    // discard all pending edits: restore the category tree from the
-    // snapshot taken at the last load/save and forget dirty modules.
-    // used by the reset button in the settings modal footer.
-    //
-    // IMPORTANT: values are restored IN PLACE instead of swapping the
-    // categories object. the field widgets capture their `setting` object
-    // once (x-data="{ setting: ... }"), so a wholesale replacement leaves
-    // every rendered input pointing at the old edited objects and the dom
-    // never updates - reset appeared to do nothing. walking the existing
-    // tree and writing the snapshot values back mutates the very objects
-    // the dom is bound to, so every field snaps back.
     resetChanges() {
         const restore = (target, source) => {
             for (const key of Object.keys(target)) {

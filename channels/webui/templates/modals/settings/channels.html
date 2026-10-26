@@ -30,10 +30,6 @@
             <p class="section-desc" x-html="renderMarkdown($store.settings.categories[activeCategory].descriptions[activeChannel]) || ''"></p>
             
             <template x-if="$store.settings.categories[activeCategory].settings[activeChannel] && $store.settings.categories[activeCategory].settings[activeChannel].value">
-                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                     dependency x-show -> x-if templates: settings whose dependencies
-                     are unmet now unmount their whole field widget instead of
-                     just hiding it. -->
                 <template x-for="hierarchyItem in getHierarchicalSettings()" :key="hierarchyItem.key">
                     <template x-if="$store.settings.showUnsafe || !hierarchyItem.setting.unsafe">
                         <template x-if="checkDependency(hierarchyItem.setting.depends)">

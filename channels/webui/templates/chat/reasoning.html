@@ -1,66 +1,36 @@
-{% if not config.get('enable_chain_expansion') %}
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-     reasoning display disabled: static, non-expandable stub so the user
-     still sees activity. label flips Thinking.. -> Thoughts just like the
-     real block, but there is no content and no click handler. -->
-<div class="reasoning-wrapper collapsed" :class="{ 'is-reasoning-active': !done }"
-     x-data="{ done: $store.stream.state === 'idle' }"
-     x-effect="const msgs = $store.stream.turn?.messages ?? []; const isLast = msgs[msgs.length - 1] === message; done = $store.stream.state === 'idle' || !isLast">
-    <div class="header">
-        {% include 'svg/thought_bubble.svg' %}
-        <span class="text">
-            <span class="label" x-text="done ? 'Thoughts' : 'Thinking..'"></span>
-            <span class="dots" x-show="!done"><span aria-hidden="true">&nbsp;</span><span aria-hidden="true">&nbsp;</span><span aria-hidden="true">&nbsp;</span></span>
-        </span>
-    </div>
-</div>
-{% else %}
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-     Auto-collapse reasoning once it's done thinking: a reasoning block is
-     finished when it's no longer the last segment of the live stream (a
-     content/tool_calls segment followed it) or the stream went idle.
-     autoCollapsed guards against re-collapsing if the user expands it again.
-     -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
-     the Appearance setting collapseThinkingDefault makes a live thinking
-     block start collapsed (header only, "Thinking.."); with it off the
-     block streams expanded and auto-collapses once done, as before. -->
 <div :class="{'reasoning-wrapper': true, 'collapsed': collapsed, 'expanded': !collapsed, 'is-reasoning-active': !done}"
-     x-data="{collapsed: $store.stream.state === 'idle' || localStorage.getItem('collapseThinkingDefault') === 'true', autoCollapsed: false, done: $store.stream.state === 'idle'}"
-     x-effect="const msgs = $store.stream.turn?.messages ?? []; const isLast = msgs[msgs.length - 1] === message; done = $store.stream.state === 'idle' || !isLast; if (done && !autoCollapsed) { autoCollapsed = true; if (localStorage.getItem('collapseThinkingDefault') !== 'true') collapsed = true }"
+     x-data="{
+             collapsed: $store.stream.state === 'idle' || ['thinking','steps'].includes(localStorage.getItem('stepDisplayMode')),
+             autoCollapsed: false,
+             done: $store.stream.state === 'idle'
+     }"
+     x-effect="
+               const msgs = $store.stream.turn?.messages ?? [];
+               const isLast = msgs[msgs.length - 1] === message;
+               done = $store.stream.state === 'idle' || !isLast; if (done && !autoCollapsed) {
+                   autoCollapsed = true; 
+                   if (!['thinking','steps'].includes(localStorage.getItem('stepDisplayMode'))) {
+               	       collapsed = true;
+                   }
+               }"
      @click="collapsed = !collapsed">
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-         timeline node: circle + chevron on the spine, mirrors collapsed state -->
     <div class="node-dot" :class="{expanded: !collapsed}">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"></polyline></svg>
     </div>
     <div class="header">
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-             chevron for reasoning rendered OUTSIDE an agent chain (the final
-             block after Process); inside a chain the node dot owns this role -->
         <svg class="standalone-chevron" :class="{'expanded': !collapsed}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 6 15 12 9 18"></polyline>
         </svg>
         {% include 'svg/thought_bubble.svg' %}
         <span class="text">
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                 Label flips from 'Thinking..' to 'Thoughts' once the block is
-                 done; animated dots only show while actively thinking. -->
             <span class="label" x-text="done ? 'Thoughts' : 'Thinking..'"></span>
             <span class="dots" x-show="!done"><span aria-hidden="true">&nbsp;</span><span aria-hidden="true">&nbsp;</span><span aria-hidden="true">&nbsp;</span></span>
         </span>
     </div>
 
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-         x-if (on a proper <template>!) instead of x-show: collapsed reasoning
-         text is now fully unmounted instead of sitting in the dom for the
-         lifetime of the tab. reasoning blocks are often the largest text in
-         tool-heavy chats. -->
     <div x-show="!collapsed" x-collapse.duration.250>
         <div class="block">
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                 x-fade-text: streamed reasoning fades in per token, like content -->
             <div class="content" x-fade-text="message.reasoning_content" x-auto-scroll></div>
         </div>
     </div>
 </div>
-{% endif %}

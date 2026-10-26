@@ -8,6 +8,7 @@ class Calculator(core.module.Module):
 
     dependencies = ["simpleeval"]
 
+    @core.module.tool
     async def calculate(self, expression: str):
         try:
             result = simpleeval.simple_eval(expression)

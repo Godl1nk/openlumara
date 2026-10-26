@@ -52,9 +52,11 @@ class Docs(core.module.Module):
             return None
         return f"## Documentation can be fetched from these folders:\n{', '.join(folders)}"
 
+    @core.module.tool
     async def get_topics(self):
         return self.result(await self._get_folder_names())
 
+    @core.module.tool
     async def list(self, folder: str, subfolder: str = None):
         try:
             folder_path = await self._get_folder_path(folder)
@@ -84,6 +86,7 @@ class Docs(core.module.Module):
             "instruction": "You can call docs_list again with a subfolder to navigate deeper, or use docs_read to read a file."
         })
 
+    @core.module.tool
     async def read(self, folder: str, path: str):
         folder_path = await self._get_folder_path(folder)
         # remove the folder from the requested path in case the AI decided to double-add it

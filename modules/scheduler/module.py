@@ -509,6 +509,7 @@ Use tools if needed. For simple reminders, do not use tools.
     # Tools (LLM Interface)
     # ---------------------------------------------------------
 
+    @core.module.tool
     async def add_job(
         self,
         action: str,
@@ -622,6 +623,7 @@ Use tools if needed. For simple reminders, do not use tools.
         except Exception as e:
             return self.result(f"error: {e}", False)
 
+    @core.module.tool
     async def edit_job(
         self,
         id: str,
@@ -759,6 +761,7 @@ Use tools if needed. For simple reminders, do not use tools.
         except Exception as e:
             return self.result(f"error: {e}", False)
 
+    @core.module.tool
     async def remove_job(self, id: str):
         """Removes a scheduled job by ID."""
         index = self._get_index(id)
@@ -964,3 +967,21 @@ Use tools if needed. For simple reminders, do not use tools.
 
         self.schedule.load()
         return await self.remove_job(job_id)
+
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    # one-line RESULT hint for the webui tool header (port of the old JS
+    # summary callback): echo when the job fires. private by naming
+    # convention (the loader only registers @core.module.tool methods).
+    # called by turns.TurnCollector.on_result_summary once a response exists;
+    # crashes are swallowed by the caller and output is flattened/capped there.
+    def on_tool_summary(self, name, args, response):
+        match name:
+            case "scheduler_add_job":
+                # mirrors the JS ?? chain: fall through only on absent/null
+                when = args.get("relative_duration")
+                if when is None:
+                    when = args.get("target_time")
+                if when is None:
+                    return ""
+                return str(when)
+        return ""

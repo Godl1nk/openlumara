@@ -1,4 +1,4 @@
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
+// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) status:reviewed
 /* drop-in replacements for x-text / x-html that fade newly streamed
    content in instead of popping it into existence. used for reasoning
    text, tool call arguments and tool responses.

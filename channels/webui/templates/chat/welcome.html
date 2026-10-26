@@ -1,15 +1,6 @@
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-     friendly welcome panel shown when the selected chat has no
-     messages yet. gated on chat.id so it doesn't flash during
-     initial load before the current chat has been fetched. -->
-<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-     slots render into variables first: when at least one module extends
-     the welcome panel, the greeting (sparkle + title + hint) steps aside
-     so the module content gets the stage. trim guards against slots that
-     only produce whitespace. -->
 {% set slot_above = extension_slot("above_message") %}
 {% set slot_below = extension_slot("below_message") %}
-<template x-if="$store.chat.turnHistory.length === 0 && !$store.stream.turn.messages">
+<template x-if="$store.chat.turnHistory.length === 0 && !$store.stream.turn.steps">
     <div class="welcome-panel">
         {{ slot_above }}
 

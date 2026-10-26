@@ -1,8 +1,7 @@
 # Aegis
 
 Aegis is a self-hosted AI agent workspace: a modular, token-efficient Python agent
-core with a fast Alpine.js WebUI, a CLI, a native Qt GUI, and chat-channel
-integrations. It talks to any OpenAI-compatible backend — local `llamacpp`,
+core with a fast Alpine.js WebUI, a CLI, and chat-channel integrations. It talks to any OpenAI-compatible backend — local `llamacpp`,
 `llama-swap`, `ollama`, `vllm`, or a cloud provider — and keeps the system prompt
 small enough to leave most of the context for actual work.
 

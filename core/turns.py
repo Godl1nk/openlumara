@@ -6,13 +6,6 @@ import re
 
 import partial_json_parser
 
-# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-# parse streamed tool-call arguments with partial_json_parser (same
-# approach as core/channel.py): the backend parses what it can at every
-# yield point and stamps `args_parsed` onto each tool call, so channels
-# only ever render a plain object. a `_raw` fallback mirrors the old
-# frontend behaviour for non-JSON argument blobs.
-
 def parse_lenient_json(raw):
     """parse a (possibly incomplete) JSON object string into a plain dict.
     never raises: falls back to {'_raw': text} for non-JSON input."""
@@ -28,13 +21,9 @@ def parse_lenient_json(raw):
 
 
 def turn_hash(turn):
-    """stable content hash for a grouped turn. channels can reuse their
-    existing turn object when the hash is unchanged instead of deep-diffing
-    every message on every history reload."""
+    """stable content hash for a grouped turn"""
     parts = []
     for message in turn.get("messages", []):
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        # display annotations live under the tool call's _metadata key
         calls = ",".join(
             f"{tc.get('id')}:{(tc.get('_metadata') or {}).get('response')}"
             for tc in (message.get("tool_calls") or [])
@@ -55,6 +44,8 @@ class TurnCollector:
     """
     this takes a raw openAI messages array and turns it into a grouped list of dicts,
     where a "turn" is a group of any assistant/tool messages inbetween a user's request
+    
+    (but now we use steps, which is like a sub-turn.. where it groups reasoning, content, and its associated toolcalls together into one "step")
 
     so basically, a user makes their request, then the response gets grouped into one single object
     that contains multiple messages, grouped by type (reasoning, content, toolcall, etc)
@@ -65,6 +56,55 @@ class TurnCollector:
     now available in the core for any channel to use :)
     """
 
+    def __init__(self, channel=None):
+        self.channel = channel
+
+    def on_result_summary(self, tool, meta):
+        """ask the module that owns this tool for a one-line result hint.
+
+        a module may define  on_tool_summary(self, name, args, response) -> str;
+        """
+        try:
+            if "response" not in meta:
+                return ""
+            
+            # bridged (tools_call) calls summarize as the tool they wrap
+            name = meta.get("display_name") or (tool.get("function") or {}).get("name")
+            
+            if not name:
+                return ""
+            
+            loader = getattr(self.channel, "tool_loader", None)
+            if loader is None:
+                return ""
+            
+            entry = loader.catalog.get(name)
+            if entry is None:
+                return ""
+            
+            module = self.channel.manager.modules.get(entry["module"])
+            hook = getattr(module, "on_tool_summary", None)
+            if not callable(hook):
+                return ""
+            
+            response = meta.get("response")
+            if isinstance(response, str):
+                try:
+                    response = json.loads(response)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                
+            text = hook(name, meta.get("args_parsed") or {}, response)
+            if not text:
+                return ""
+            
+            text = str(text).strip()
+            if not text:
+                return ""
+            return text.splitlines()[0][:120]
+        except Exception:
+            return ""
+
     async def group_history(self, history):
         """
         Groups all finalized messages from history into turns.
@@ -74,12 +114,6 @@ class TurnCollector:
         current_assistant_turn = None
 
         for index, msg in enumerate(history):
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-            # copy the message before stamping anything onto it: turns hold
-            # references to the stored chat messages, and in-place annotations
-            # (index, and the tool call annotations further down) rewrote chat
-            # storage, which changed already-sent context and invalidated the
-            # provider-side prompt cache on the next build.
             msg = dict(msg)
 
             role = msg.get('role')
@@ -130,30 +164,21 @@ class TurnCollector:
 
             for msg in turn["messages"]:
                 if msg.get("tool_calls"):
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                    # rebuild the tool_calls list with copies of each call: the
-                    # original dicts are shared with chat storage (shallow copies
-                    # all the way down), so annotating in place rewrote stored
-                    # history and invalidated the provider-side prompt cache.
                     annotated_tools = []
                     for tool in msg["tool_calls"]:
                         tool = dict(tool)
-                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                        # all display annotations go under _metadata (mirroring
-                        # the message-level convention). context.get() strips
-                        # _metadata off tool calls before the API call, so even
-                        # a leaked copy can never bloat requests or invalidate
-                        # the provider-side prompt cache.
                         meta = {}
                         tool["_metadata"] = meta
                         if tool.get("id") in response_map:
                             meta["response"] = response_map[tool["id"]]
                         # precompute the failed flag so channels don't
                         # re-parse every response just to tint a card
+                        
                         meta["failed"] = self._tool_call_failed(tool)
                         # ... and the parsed arguments (plus the one-line arg
                         # summary for headers). tools_call proxies are unwrapped
                         # so the card shows the proxied call, not the wrapper.
+                        
                         raw_args = (tool.get("function") or {}).get("arguments")
                         parsed_args = parse_lenient_json(raw_args)
                         bridge_name, bridge_args = self._bridge_from_args(
@@ -168,19 +193,14 @@ class TurnCollector:
                         else:
                             meta["args_parsed"] = parsed_args
                             meta["summary"] = self._tool_call_summary(tool)
+                            
+                        meta["result_summary"] = self.on_result_summary(tool, meta)
                         annotated_tools.append(tool)
                     msg["tool_calls"] = annotated_tools
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # stamp a content hash per turn so channels can keep their existing
-        # turn objects (and their render caches) on reloads by comparing
-        # one string instead of deep-diffing every message.
         for turn in turns:
             turn["hash"] = turn_hash(turn)
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # fold each assistant turn's chain into display steps so channels
-        # don't re-derive the agentic-step grouping themselves.
         for turn in turns:
             if turn["role"] != "assistant":
                 continue
@@ -190,28 +210,22 @@ class TurnCollector:
 
         return turns
 
-    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-    # -- step model: ports of the webui frontend's chainDisplay()/
-    # -- historyTurnSplit() grouping. a step = one reasoning/content run
-    # -- plus the tool calls it leads to (or a tool-less thinking-only step).
-    # -- steps carry precomputed "modules" display data so templates only
-    # -- need to render, never to group.
-
     @staticmethod
     def _tool_call_failed(tool):
         # a tool call failed when its parsed response is {status: "error"}
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
         # response lives under the call's _metadata key
         response = (tool.get("_metadata") or {}).get("response")
+        
         if response is None:
             return False
+        
         try:
             parsed = json.loads(response) if isinstance(response, str) else response
         except (json.JSONDecodeError, TypeError):
             return False
+        
         return isinstance(parsed, dict) and parsed.get("status") == "error"
 
-    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
     # one-line arg summary for completed tool call headers, ported from
     # the webui frontend's toolCallArgsSummary(): the single most
     # informative argument value, paths keep their tail.
@@ -246,12 +260,8 @@ class TurnCollector:
             return "false"
         return str(value)
 
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
     # tools_call (and friends) proxy the real call as {name, params}.
-    # display-wise we unwrap that: the card shows the proxied call's name
-    # and arguments, never the wrapper. unwrap results live under the call's
-    # _metadata (display_name + swapped args_parsed), so requests and stored
-    # history are untouched.
+    # display-wise we unwrap that
     BRIDGE_TOOLS = ("tools_call",)
 
     @classmethod
@@ -267,28 +277,9 @@ class TurnCollector:
         if tool_name not in cls.BRIDGE_TOOLS or not isinstance(wrapper_args, dict):
             return None, None
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-        # trust the name only once it is terminated in the raw stream: the
-        # JSON is complete (history / final delta) or the value is closed by
-        # its own quote ("name": "foo"). the old "a sibling key parsed beside
-        # it" heuristic was order-dependent: with arguments-before-name the
-        # completed arguments sibling let the still-growing name value
-        # ("c" -> "co" -> ...) through, flickering the header and registry
-        # match during the last ~1% of the stream.
         name = wrapper_args.get("name")
         name = name.strip() if isinstance(name, str) and name.strip() else None
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # partial_json_parser can choke on wrapper payloads dominated by one
-        # huge escaped string (the string-typed params transport): the lenient
-        # parse degrades to {_raw: ...} and the name - even though it completed
-        # long ago - never surfaces, so _bridge_from_args returns (None, None)
-        # and the card stays the raw tools_call wrapper for the whole live turn
-        # (custom views match the UNWRAPPED name only; it fixes itself on the
-        # next history reload, which is why this looked intermittent).
-        # json_repair reads those payloads fine, so retry with it whenever the
-        # lenient wrapper parse yielded no usable name. The termination check
-        # below still gates still-growing values, so headers never flicker.
         if name is None and raw:
             try:
                 repaired_wrapper = json_repair.loads(raw)
@@ -322,20 +313,10 @@ class TurnCollector:
             if not complete:
                 name = None
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # the bridge args key is 'params' now (sorts after 'name' so models emit
-        # the name first); 'arguments' stays supported for old chat history.
         inner = wrapper_args.get("params")
         if inner is None:
             inner = wrapper_args.get("arguments")
         if isinstance(inner, str):
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-            # transport format: arguments rides as a JSON-encoded string so the
-            # provider streams it token by token (object-typed nested values
-            # arrive as one atomic chunk - bridge debug log 2026-10-21). the
-            # lenient parser surfaces the partial string value; json_repair
-            # then decodes whatever of the inner json exists so far into a
-            # growing dict (it never raises).
             inner_parsed = parse_lenient_json(inner)
             if "_raw" in inner_parsed:
                 try:
@@ -345,15 +326,8 @@ class TurnCollector:
             inner = inner_parsed if isinstance(inner_parsed, dict) else None
         elif inner is not None and not isinstance(inner, dict):
             inner = None
+            
         if inner is None and raw:
-            # partial-JSON parsers can DROP an in-progress nested value
-            # entirely: while the wrapper's "arguments" object is unclosed
-            # it may never surface in the lenient wrapper parse, leaving the
-            # unwrap blind until the JSON completes - which is precisely why
-            # long bridged args showed nothing while streaming. slice the
-            # inner value out of the raw text and parse it ON ITS OWN: a
-            # top-level partial object hits the same lenient path that makes
-            # native (unbridged) tool args stream.
             started = re.search(r'"(?:arguments|params)"\s*:\s*[{"\[]', raw)
             if started:
                 chunk = raw[started.end() - 1:]
@@ -361,12 +335,6 @@ class TurnCollector:
                 if isinstance(sliced, dict) and "_raw" not in sliced:
                     inner = sliced
                 else:
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-                    # string-typed params transport: the slice starts at a QUOTE,
-                    # so it parses to a plain str (or {_raw}) and used to be
-                    # dropped here - raw wrapper card again. two-step it instead:
-                    # decode the (partial) string literal, then json_repair the
-                    # embedded json it holds into a growing dict.
                     try:
                         cand = json_repair.loads(chunk)
                         if isinstance(cand, str):
@@ -402,10 +370,6 @@ class TurnCollector:
 
     @classmethod
     def _tool_call_summary(cls, tool):
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # lenient parse instead of strict json.loads: headers can now show
-        # the arg summary LIVE while arguments stream in, not only once
-        # the full JSON is complete.
         raw = (tool.get("function") or {}).get("arguments")
         if not isinstance(raw, str):
             return ""
@@ -418,9 +382,6 @@ class TurnCollector:
         counts = {}
         order = []
         for tool in tool_calls or []:
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-            # prefer the unwrapped bridge name so proxied calls group under
-            # their real module ("Calendar: add event", not "Tools: call")
             fn = TurnCollector._display_name(tool)
             if not fn:
                 continue
@@ -493,21 +454,17 @@ class TurnCollector:
         return False
 
     def build_steps(self, messages):
-        # split a finalized assistant turn's messages into (steps, final).
-        # the last content-without-toolcalls message is the final answer;
-        # everything else is the chain. reasoning riding on the final
-        # answer becomes its own trailing Thoughts step (copies, the
-        # stored messages are never mutated).
-        final_index = -1
-        for i in range(len(messages) - 1, -1, -1):
-            if self._is_final_content(messages[i]):
-                final_index = i
-                break
+        """split a finalized assistant turn's messages into (steps, final)"""
+        final_indices = set()
+        i = len(messages) - 1
+        while i >= 0 and self._is_final_content(messages[i]):
+            final_indices.add(i)
+            i -= 1
 
         chain = []
         final = []
         for i, message in enumerate(messages):
-            if i == final_index:
+            if i in final_indices:
                 if isinstance(message.get("reasoning_content"), str) and message["reasoning_content"].strip():
                     chain_copy = dict(message)
                     chain_copy["content"] = ""
@@ -602,69 +559,54 @@ class TurnCollector:
 
     async def group_stream(self, stream_generator):
         """
-        this takes the raw stream generator and yields 'streaming turn' objects
-        as tokens come in.
+        this takes the stream object and yields the in-progress turn
+        as step objects (dicts), shaped exactly like the steps
+        build_steps() produces for history.
 
-        this way, we can display each segment throughout the UI, seperately,
-        using whatever layout and components we want!
+        events yielded:
+          {"type": "token", "content": raw_token}
+              unchanged passthrough of every raw token (user messages,
+              api errors, prompt progress, usage, ...)
+          {"type": "step", "content": step}
+              a step keyed by the step number. the step carries the same
+              fields as a history step (step, status, reasoning_content,
+              content, tool_calls, modules, label) plus two live-only flags:
+                reasoning_live: while the AI is still reasoning
+                is_tail:        while the step is the open end of the chain
+          {"type": "final", "content": [messages]}
+              a turn's final message(s), decided at the very end of the stream.
+              during the steam, there is no way to determine which message is final,
+              because a `content` token can at any time be followed up with `reasoning`
+              or `tool_calls`.
 
-        it's basically a state machine that groups tokens into segments.
-        a segment is just a group of tokens of the same type.
-
-        unlike normal streaming deltas, these tokens accumulate,
-        and are meant to be used in UI's where you can fully replace the content of a UI component
-        with the new content with the newly streamed tokens added
-
-        since an assistant response can contain multiple kinds of content in sequence,
-        like reasoning -> content -> tool_calls -> tool responses -> more reasoning -> final answer (reasoning+content)
-        we need to track when the type changes so we can create a new segment.
-
-        it creates a clear separation between types of content,
-        where all you ever need to do is create a new UI element when the segment type changes,
-        without worrying about merging the different types of tokens manually
+        values accumulate: every event carries
+        the full current text of the object it updates, so a UI can render
+        by full replacement, and a reconnecting client only ever needs the
+        latest snapshot per step number.
 
         this used to be exclusive to the webUI, handled in the frontend.
         but since this is now in the core, it can be used in *ANY* channel.
 
         usage: (from within your channel's run()):
-          async for partial_turn in self.get_streaming_turns(
-              self.send_stream("user's message") 
+          async for event in self.get_streaming_turns(
+              self.send_stream("user's message")
           ):
-              do_whatever_with(partial_turn)
-
-        the state machine works like this:
-        - if the token type changes, we create a new segment and start filling it
-        - if the token type stays the same, we keep appending to the current segment
-        - for tool responses, we don't yield them as segments,
-          instead we merge their responses back into the corresponding tool_calls segment
+              do_whatever_with(event)
         """
 
-        current_segment = None
-        last_segment_type = None
         stream_response_map = {}
-        last_tool_call_id = None
-        last_tool_calls_segment = None
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-1)
-        # -- step tracking: reasoning/content runs and the tool calls they
-        # -- lead to share one step number; the step increments when a new
-        # -- segment starts after the current one already attached tools
-        # -- (that step is then complete). consumers accumulate steps from
-        # -- the active-step-only yields by grouping on the step field.
         step_num = 0
         step_has_tools = False
+        steps = []
+        steps_by_num = {}
+        tools_owner = {}
+        provisional_final = None
+        last_token_type = None
 
-        # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-        # monotonic args_parsed cache keyed by tool call id: a mid-stream
-        # parse can never yield fewer keys than what was already sent.
+        # args_parsed cache keyed by tool call id
         args_cache = {}
-        # same idea for unwrapped bridge calls: the inner arguments object
-        # resolved from the raw wrapper stream (see _bridge_from_args).
         inner_cache = {}
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # once a bridge call's real name resolved mid-stream, keep it: a later
-        # token whose parse hiccups (or drops the name) must never regress the
-        # card from the unwrapped view back to the raw tools_call wrapper.
         name_cache = {}
 
         def _stamp_args(tool):
@@ -676,12 +618,7 @@ class TurnCollector:
                 parsed = prev
             else:
                 args_cache[tool_id] = parsed
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-            # annotations live under the call's _metadata key
             meta = tool.setdefault("_metadata", {})
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-            # unwrap tools_call proxies order-agnostically so bridged calls
-            # render as the real call while streaming too (mirrors history)
             bridge_name, bridge_args = self._bridge_from_args(
                 (tool.get("function") or {}).get("name"), parsed, raw
             )
@@ -710,13 +647,144 @@ class TurnCollector:
                     meta["display_name"] = name_cache[tool_id]
                 meta["args_parsed"] = bridge_args if bridge_args is not None else {}
 
+        emit_steps = []
+        queued_ids = set()
+
+        def queue(step):
+            if step is not None and id(step) not in queued_ids:
+                queued_ids.add(id(step))
+                emit_steps.append(step)
+
+        def bump_step():
+            """open a new step number when the current one is closed off
+            (no step yet, or it already attached tools). demotes the old
+            tail so exactly one step ever carries is_tail."""
+            nonlocal step_num, step_has_tools
+
+            demoted = []
+            if step_num == 0 or step_has_tools:
+                for s in steps:
+                    if s.get("is_tail"):
+                        s["is_tail"] = False
+                        s["reasoning_live"] = False
+                        if not s["tool_calls"] and s["status"] == "thinking":
+                            s["status"] = "thoughts"
+                        stamp_label(s)
+                        demoted.append(s)
+                step_num += 1
+                step_has_tools = False
+            return demoted
+
+        def get_step():
+            step = steps_by_num.get(step_num)
+            if step is None:
+                step = {
+                    "step": step_num,
+                    "status": "thinking",
+                    "reasoning_content": "",
+                    "content": "",
+                    "tool_calls": [],
+                    "modules": [],
+                    "label": "",
+                    "reasoning_live": False,
+                    "is_tail": True,
+                }
+                steps.append(step)
+                steps_by_num[step_num] = step
+            return step
+
+        def stamp_step(step):
+            step["modules"] = self._modules_for(step["tool_calls"])
+            if step["tool_calls"]:
+                step["status"] = self._step_status(step["tool_calls"])
+            stamp_label(step)
+
+        def stamp_label(step):
+            # same builder as before, but a settled thought reads Thoughts
+            # (the idle-state rename the frontend used to do live-side only)
+            label = self._segment_label(step)
+            if label == "Thinking.." and not step["reasoning_live"]:
+                label = "Thoughts"
+            step["label"] = label
+
+        def step_is_visible(step):
+            return bool(
+                step["tool_calls"]
+                or step["reasoning_content"].strip()
+                or step["content"].strip()
+            )
+
+        def retract_final():
+            """fold the provisional final bubble back into its step
+            (build_steps joins a thought run's content with \n\n).
+            returns the step to re-emit, or None when nothing remained."""
+            nonlocal provisional_final
+
+            message = provisional_final
+            provisional_final = None
+
+            text = message.get("content") or ""
+            step = steps_by_num.get(step_num)
+            if step is None and not text.strip() and not message.get("is_cmd"):
+                return None
+
+            step = step or get_step()
+            if message.get("is_cmd"):
+                step["is_cmd"] = True
+            if text.strip():
+                step["content"] = (step["content"] + "\n\n" if step["content"] else "") + text
+            step["reasoning_live"] = False
+            step["is_tail"] = True
+            stamp_label(step)
+            return step
+
+        def refresh_tools(step):
+            for tool in step["tool_calls"]:
+                # annotations live under the call's _metadata key
+                meta = tool.setdefault("_metadata", {})
+                if tool.get("id") in stream_response_map:
+                    meta["response"] = stream_response_map[tool["id"]]
+                    # precomputed failed flag (mirrors group_history)
+                    meta["failed"] = self._tool_call_failed(tool)
+                # parsed args (mirrors group_history; unwraps tools_call)
+                _stamp_args(tool)
+                # arg summary on the (possibly unwrapped) args
+                if meta.get("bridge"):
+                    meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
+                else:
+                    meta["summary"] = self._tool_call_summary(tool)
+                    
+                # module-owned one-line result hint, live path (mirrors group_history)
+                meta["result_summary"] = self.on_result_summary(tool, meta)
+
+        def merge_tool_calls(step, incoming_calls):
+            existing_calls = step["tool_calls"]
+            for incoming_call in incoming_calls:
+                # copy on insert: shared with the stored message's tool calls
+                incoming_call = dict(incoming_call)
+                call_id = incoming_call.get("id")
+                if call_id:
+                    for idx, existing_call in enumerate(existing_calls):
+                        if existing_call.get("id") == call_id:
+                            existing_calls[idx] = incoming_call
+                            break
+                    else:
+                        existing_calls.append(incoming_call)
+                elif existing_calls and not existing_calls[-1].get("id"):
+                    # no id to match on: assume it continues the last
+                    # id-less call (providers that stream ids late/never)
+                    existing_calls[-1] = incoming_call
+                else:
+                    existing_calls.append(incoming_call)
+            for tc in existing_calls:
+                if tc.get("id"):
+                    tools_owner[tc["id"]] = step
+
         async for raw_token in stream_generator:
             # copy the token so we don't mutate it
             token = dict(raw_token)
 
-            # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            # enrich prompt progress with precomputed percent + ETA so
-            # channels render the indicator without doing the math
+            # enrich prompt progress with precomputed percent + ETA
             if token.get("type") == "prompt_progress" and isinstance(token.get("content"), dict):
                 progress = dict(token["content"])
                 cache = progress.get("cache") or 0
@@ -736,8 +804,6 @@ class TurnCollector:
             yield {"type": "token", "content": token}
 
             # skip grouping for non-display tokens
-            # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-            # model_load_progress: llama.cpp router load progress, passthrough
             if token.get("type") in ['prompt_progress', 'token_usage', 'timings', 'user_message', 'model_load_progress']:
                 continue
 
@@ -745,162 +811,136 @@ class TurnCollector:
             if token.get("timings"):
                 token.pop("timings")
 
-            segment_type = token.get("type")
-            
+            token_type = token.get("type")
+
             # merge tool call deltas and toolcalls into one type
-            if segment_type in ['tool_call_delta', 'tool_calls']:
-                segment_type = 'tool_calls'
+            if token_type in ['tool_call_delta', 'tool_calls']:
+                token_type = 'tool_calls'
 
-            # determine whether this is a new tool response (different tool_call_id)
-            # since tool responses can arrive for multiple different tools in sequence,
-            # each needs its own response tracking
-            is_new_tool_response = (
-                segment_type == 'tool' and 
-                last_tool_call_id != token.get("tool_call_id")
-            )
-
-            # the grouping works like this:
-            # if the token type is different from the previous one,
-            # or if we're switching to a new tool response (different tool_call_id),
-            # we create a new segment.
-            #
-            # otherwise, we append to the existing segment that's currently
-            # being filled
-            if segment_type != last_segment_type or is_new_tool_response:
-                # create a new segment (message within the turn)
-                current_segment = token.copy()
-                current_segment["role"] = "assistant" if segment_type != 'tool' else "tool"
-                current_segment["type"] = segment_type
-
-                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                # step bookkeeping: a new assistant segment starts a new
-                # step only if the current one already attached tools (or
-                # no step exists yet); tool calls themselves join the
-                # reasoning run that preceded them
-                if segment_type != 'tool':
-                    if step_num == 0 or step_has_tools:
-                        step_num += 1
-                        step_has_tools = False
-                    if segment_type == 'tool_calls':
-                        step_has_tools = True
-                    current_segment["step"] = step_num
-                
-                if segment_type == 'reasoning':
-                    if "content" in current_segment.keys():
-                        # remove non-reasoning content from the reasoning segment
-                        current_segment.pop("content")
-
-                    current_segment.setdefault("reasoning_content", token.get("content", ''))
-                elif segment_type == 'content':
-                    current_segment.setdefault("content", token.get("content", ''))
-                elif segment_type == 'tool_calls':
-                    # copy the list since we mutate it in place during merges
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                    # also copy each call dict: these token dicts are shared with
-                    # the message the toolcall manager stores into chat history,
-                    # and the annotations below would rewrite stored history
-                    current_segment.setdefault("tool_calls", [dict(tc) for tc in token.get("tool_calls", [])])
-                    last_tool_calls_segment = current_segment  # remember this for later merging
-                elif segment_type == 'tool':
-                    current_segment["type"] = "tool_response"
-                    current_segment.setdefault("content", token.get("content", ''))
-                
-                last_segment_type = segment_type
-                last_tool_call_id = token.get("tool_call_id") if segment_type == 'tool' else None
-            
-            else:
-                # if it's the same token type as the last one,
-                # that means we're still working with the same segment,
-                # so here's where we do the streaming magic
-                # that merges new tokens into the existing segment
-                if segment_type == 'tool_calls':
-                    if token.get("tool_calls"):
-                        existing_calls = current_segment.setdefault("tool_calls", [])
-                        # merge the tool calls using their id
-                        # so that batched tool calls properly show up
-                        for incoming_call in token["tool_calls"]:
-                            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                            # copy on insert: shared with the stored message's tool calls
-                            incoming_call = dict(incoming_call)
-                            call_id = incoming_call.get("id")
-                            if call_id:
-                                for idx, existing_call in enumerate(existing_calls):
-                                    if existing_call.get("id") == call_id:
-                                        existing_calls[idx] = incoming_call
-                                        break
-                                else:
-                                    existing_calls.append(incoming_call)
-                            elif existing_calls and not existing_calls[-1].get("id"):
-                                # no id to match on: assume it continues the last
-                                # id-less call (providers that stream ids late/never)
-                                existing_calls[-1] = incoming_call
-                            else:
-                                existing_calls.append(incoming_call)
-                elif segment_type == 'tool':
-                    current_segment["content"] = (current_segment.get("content") or '') + (token.get("content") or '')
-                else:
-                    content_key = "reasoning_content" if segment_type == 'reasoning' else 'content'
-                    current_segment[content_key] = (current_segment.get(content_key) or '') + (token.get("content") or '')
-
-            # tool responses need to be merged back into their corresponding tool calls
-            # so we maintain a response map that accumulates tool response content by tool_call_id
-            if token.get("type") == 'tool':
-                stream_response_map[token["tool_call_id"]] = token.get("content", '')
+            # per-token emit bookkeeping (queue() dedupes by identity:
+            # step DICTS compare equal, retract+attach touch the same one)
+            emit_steps.clear()
+            queued_ids.clear()
+            emit_final = False
+            retracted = None
 
             # ----
-            # yield logic:
-            # - for normal segments (reasoning, content, tool_calls), yield the current segment
-            #   with any available tool responses merged into the tool calls
-            # - for tool_response segments, we don't yield them directly. instead,
-            #   we update the last_tool_calls_segment with the new response and re-yield it.
+            # per-token machine. every branch mirrors a build_steps()
+            # folding rule; after the branch, the emit phase ships whatever
+            # this token touched (accumulated, never deltas - render by
+            # full replacement).
             # ----
-            if current_segment.get("type") != 'tool_response':
-                # merge tool responses into tool calls for display
-                if current_segment.get("tool_calls"):
-                    for tool in current_segment["tool_calls"]:
-                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                        # annotations live under the call's _metadata key
-                        meta = tool.setdefault("_metadata", {})
-                        if tool.get("id") in stream_response_map:
-                            meta["response"] = stream_response_map[tool["id"]]
-                            # precomputed failed flag (mirrors group_history)
-                            meta["failed"] = self._tool_call_failed(tool)
-                        # parsed args (mirrors group_history; unwraps tools_call)
-                        _stamp_args(tool)
-                        # arg summary on the (possibly unwrapped) args
-                        if meta.get("bridge"):
-                            meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
-                        else:
-                            meta["summary"] = self._tool_call_summary(tool)
-                    # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                    # live step status + precomputed module display data
-                    current_segment["step_status"] = self._step_status(current_segment["tool_calls"])
-                    current_segment["modules"] = self._modules_for(current_segment["tool_calls"])
+            if token_type == 'reasoning':
+                # step numbers bump on SEGMENT boundaries only (the old
+                # type-switch rule): continuation tokens of a live run must
+                # never re-bump - bump_step looks at step_has_tools, which
+                # this very machine mutates mid-run
+                if last_token_type != 'reasoning':
+                    for demoted in bump_step():
+                        queue(demoted)
+                step = get_step()
+
+                if provisional_final is not None:
+                    retracted = retract_final()
+
+                if last_token_type != 'reasoning':
+                    # new reasoning run inside this step: build_steps joins
+                    # a thought run's segments with a blank line
+                    if step["reasoning_content"]:
+                        step["reasoning_content"] += "\n\n"
+                    step["reasoning_live"] = True
+                    step["is_tail"] = True
+                    if not step["tool_calls"] and step["status"] == "thoughts":
+                        # a thought that resumes after a retract/resume is
+                        # live again: un-settle it so the dot pulses
+                        step["status"] = "thinking"
+
+                if token.get("content"):
+                    step["reasoning_content"] += token["content"]
+
+                stamp_label(step)
+                queue(step)
+
+            elif token_type == 'content':
+                if last_token_type != 'content' or provisional_final is None:
+                    # a content run opens as the PROVISIONAL FINAL: while it
+                    # is the newest thing in the stream it renders as an
+                    # answer bubble - mid-stream there is no way to know
+                    # whether a later segment pulls it back into the chain
+                    for demoted in bump_step():
+                        queue(demoted)
+
+                    settled = steps_by_num.get(step_num)
+                    if settled is not None and settled.get("is_tail"):
+                        # the open step's reasoning just completed
+                        settled["is_tail"] = False
+                        settled["reasoning_live"] = False
+                        if not settled["tool_calls"] and settled["reasoning_content"].strip():
+                            settled["status"] = "thoughts"
+                        stamp_label(settled)
+                        queue(settled)
+
+                    provisional_final = {
+                        "role": "assistant",
+                        "type": "content",
+                        "step": step_num,
+                        "content": token.get("content") or "",
+                        "label": "writing",
+                    }
+                    if token.get("is_cmd"):
+                        provisional_final["is_cmd"] = True
                 else:
-                    current_segment["step_status"] = "thinking"
-                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                # stamp the collapsed-header label, and skip yielding
-                # segments with nothing visible: they'd be ghost stations
-                current_segment["label"] = self._segment_label(current_segment)
-                if self._has_visible_chain_content(current_segment):
-                    yield {"type": "turn", "content": current_segment}
-            elif last_tool_calls_segment:
-                # tool response segment: update and re-yield the tool_calls segment instead
-                for tool in last_tool_calls_segment["tool_calls"]:
-                    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-                    # annotations live under the call's _metadata key
-                    meta = tool.setdefault("_metadata", {})
-                    if tool.get("id") in stream_response_map:
-                        meta["response"] = stream_response_map[tool["id"]]
-                        meta["failed"] = self._tool_call_failed(tool)
-                    _stamp_args(tool)
-                    if meta.get("bridge"):
-                        meta["summary"] = self._summary_from_args(meta.get("args_parsed"))
-                    else:
-                        meta["summary"] = self._tool_call_summary(tool)
-                # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                # responses landed: refresh the re-yielded step's status
-                last_tool_calls_segment["step_status"] = self._step_status(last_tool_calls_segment["tool_calls"])
-                last_tool_calls_segment["label"] = self._segment_label(last_tool_calls_segment)
-                yield {"type": "turn", "content": last_tool_calls_segment}
+                    provisional_final["content"] += token.get("content") or ""
+
+                emit_final = True
+
+            elif token_type == 'tool_calls':
+                if provisional_final is not None:
+                    retracted = retract_final()
+                # boundary-gated bump (same rule as reasoning): without
+                # this, the tool_has_tools flag set by this very branch
+                # makes every streamed argument delta mint a brand new
+                # step (the exact cascade the 2026-10-25 first cut shipped)
+                if last_token_type != 'tool_calls':
+                    for demoted in bump_step():
+                        queue(demoted)
+                step = get_step()
+
+                step["reasoning_live"] = False
+                step["is_tail"] = True
+                if token.get("tool_calls"):
+                    merge_tool_calls(step, token["tool_calls"])
+                step_has_tools = True
+                refresh_tools(step)
+                stamp_step(step)
+                queue(step)
+
+            elif token_type == 'tool':
+                # responses accumulate per call; the OWNING step re-emits
+                # (a late response can never land on the wrong step, unlike
+                # the old last-segment guesswork)
+                stream_response_map[token["tool_call_id"]] = (
+                    stream_response_map.get(token["tool_call_id"]) or ""
+                ) + (token.get("content") or "")
+                step = tools_owner.get(token["tool_call_id"])
+                if step is not None:
+                    refresh_tools(step)
+                    stamp_step(step)
+                    queue(step)
+
+            last_token_type = token_type
+
+            # ----
+            # emit phase: changed steps first (ghosts without any visible
+            # content are skipped), then final-snapshot changes: a retraction
+            # yields an EMPTY list, a growing provisional final yields itself
+            # (once it has visible text).
+            # ----
+            for step in emit_steps:
+                if step_is_visible(step):
+                    yield {"type": "step", "content": step}
+            if retracted is not None:
+                yield {"type": "final", "content": []}
+            if emit_final and (provisional_final.get("content") or "").strip():
+                yield {"type": "final", "content": [provisional_final]}
 

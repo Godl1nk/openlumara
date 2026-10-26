@@ -221,6 +221,7 @@ class ImageTools(core.module.Module):
     # AI Tools - Image Generation
     # =========================================================================
 
+    @core.module.tool
     async def generate(self, prompt: str, size: str = "1024x1024", style: str = "vivid", negative_prompt: str = "", filename: str = ""):
         """
         Generates an image from a text prompt using the configured backend (OpenAI DALL-E, Local SD WebUI, or Mock).
@@ -443,6 +444,7 @@ class ImageTools(core.module.Module):
                 f.write(raw_bytes)
 
     # =========================================================================
+    @core.module.tool
     async def set_image_model(self, model_name: str):
         """
         Sets the designated image model to use for image generation and editing.
@@ -461,6 +463,7 @@ class ImageTools(core.module.Module):
     # AI Tools - Local Image Manipulation (Pillow)
     # =========================================================================
 
+    @core.module.tool
     async def add_text(self, image_path: str, text: str, position: str = "bottom", color: str = "white", output_path: str = ""):
         """
         Draws a text banner or caption onto an image (for watermarks, titles, labels, or memes).
@@ -507,6 +510,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Failed to add text: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def resize(self, image_path: str, width: int, height: int, output_path: str = ""):
         """
         Resizes an image to specified width and height using high-quality Lanczos resampling.
@@ -540,6 +544,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Resize failed: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def crop(self, image_path: str, left: int, top: int, right: int, bottom: int, output_path: str = ""):
         """
         Crops an image rectangle defined by (left, top, right, bottom) pixel coordinates.
@@ -583,6 +588,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Crop failed: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def rotate(self, image_path: str, angle: float, expand: bool = True, output_path: str = ""):
         """
         Rotates an image counter-clockwise by a given number of degrees.
@@ -614,6 +620,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Rotation failed: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def flip(self, image_path: str, mode: str = "horizontal", output_path: str = ""):
         """
         Flips an image horizontally (mirror) or vertically.
@@ -648,6 +655,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Flip failed: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def apply_filter(self, image_path: str, filter_type: str = "grayscale", output_path: str = ""):
         """
         Applies a visual filter or enhancement to an image.
@@ -704,6 +712,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Filter failed: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def convert_format(self, image_path: str, format: str = "png", output_path: str = ""):
         """
         Converts an image to another file format (PNG, JPEG, WEBP, BMP).
@@ -742,6 +751,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Format conversion failed: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def get_info(self, image_path: str):
         """
         Retrieves image metadata including dimensions, format, color mode, and filesize.
@@ -774,6 +784,7 @@ class ImageTools(core.module.Module):
         except Exception as e:
             return self.result(f"Failed to read image info: {core.detail_error(e)}", success=False)
 
+    @core.module.tool
     async def list_images(self, limit: int = 20):
         """
         Lists recently generated or edited images stored in the output directory.

@@ -21,7 +21,8 @@ def _storage_open(path: str = None, mode: str = "r", base: str = None, rel: str 
         flags = os.O_RDONLY
 
     fd = core.sandbox_open(base, rel, flags)
-    if file_mode is not None and ("w" in mode or "x" in mode):
+    # os.fchmod does not exist on Windows - skip the chmod there
+    if file_mode is not None and ("w" in mode or "x" in mode) and hasattr(os, "fchmod"):
         try:
             # chmod it to the filemode specified
             os.fchmod(fd, file_mode)

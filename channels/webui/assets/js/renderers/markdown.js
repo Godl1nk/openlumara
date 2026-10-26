@@ -1,7 +1,6 @@
 // create a temporary div that gets used to syntax highlight
 const _tempHighlightDiv = document.createElement('div');
 
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
 // cache of highlighted code blocks, keyed by language + code content.
 // keeps live-streaming re-renders cheap (only the growing block re-highlights).
 const _hlCache = new Map();
@@ -16,7 +15,7 @@ function renderMarkdown(text, live = false) {
     html = DOMPurify.sanitize(html);
 
     // syntax highlighting
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15) status:reviewed
     // per-block highlight cache. during streaming the whole message is
     // re-rendered per paint, which used to re-highlight every code block
     // from scratch - including finished ones. with the cache, only the
@@ -33,7 +32,7 @@ function renderMarkdown(text, live = false) {
             const code = block.textContent;
             const key = (lang || 'auto') + '\0' + code;
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
+            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15) status:reviewed
             // during live renders, the LAST code block is the one still being
             // streamed: its content is new every frame, so caching it would
             // retain a full highlighted copy of every intermediate state
@@ -94,7 +93,7 @@ function renderMarkdownFor(message, live, raw) {
         if (cached && cached.source === content && Boolean(raw) === Boolean(cached.raw)) return cached.html;
     }
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
+    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15) status:reviewed
     // raw mode: plain escaped text, no markdown pipeline at all.
     // live mode: full pipeline including hljs - affordable now that the
     // per-block cache means only the still-growing block gets highlighted,

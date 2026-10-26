@@ -1,36 +1,14 @@
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21)
+<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21) status:reviewed
      context pill replacing the circular ring: a rounded chip whose own
      border fills clockwise (from top center) via an svg path as context
-     fills up. clicking it opens the detailed breakdown popup, fetched
-     from the backend via /api/system/context_size (channel.context.get_size()). -->
+     fills up. clicking it opens the detailed breakdown popup, kept fresh
+     purely via 'token_usage' + 'context_size' ws pushes from the backend
+     (channel.context.get_size()) - this template never calls REST. -->
 <div id="context-pill" x-cloak x-data="{
         open: false,
-        details: null,
-        loading: false,
-        poll_interval: null,
 
-        // -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 00:34
-        // while the popup is open, keep it live: poll the breakdown every few
-        // seconds, and also re-fetch whenever the pill's token usage updates
-        // (a stream just finished). closing the popup stops the polling.
-        init() {
-            this.$watch('open', (open) => {
-                if (open) {
-                    this.refresh();
-                    this.poll_interval = setInterval(() => this.refresh(), 5000);
-                } else if (this.poll_interval) {
-                    clearInterval(this.poll_interval);
-                    this.poll_interval = null;
-                }
-            });
-
-            this.$watch('$store.chat.currentTokenUsage', () => {
-                if (this.open) this.refresh();
-            });
-        },
-
-        destroy() {
-            if (this.poll_interval) clearInterval(this.poll_interval);
+        get details() {
+            return $store.chat.contextBreakdown;
         },
 
         get percentage() {
@@ -41,7 +19,7 @@
 
         fmt: (n) => (n ?? 0).toLocaleString(),
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21)
+        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21) status:reviewed
         // the stacked bar: one segment per part of the context window, plus
         // whatever room is left over. widths are relative to max_context so
         // the bar is a literal picture of how full the window is.
@@ -58,7 +36,7 @@
                 ...p,
                 pct: Math.min((p.tokens / d.max_context) * 100, 100),
             }));
-            // -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 00:30
+            // -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 00:30 status:reviewed
             // leftover room is derived from the authoritative total_tokens
             // (which may be API-based) rather than the sum of the estimated
             // segments, so the bar always agrees with the hero percentage.
@@ -77,28 +55,8 @@
             return this.segments.filter(s => s.key !== 'free');
         },
 
-        // -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 00:34
-        // toggle no longer refreshes directly, the 'open' watcher does it.
         toggle() {
             this.open = !this.open;
-        },
-
-        async refresh() {
-            // guard against overlapping fetches from polling + watchers
-            if (this.loading) return;
-            this.loading = true;
-            try {
-                this.details = await simpleApiFetch('/api/system/context_size');
-                // -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 00:30
-                // keep the pill in sync with the popup's authoritative total
-                if (this.details && typeof this.details.total_tokens === 'number') {
-                    $store.chat.currentTokenUsage = this.details.total_tokens;
-                }
-            } catch (e) {
-                this.details = { 'error': String(e) };
-            } finally {
-                this.loading = false;
-            }
         }
      }"
      @click.outside="open = false">
@@ -122,17 +80,12 @@
 
     <template x-if="open">
         <div class="context-popup">
-            <!-- -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 00:34
-                 refresh button removed: the popup polls while it's open now -->
             <div class="popup-header">
                 <span class="popup-title">Context</span>
             </div>
-            <template x-if="loading && !details">
+            <template x-if="!details">
                 <div class="popup-loading">Loading..</div>
             </template>
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-21)
-                 /api/system/context_size now returns raw numbers, so the
-                 markup here owns the presentation -->
             <template x-if="details">
                 <div class="popup-body">
                     <!-- hero: how full the window is -->
@@ -148,9 +101,6 @@
                         </span>
                     </div>
 
-                    <!-- -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 01:45
-                         compaction badge: simple text, only shown when at least
-                         one compaction happened -->
                     <template x-if="details.compaction_count > 0">
                         <div class="ctx-compaction"
                              title="older context was summarized away">
@@ -168,7 +118,7 @@
                                  :style="`width: ${s.pct}%`"
                                  :title="`${s.label}: ${fmt(s.tokens)} tokens (${s.pct.toFixed(1)}%)`"></div>
                         </template>
-                        <!-- -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 02:52
+                        <!-- -- AI GENERATED CODE (qwen3.8-flash-next-q4) :: 2026-09-22 02:52 status:reviewed
                              compression threshold: solid line at the threshold
                              percentage, plus a dark hatched zone covering the
                              remainder past it -->

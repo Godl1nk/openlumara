@@ -7,6 +7,7 @@ import shutil
 import regex
 import glob
 import fnmatch
+import difflib
 import asyncio
 import subprocess
 import tree_sitter_language_pack as tslp
@@ -396,9 +397,11 @@ class Coder(core.module.Module):
     # ----------------------
     # tools: file navigation
     # ----------------------
+    @core.module.tool
     async def list_sandboxes(self):
         return self.result(await self._get_sandbox_paths())
 
+    @core.module.tool
     async def glob(self, sandbox: str, pattern: str, sub_path=None, max_results: int = 200):
         """globs path for desired files. does not support regex. paths relative to sandbox root."""
         sandbox_path = await self._get_full_sandbox_path(sandbox)
@@ -447,6 +450,7 @@ class Coder(core.module.Module):
         except Exception as e:
             return self.result(str(e), success=False)
 
+    @core.module.tool
     async def folder_grep(self, sandbox: str, sub_path: str, regex_pattern: str, case_sensitive=False, context: int = 0, file_extensions: list = None, max_matches: int = 30):
         """searches for regex pattern in all files in folder"""
         folder_blacklist = self.config.get("folder_blacklist")
@@ -525,6 +529,7 @@ class Coder(core.module.Module):
     # ----------------------
     # tools: file management
     # ----------------------
+    @core.module.tool
     async def file_create(self, sandbox: str, path: str, content: str):
         """creates new file, does not support overwriting existing files. auto-creates parent dirs in path."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -553,6 +558,7 @@ class Coder(core.module.Module):
 
         return self.result(f"File {path} successfully created. Syntax verification passed - no need to verify further.")
 
+    @core.module.tool
     async def file_move(self, sandbox: str, orig_path: str, target_path: str):
         orig_path_sandboxed = await self._get_sandbox_subpath(sandbox, orig_path)
         target_path_sandboxed = await self._get_sandbox_subpath(sandbox, target_path)
@@ -565,6 +571,7 @@ class Coder(core.module.Module):
 
         return self.result(f"File successfully moved: {orig_path_sandboxed} -> {target_path_sandboxed}")
 
+    @core.module.tool
     async def file_delete(self, sandbox: str, path: str):
         """only use this if user explicitely requests it"""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -577,6 +584,7 @@ class Coder(core.module.Module):
 
         return self.result(f"File {path} successfully deleted")
 
+    @core.module.tool
     async def folder_delete(self, sandbox: str, path: str):
         """only use this if user explicitely requests it. can only remove empty folders as safety precaution."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -592,6 +600,7 @@ class Coder(core.module.Module):
     # ----------------------
     # tools: file reading
     # ----------------------
+    @core.module.tool
     async def file_outline(self, sandbox: str, path: str):
         """provides information about source code. only works on source code files."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -608,6 +617,7 @@ class Coder(core.module.Module):
             # FAWK KUAH
             return self.result(str(e), success=False)
 
+    @core.module.tool
     async def file_read(self, sandbox: str, path: str, line_start: int = None, line_end: int = None):
         """reads file, or part of file. use line_start and line_end to read in chunks."""
         target_path = await self._get_sandbox_subpath(sandbox, path)
@@ -679,6 +689,7 @@ class Coder(core.module.Module):
 
         return result
 
+    @core.module.tool
     async def file_grep(self, sandbox: str, file_path: str, regex_pattern: str, case_sensitive: bool = True, context: int = 0, max_matches: int = 30):
         target_path = await self._get_sandbox_subpath(sandbox, file_path)
         
@@ -728,6 +739,7 @@ class Coder(core.module.Module):
             # FKAWK SUAH
             return self.result(str(e), success=False)
 
+    @core.module.tool
     async def read_template(self, template_name: str):
         template_folders = await self._get_template_folders()
         if not template_folders:
@@ -757,6 +769,7 @@ class Coder(core.module.Module):
     # --------------------
     # tools: file writing
     # --------------------
+    @core.module.tool
     async def file_edit(self, sandbox: str, path: str, original_code: str, replacement_code: str):
        target_path = await self._get_sandbox_subpath(sandbox, path)
 
@@ -2385,3 +2398,105 @@ class Coder(core.module.Module):
 
         flush_buffers()
         return rows
+
+    def on_tool_summary(self, name, args, response):
+        match name:
+            case "coder_file_edit":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                original = args.get("original_code") or ""
+                replacement = args.get("replacement_code") or ""
+                if not original or not replacement:
+                    return ""
+                
+                added = deleted = 0
+                matcher = difflib.SequenceMatcher(
+                    None, original.splitlines(), replacement.splitlines()
+                )
+                
+                for op, i1, i2, j1, j2 in matcher.get_opcodes():
+                    if op in ("insert", "replace"):
+                        added += j2 - j1
+                    if op in ("delete", "replace"):
+                        deleted += i2 - i1
+                        
+                return f"+{added} \u2212{deleted}"
+
+            case "coder_file_read":
+                if not isinstance(response, dict) or response.get("status") == "error":
+                    return ""
+                
+                content = response.get("content")
+                if not isinstance(content, str):
+                    return ""
+                
+                n = len(content.split("\n"))
+                return f"{n} line" + ("" if n == 1 else "s")
+
+            case "coder_file_create":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                content = args.get("content") or ""
+                if not content:
+                    return ""
+                
+                if content.endswith("\n"):
+                    content = content[:-1]
+                    
+                n = len(content.split("\n"))
+                return f"{n} line" + ("" if n == 1 else "s")
+
+            case "coder_folder_grep" | "coder_file_grep":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                c = response.get("content")
+                if isinstance(c, list):
+                    items = c
+                elif isinstance(c, dict) and isinstance(c.get("matches"), list):
+                    items = c["matches"]
+                else:
+                    items = []
+                    
+                fallback = args.get("file_path")
+                if fallback is None:
+                    fallback = args.get("sub_path")
+                if fallback is None:
+                    fallback = "matches"
+                    
+                files = set()
+                n = 0
+                for m in items:
+                    if not isinstance(m, dict):
+                        continue
+                    files.add(m.get("file") or fallback)
+                    n += 1
+                    
+                if not n:
+                    return ""
+                if len(files) > 1:
+                    return f"{n} matches \u00b7 {len(files)} files"
+                
+                return f"{n} match" + ("" if n == 1 else "es")
+
+            case "coder_glob":
+                if not isinstance(response, dict) or response.get("status") != "success":
+                    return ""
+                
+                c = response.get("content")
+                if isinstance(c, list):
+                    items = c
+                elif isinstance(c, dict) and isinstance(c.get("results"), list):
+                    items = c["results"]
+                else:
+                    items = []
+                    
+                n = sum(1 for f in items if isinstance(f, str))
+                if not n:
+                    return ""
+                
+                return f"{n} file" + ("" if n == 1 else "s")
+
+        return ""

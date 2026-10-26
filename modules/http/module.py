@@ -1474,6 +1474,7 @@ class Http(core.module.Module):
     # aiohttp accepts json= (serializes for us) and data= (form-encoded),
     # just like requests did.
 
+    @core.module.tool
     async def get(self, url: str, headers: dict = None, params: dict = None):
         return await self._make_request(
             "GET",
@@ -1483,6 +1484,7 @@ class Http(core.module.Module):
             include_content=True
         )
 
+    @core.module.tool
     async def post(self, url: str, headers: dict = None, data: dict = None, json: dict = None):
         if data is not None and json is not None:
             return self.result("Cannot use both 'data' and 'json' parameters", False)
@@ -1496,6 +1498,7 @@ class Http(core.module.Module):
             include_content=True
         )
 
+    @core.module.tool
     async def head(self, url: str, params: dict = None, headers: dict = None):
         return await self._make_request(
             "HEAD",
@@ -1505,6 +1508,7 @@ class Http(core.module.Module):
             include_content=False
         )
 
+    @core.module.tool
     async def options(self, url: str, params: dict = None, headers: dict = None):
         return await self._make_request(
             "OPTIONS",
@@ -1514,6 +1518,7 @@ class Http(core.module.Module):
             include_content=False
         )
 
+    @core.module.tool
     async def put(self, url: str, data: dict = None, headers: dict = None):
         return await self._make_request(
             "PUT",
@@ -1523,6 +1528,7 @@ class Http(core.module.Module):
             include_content=True
         )
 
+    @core.module.tool
     async def patch(self, url: str, data: dict = None, headers: dict = None):
         return await self._make_request(
             "PATCH",
@@ -1532,6 +1538,7 @@ class Http(core.module.Module):
             include_content=True
         )
 
+    @core.module.tool
     async def delete(self, url: str, params: dict = None, headers: dict = None):
         return await self._make_request(
             "DELETE",

@@ -22,24 +22,20 @@ document.addEventListener('alpine:init', async () => {
     await Alpine.store('notifications').init();
 
     // defined in directives/
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) - (2026-09-15)
+    
     // pass Alpine's cleanup hook through, otherwise the teardown fn returned by
     // autoScroll() is ignored and scroll listeners + MutationObservers leak per element
     Alpine.directive('auto-scroll', (el, modifiers, { cleanup }) => cleanup(autoScroll(el)));
     Alpine.directive('md', markdownRender);
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
     // x-text / x-html variants that fade newly streamed content in
     // (reasoning, tool call args, tool responses)
     Alpine.directive('fade-text', Alpine.skipDuringClone(fadeTextRender));
     Alpine.directive('fade-html', Alpine.skipDuringClone((el, d, c) => fadeTextRender(el, d, c, true)));
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
     // toggles .boxed when an element's content overflows its max-height,
     // so tool call values only get the soft background when they scroll
     Alpine.directive('box', (el, modifiers, { cleanup }) => cleanup(boxIfScrolls(el)));
-
-
 
     self.notice = "Please wait, connecting to backend server..";
     await connectWebSocket();
@@ -50,16 +46,6 @@ document.addEventListener('alpine:init', async () => {
         // update check can never be answered from the HTTP cache
         navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
 
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        // the service worker now skipWaits + claims, so a new webui build
-        // activates on its own within seconds of the update. when it takes
-        // over (controllerchange) reload ONCE: the new worker swaps the
-        // caches, but the already-loaded JS in this tab is still the old
-        // code - reloading lands the page on the fresh assets without any
-        // force refresh.
-        // - guarded by a flag so the reload can never loop
-        // - skipped when this page loaded WITHOUT a controller (first-ever
-        //   visit: the initial claim is not an update, no reload needed)
         if (navigator.serviceWorker.controller) {
             let swReloadDone = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {

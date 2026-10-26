@@ -49,6 +49,7 @@ class AskUser(core.module.Module):
     # AI Tools
     # -------------------------------------------------------------------------
 
+    @core.module.tool
     async def ask(self, question: str, options: list = None, timeout: int = 0, default_choice: str = None, secret: bool = False):
         """
         Asks the user a question and pauses execution until the user responds or times out.
@@ -145,6 +146,7 @@ class AskUser(core.module.Module):
         finally:
             self._pending.pop(qid, None)
 
+    @core.module.tool
     async def confirm(self, action: str, details: str = "", timeout: int = 60, default_choice: str = "no"):
         """
         Asks the user for a simple yes/no confirmation before executing a potentially destructive or irreversible action.

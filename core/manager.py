@@ -307,13 +307,6 @@ class Manager:
         self.log("core", f"Startup completed in {elapsed_timestamp:.2f}s")
         self.log("", "-"*40)
 
-        # Attempt API connection but don't fail if it doesn't work
-        self.log("API", "Connecting..")
-
-        connected = await self.API.connect()
-        if isinstance(connected, core.api.APIError):
-            self.log("API", str(connected))
-
         # start the channels (execute their .run() method)
         for channel_name, channel in self.channels.items():
             if channel_name == "cli":

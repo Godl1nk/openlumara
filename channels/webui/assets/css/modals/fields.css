@@ -285,8 +285,6 @@
         margin-bottom: 24px;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-       category grouping headers for the module/channel lists */
     .module-group {
         display: flex;
         flex-direction: column;

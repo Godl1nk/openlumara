@@ -105,8 +105,6 @@ header {
         }
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-       quick model switcher in the header, styled like the neighbouring .btns */
     .model-switcher {
         display: flex;
         align-items: center;

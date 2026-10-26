@@ -1,4 +1,3 @@
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) */
 /* merged reasoning + content + tool calls: one collapsible header per
    agentic step, marked by a numbered filled circle + the tool names.
    header mirrors the reasoning header metrics so the timeline node dots
@@ -13,13 +12,7 @@
         display: flex;
         align-items: center;
         gap: 0.35em;
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-           chain text in secondary color */
         color: var(--text-secondary);
-        /* fixed row height so the header's vertical center sits exactly on
-           the spine node-dot's center (top 0.3em + radius 0.5em = 0.8em
-           = 0.68rem at the block's 0.85rem font); without this the badge,
-           being the tallest flex child, shifts the whole row up */
         min-height: 1.36rem;
         cursor: pointer;
         user-select: none;
@@ -30,11 +23,6 @@
         svg {
             flex-shrink: 0;
         }
-
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-           numbered step badge removed from the template: the timeline
-           status dot already marks the node, the second circle was noise.
-           failed steps still read red via the dot's dot-failed state */
 
         .text {
             display: flex;
@@ -62,10 +50,6 @@
                 font-weight: 600;
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-               module groups are rendered by an x-for in combined_block.html;
-               the · separator between groups is css so the template only
-               ever outputs bare groups */
             .module-group {
                 white-space: nowrap;
             }
@@ -107,11 +91,6 @@
             white-space: nowrap;
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-           thought-snippet header: the step's reasoning first line replaces
-           the tool-name list (single line, ellipsis eats the overflow),
-           tool provenance shrinks to "Module ×N" chips pinned right. the
-           chips are derived counts, so they cost no ink to repeat */
         .thought-header {
             display: flex;
             align-items: center;
@@ -147,10 +126,6 @@
                 opacity: 0.6;
             }
 
-            /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-               inline action list inside a chip: "Coder: file read, file
-               edit x2 · Web: search". the commas are css so the template
-               only ever outputs bare action spans */
             .module-action + .module-action::before {
                 content: ', ';
             }
@@ -162,8 +137,6 @@
             }
         }
 
-        /* thought-less steps keep the classic header layout, wrapped in a
-           span so both header branches share the same flex behaviour */
         .bare-header {
             display: flex;
             align-items: center;
@@ -194,8 +167,6 @@
         align-items: flex-start;
         gap: 8px;
         color: var(--text-secondary);
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-           reasoning spans the full width of its chain station */
         width: 100%;
 
         .icon {
@@ -206,9 +177,6 @@
             margin-top: 0.15em;
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-           text column grows to fill the rest of the row instead of
-           sizing to its content */
         .reasoning-text {
             flex: 1;
             min-width: 0;
@@ -234,11 +202,7 @@
         line-height: 1.6;
     }
 
-    /* tool cards live inside the block: their timeline node dots would
-       double up with the block's single node, so they're hidden here and
-       the card header shows a small chevron instead. the selector is
-       .agent-chain-prefixed to beat the .agent-chain .node-dot rule
-       regardless of stylesheet load order */
+    /* tool cards live inside the block */
     .agent-chain .combined-block .tool-call-card .node-dot {
         display: none;
     }
@@ -258,9 +222,7 @@
         }
     }
 
-    /* live thinking pulse (streaming variant): runs regardless of collapse
-       state - the x-show="!done" binding in the template is what stops it,
-       so a collapsed live step still shows activity */
+    /* live thinking pulse */
     .dots span {
         opacity: 1;
         animation: reasoningDot 1.5s ease-in-out infinite;
@@ -271,12 +233,6 @@
     .dots span:nth-child(3) { animation-delay: 0.4s; }
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-   status node: the step's timeline dot is a small filled status light -
-   green done, accent + glow while live, red failed. chevron removed, so
-   the dot reads as state, not disclosure; hover scale keeps the click
-   affordance alive. .agent-chain-prefixed to beat the base node-dot
-   ring styling regardless of stylesheet load order */
 .agent-chain .combined-block > .node-dot {
     width: 0.6em;
     height: 0.6em;
@@ -300,11 +256,6 @@
     background: var(--text-secondary);
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-   quiet scan: finished step headers recede so the chain reads as a
-   glanceable list; full brightness returns on hover and on the LIVE
-   streaming row (the last station while the chain runs) - the thing
-   happening now is the only row that demands attention */
 .combined-block > .header .text {
     opacity: 0.55;
     transition: opacity 0.15s ease;
@@ -335,10 +286,6 @@
     animation: nodeDotPulse 1.5s ease-in-out infinite;
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-   live node pulse: breathes the dot's COLOR between the muted secondary
-   and the accent instead of fading opacity - the dot never goes ghost,
-   it shifts hue like a slow heartbeat */
 @keyframes nodeDotPulse {
     0%, 100% { background-color: var(--text-secondary); }
     50% { background-color: var(--accent); }

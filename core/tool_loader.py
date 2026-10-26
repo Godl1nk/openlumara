@@ -2,6 +2,7 @@ import core
 import inspect
 import json_repair
 import regex as re
+import weakref
 
 META_TOOL_NAMES = {"tools_load", "tools_call"}
 
@@ -10,6 +11,9 @@ _ARG_SECTION = "Args:"
 _END_SECTIONS = ("Returns:", "Raises:", "Note:", "Example:")
 _ALL_SECTIONS = (_ARG_SECTION,) + _END_SECTIONS
 _PARAM_RE = re.compile(r"(\w+)(?:\s*\([^)]*\))?\s*:\s*(.+)")
+
+# caches tool dicts to speed stuff up
+_TOOL_DICT_CACHE = weakref.WeakKeyDictionary()
 
 
 class ToolLoader:
@@ -75,7 +79,22 @@ class ToolLoader:
         return descriptions, "\n".join(clean_lines).strip()
 
     def _tool_dict_from_func(self, func, tool_name):
-        """Build an API tool dict from a callable."""
+        """Build (or reuse) an API tool dict from a callable."""
+        # bound methods are recreated on every getattr, so the cache keys
+        # on the underlying class-level function instead
+        key = getattr(func, "__func__", func)
+        by_name = _TOOL_DICT_CACHE.get(key)
+        if by_name is None:
+            by_name = {}
+            try:
+                _TOOL_DICT_CACHE[key] = by_name
+            except TypeError:
+                pass  # exotic non-weakref-able callable: build without caching
+        else:
+            cached = by_name.get(tool_name)
+            if cached is not None:
+                return cached
+
         param_descriptions, docstring = self.parse_tool_docstring(func.__doc__)
 
         properties = {}
@@ -104,6 +123,7 @@ class ToolLoader:
         }
         if docstring:
             tool["function"]["description"] = docstring
+        by_name[tool_name] = tool
         return tool
 
     def _loadable_entry(self, name):
@@ -138,14 +158,17 @@ class ToolLoader:
     # ------------------------------------------------------------------
 
     def register_module(self, module):
-        """Scan a module for tool methods and add them to the catalog."""
+        """Catalog all @core.module.tool decorated methods of a module."""
+        registered = []
         for func_name in type(module).__dict__:
-            if func_name.startswith("_") or func_name in module.disabled_tools:
-                continue
-            if func_name == "result" or func_name.startswith("on_"):
-                continue
             func_obj = getattr(module, func_name, None)
-            if not callable(func_obj) or getattr(func_obj, "_is_command", False):
+            
+            if not callable(func_obj) or not getattr(func_obj, "_is_tool", False):
+                continue
+            if getattr(func_obj, "_is_command", False):
+                continue  # a command is never a tool, even if double-decorated
+            if func_name in module.disabled_tools:
+                # don't register disabled tools
                 continue
 
             tool_name = f"{module.name}_{func_name}"
@@ -156,6 +179,38 @@ class ToolLoader:
                 "method": func_name,
                 "description": tool_dict["function"].get("description", ""),
             }
+            registered.append(func_name)
+        self._warn_missed_tools(module, registered)
+
+    def _warn_missed_tools(self, module, registered):
+        """
+        a module that registers zero tools while still
+        holding public callables most likely predates @core.module.tool and
+        was never migrated
+        """
+        if registered:
+            return
+        
+        candidates = []
+        for name in type(module).__dict__:
+            if name.startswith(("_", "on_")) or name == "result":
+                continue
+            if name in module.disabled_tools:
+                continue
+                
+            func_obj = getattr(module, name, None)
+            if callable(func_obj) and not getattr(func_obj, "_is_command", False):
+                candidates.append(name)
+                
+        if candidates:
+            shown = ", ".join(sorted(candidates)[:8])
+            if len(candidates) > 8:
+                shown += ", ..."
+            self.channel.log(
+                "warning",
+                f"{module.name}: registered 0 tools but has public callables "
+                f"({shown}). Please add @core.module.tool decorators to your tools."
+            )
 
     def unregister_module(self, module):
         """Remove all catalog entries for a module (the caller refreshes)."""
@@ -210,20 +265,6 @@ class ToolLoader:
 
     # ------------------------------------------------------------------
     # Tool bridge (cache-stable dynamic invocation)
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-15) harness:openlumara
-    # -- REDESIGNED (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    # Progressive disclosure without ever touching the active tools array
-    # (any change to it invalidates the request prefix and blows the
-    # provider prompt cache): tools_load returns the schemas of a module's
-    # tools as a tool result (append-only, so the cache survives) and the
-    # model invokes them through the generic tools_call bridge. The model
-    # only ever needs module names (listed in the tools_load description);
-    # no per-tool catalog is embedded anywhere. The active array holds
-    # exactly: the meta tools and the preloaded modules' tools; a chat that
-    # needs more simply calls tools_load (and can re-read its own previous
-    # tools_load results from history - there is no per-chat tool restore).
-    # With dynamic_tool_loading off the whole system is bypassed and every
-    # tool registers natively.
     # ------------------------------------------------------------------
 
     def _build_bridge_defs(self):
@@ -244,21 +285,6 @@ class ToolLoader:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Exact tool name to call. Always output this key first"},
-                        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-                        # the args key is named 'params' instead of 'arguments' on purpose:
-                        # several grammar/guided-decoding backends emit object keys in
-                        # ALPHABETICAL order, so 'arguments' reliably came BEFORE 'name'
-                        # and the model streamed a whole payload before revealing which
-                        # tool it was calling. 'params' sorts after 'name', so both
-                        # schema-order and alphabetical-order emitters put the name first.
-                        # tools_call() still accepts 'arguments' as a legacy alias.
-                        # params is TRANSPORTED as a JSON-encoded string on purpose:
-                        # string-typed fields stream token by token, while object-typed
-                        # nested values arrive as one atomic chunk from the model server
-                        # (verified in the bridge debug log) - which made long bridged
-                        # args pop in all at once instead of streaming. execution-side
-                        # coercion of str -> dict already exists in tools_call(), and a
-                        # model that emits a raw object anyway keeps working.
                         "params": {
                             "type": "string",
                             "description": (
@@ -326,10 +352,6 @@ class ToolLoader:
     # Meta tool implementation
     # ------------------------------------------------------------------
 
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    # tools_load no longer mutates the active tools array (a prefix change that
-    # blows the provider prompt cache): it returns the schemas of the modules'
-    # tools directly, and the model invokes them via the tools_call bridge.
     async def tools_load(self, module_names: list):
         """Returns the full parameter schemas of all tools in the given modules.
 
@@ -392,17 +414,6 @@ class ToolLoader:
         if disabled:
             result["disabled"] = disabled
         return result
-
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    # Schema pre-validation for the bridge. Without it, a bad kwarg survives
-    # until the real method call and blows up deep inside the tool with a raw
-    # TypeError, which toolcalls.py can only report as a generic execution
-    # error. Pre-binding against the target signature rejects unknown/missing
-    # arguments and type mismatches before any side effects happen, and the
-    # error lists the valid parameters so the model can recover in one retry.
-    # Simple annotated types are coerced leniently (stringified numbers are a
-    # common model slip) to skip even that retry; unannotated or exotic
-    # annotations are left unchecked so previously-working calls never break.
 
     _NAME_TO_TYPE = {"str": str, "int": int, "bool": bool, "list": list, "dict": dict}
 
@@ -501,20 +512,19 @@ class ToolLoader:
         name (str): Exact name of the tool to call
         params (str): JSON-encoded arguments object for the tool, matching its schema (a raw object is accepted too)
         """
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara
-        # 'params' is the schema key now (it sorts after 'name', 'arguments' did not);
-        # 'arguments' stays accepted as a legacy alias so models biased by old chat
-        # history keep working.
         if params is None:
             params = arguments
+            
         if isinstance(params, str):
             # transport format: JSON-encoded string (streams token by token)
             try:
                 params = json_repair.loads(params)
             except Exception:
                 return {"status": "error", "content": "params is not valid JSON"}
+            
         if params is None:
             params = {}
+            
         if not isinstance(params, dict):
             return {"status": "error", "content": "params must be an object"}
 

@@ -9,9 +9,6 @@ THEME_STORE = {
     mode: localStorage.getItem('themeMode') || 'dark',
     themeCache: {},  // Cache for loaded theme data
     themeList: [],   // List of available theme families
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
-    // family -> whether themes/<family>.css exists (undefined = unknown,
-    // false = 404'd already, don't request again this session)
     themeCssStatus: {},
 
     async init() {
@@ -113,9 +110,7 @@ THEME_STORE = {
         const messageWidth = localStorage.getItem('messageMaxWidth') || 70;
         root.style.setProperty('--message-max-width', `${messageWidth}%`);
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // streamed-token fade duration: keep the CSS animation duration in
-        // sync with the user setting (the JS timeline reads the same keys)
+        // streamed-token fade duration
         const fadeEnabled = localStorage.getItem('tokenFadeEnabled') !== 'false';
         const fadeMs = parseInt(localStorage.getItem('tokenFadeMs'), 10);
         root.style.setProperty('--token-fade-duration',
@@ -154,7 +149,6 @@ THEME_STORE = {
                 : '/assets/css/code-themes/github-light.css';
         }
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
         // apply this theme's sidecar css (themes/<family>.css), if it exists
         this.applyThemeCss(family);
 
@@ -171,20 +165,12 @@ THEME_STORE = {
         localStorage.setItem('themeMode', effectiveMode);
 
         // Dispatch event for other components to react
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // dispatched on window (was document) so the settings modal can
-        // listen via @theme-changed.window, which Alpine auto-removes when
-        // the modal unmounts (document-level listeners leaked per modal open)
         window.dispatchEvent(new CustomEvent('theme-changed', {
             detail: { family, mode: effectiveMode }
         }));
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
-    // Apply a theme's sidecar CSS: if themes/<family>.css exists, it is
-    // injected as a stylesheet when the family becomes active and removed
-    // when switching to another theme. CSS only (no JS sidecars) by design.
-    // The backend 404s anything that isn't a .css file in the themes dir.
+    // Apply a theme's sidecar CSS
     applyThemeCss(family) {
         const existing = document.getElementById('theme-css');
 
@@ -225,11 +211,6 @@ THEME_STORE = {
         const root = document.documentElement;
         localStorage.setItem('fontFamily', font);
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
-        // the settings font is for PROSE only. it used to clobber
-        // --code-font too (inline on the root, so it beat every theme
-        // value), making all code views render in the sans UI font.
-        // --code-font now belongs to base.json / the css fallback only.
         if (font && font !== 'default') {
             this.loadGoogleFont(font);
             root.style.setProperty('--font-primary', `'${font}', sans-serif`);

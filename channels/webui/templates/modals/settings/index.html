@@ -1,12 +1,4 @@
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-     x-show -> x-if: the entire settings form (every category, field, and
-     markdown description) now unmounts when closed instead of sitting in the
-     dom 24/7. side effect: activeCategory resets to appearance on reopen. -->
 <template x-if="$store.ui.currentModal === 'settings'" x-cloak>
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-         resize/theme-changed listeners moved here from settingsModal().init():
-         as x-on bindings Alpine removes them automatically when the x-if
-         modal unmounts, instead of leaking a pair per modal open. -->
     <div class="settings-modal modal" x-data="settingsModal()"
         @resize.window.debounce.150ms="checkMobile()"
         @theme-changed.window="themeFamily = $event.detail.family; themeMode = $event.detail.mode">
@@ -83,9 +75,6 @@
                                 
                                 <template x-for="hierarchyItem in getHierarchicalSettings()" :key="hierarchyItem.key">
                                     <template x-if="!hierarchyItem.setting.unsafe || $store.settings.showUnsafe">
-                                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                                             dependency x-show -> x-if template: unmet
-                                             dependencies unmount the field widget. -->
                                         <template x-if="checkDependency(hierarchyItem.setting.depends)">
                                         <div class="setting-item setting-parent" :class="{ 'unsafe': hierarchyItem.setting.unsafe }" x-data="{ setting: hierarchyItem.setting }">
                                             {% include 'modals/settings/fields.html' %}
@@ -112,10 +101,6 @@
 
         </div>
 
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-             Manual-save footer: replaces the old autosave on close and on
-             category switch. Save persists the edited category tree; Reset
-             restores it to the state from the last load/save. -->
         <div class="settings-footer">
             <span class="unsaved" x-show="$store.settings.hasChanges">Unsaved changes</span>
             <div class="footer-buttons">
@@ -129,10 +114,6 @@
             </div>
         </div>
 
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-             unsaved-changes prompt (vs-code style): intercepts the close
-             button while the settings tree is dirty. save keeps the modal
-             open when the save fails, so errors stay visible. -->
         <div class="close-prompt" x-show="showClosePrompt" x-cloak @click.self="showClosePrompt = false">
             <div class="prompt-box">
                 <p class="prompt-text">You have unsaved changes. Save before closing?</p>

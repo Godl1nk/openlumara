@@ -107,8 +107,14 @@ class APIClient():
         async with self._session.get(url, **kwargs) as resp:
             return resp.status, await resp.text()
 
+    async def _probe_connection(self):
+        """lightweight connection probe by doing a GET request to /models"""
+        api_config = core.config.get("api", {})
+        return await self._http_get(f"{api_config.get('url')}/models", timeout_total=15)
+
     async def _probe_chat_completions(self):
-        """validate the API with a minimal chat completion request"""
+        """fallback probe for servers without GET /models,
+        by sending a chat completions request"""
         api_config = core.config.get("api", {})
         
         probe_body = {
@@ -210,23 +216,34 @@ class APIClient():
                 self._ssl_ctx.check_hostname = False
                 self._ssl_ctx.verify_mode = ssl.CERT_NONE
 
-            # validate the connection with a minimal chat-completions request
-            status, body = await self._probe_chat_completions()
+            # validate the connection with a cheap GET /models request
+            status, body = await self._probe_connection()
             connection_error = None
 
-            if status in (400, 404):
-                error_str = body.lower()
-                if "model" in error_str and ("not found" in error_str or "missing" in error_str):
-                    connection_error = APIError("Model not found.")
-                elif status != 400:
+            if status in (404, 405):
+                # server does not implement GET /models: fall back to the
+                # old chat-completions probe
+                status, body = await self._probe_chat_completions()
+
+                if status in (400, 404):
+                    error_str = body.lower()
+                    if "model" in error_str and ("not found" in error_str or "missing" in error_str):
+                        connection_error = APIError("Model not found.")
+                    elif status != 400:
+                        connection_error = APIError("Unknown error", APIHTTPError(status, body))
+                    # status 400 without a model complaint: accept the connection
+
+                elif status in (401, 403):
+                    connection_error = APIError("Authentication failed. Check if your API key is valid.", APIHTTPError(status, body))
+
+                elif status == 405:
                     connection_error = APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
-                # status 400 without a model complaint: accept the connection
+
+                elif status != 200:
+                    connection_error = APIError("Failed to connect to the API", APIHTTPError(status, body))
 
             elif status in (401, 403):
                 connection_error = APIError("Authentication failed. Check if your API key is valid.", APIHTTPError(status, body))
-
-            elif status == 405:
-                connection_error = APIError("The URL does not look like a chat-completions API.", APIHTTPError(status, body))
 
             elif status != 200:
                 connection_error = APIError("Failed to connect to the API", APIHTTPError(status, body))

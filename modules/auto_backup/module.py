@@ -207,6 +207,7 @@ class AutoBackup(core.module.Module):
     #   AI TOOLS
     # -------------------------
 
+    @core.module.tool
     async def get_backup_status(self):
         """
         Get the current backup configuration and last backup status.

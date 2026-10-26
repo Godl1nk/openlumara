@@ -70,6 +70,7 @@ class Memory(core.module.Module):
 
         return automem_prompt or None
 
+    @core.module.tool
     async def create(self, content: str, tags: list, pinned: bool = False):
         """Creates a new persistent memory. Use for storing relevant info, preferences, or context for future interactions.
         
@@ -89,6 +90,7 @@ class Memory(core.module.Module):
         self._mem.save()
         return self.result(f"memory added. ID: {mem['id']}")
 
+    @core.module.tool
     async def edit(self, id: str, content: str = None, tags: list = None):
         """Edits an existing memory. Use for self-maintenance/updating outdated info. CAUTION: ONLY use if you can see the memory's ID; NEVER hallucinate IDs."""
         index = self._get_index(id)
@@ -103,6 +105,7 @@ class Memory(core.module.Module):
         self._mem.save()
         return self.result(f"memory {id} edited")
 
+    @core.module.tool
     async def delete(self, id: str):
         """Deletes a memory. Use to prune irrelevant/redundant info. DANGEROUS: Ensure memory is truly obsolete before deleting."""
         index = self._get_index(id)
@@ -116,6 +119,7 @@ class Memory(core.module.Module):
         self._mem.save()
         return self.result(f"memory {id} deleted")
 
+    @core.module.tool
     async def pin(self, id: str):
         """Pins a memory to the top of your active context window. Use for critical identity, user preferences, or high-priority goals."""
         index = self._get_index(id)
@@ -126,6 +130,7 @@ class Memory(core.module.Module):
         self._mem.save()
         return self.result(f"memory {id} pinned")
 
+    @core.module.tool
     async def unpin(self, id: str):
         """Unpins a memory to manage cognitive load. Use when a pinned memory is no longer high priority."""
         index = self._get_index(id)
@@ -136,6 +141,7 @@ class Memory(core.module.Module):
         self._mem.save()
         return self.result(f"memory {id} unpinned")
 
+    @core.module.tool
     async def search(self, query: str, search_in_content: bool = True):
         """Searches memories by query. Use when you need to recall past info but don't know the exact ID."""
         weights = {"tags": 2.0, "content": 1.0} if search_in_content else {"tags": 2.0}
@@ -154,6 +160,7 @@ class Memory(core.module.Module):
 
         return self.result("\n".join(lines))
 
+    @core.module.tool
     async def list_unpinned(self, tag: str = None):
         """Lists all unpinned memories. Use to browse long-term storage or filter by tag."""
         results = []

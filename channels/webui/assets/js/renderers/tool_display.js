@@ -1,21 +1,3 @@
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-18)
-// tool display CORE: the registry + generic template helpers that let
-// specific tool calls render from an inline markup view
-// (templates/chat/tool_displays.html) instead of the default arg rows.
-// NO html strings - the registry only matches and names views; all markup
-// lives in the template file.
-//
-// THE VIEWS THEMSELVES (per-tool helpers + registry entries) live in
-// js/renderers/custom_tool_views.js - this file is system only, so the
-// whole view collection can grow/ship separately (and eventually be
-// replaced/extended by plugins).
-//
-// registry entry shape (registered by the views file):
-//   match:   RegExp tested against the tool function name
-//   view:    name of the template branch in tool_displays.html to render
-//   summary: (optional) (response) => short one-liner for the collapsed
-//            header. default (no summary fn, or empty return) = show nothing.
-
 const TOOL_DISPLAYS = [];
 
 function registerToolDisplay(entry) {
@@ -27,11 +9,7 @@ function toolDisplayFor(name) {
     return TOOL_DISPLAYS.find(d => d.match.test(name)) ?? null;
 }
 
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-// the name a call should display as: calls proxied through tools_call are
-// unwrapped by core/turns.py into _metadata.display_name (and their inner
-// args into _metadata.args_parsed), so bridged calls render exactly like
-// native ones. falls back to the raw function name for everything else.
+// the name a call should display as
 function toolDisplayName(tool) {
     return tool?._metadata?.display_name || tool?.function?.name || '';
 }
@@ -41,39 +19,12 @@ function toolDisplayView(tool) {
     return toolDisplayFor(toolDisplayName(tool))?.view ?? null;
 }
 
-// one-line result hint for the completed tool call header; by default
-// nothing is shown (Rosie's call) - displays can opt in via summary().
-// summaries get (parsedResponse, tool) - many stats (diff sizes, glob
-// counts) live in the ARGS, so they need the tool itself as well.
-function toolCallResultSummary(tool, cacheKey) {
-    const display = toolDisplayFor(toolDisplayName(tool));
-    if (!display || typeof display.summary !== 'function') return '';
-    let parsed = null;
-    try {
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-        // display annotations moved under the tool call's _metadata key
-        parsed = JSON.parse(tool._metadata?.response);
-    } catch {
-        return '';
-    }
-    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-21) harness:openlumara
-    // cacheKey is only a streamMemo hint; default to the call id so callers
-    // outside a card x-data scope (and completed calls) still memoize sanely
-    return display.summary(parsed, tool, cacheKey ?? tool?.id ?? '') ?? '';
+function toolCallResultSummary(tool) {
+    return tool?._metadata?.result_summary || '';
 }
 
 // -- generic template helpers ----------------------------------------------
-// (view-specific data helpers belong in custom_tool_views.js, not here)
-
-// parsed (possibly PARTIAL, mid-stream) arguments for a claimed tool
-// call, for use inside the view templates. {} until anything parses.
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-// arguments are parsed backend-side now (core/turns.py stamps a
-// monotonic args_parsed object onto every tool call, in history and
-// while streaming); the frontend's partial-JSON parser is gone.
-// cacheKey is kept in the signature so view call-sites don't churn.
 function toolArgs(tool, cacheKey) {
-    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
     // args_parsed lives under the tool call's _metadata key
     const a = tool?._metadata?.args_parsed;
     if (a !== null && typeof a === 'object') return a;
@@ -84,7 +35,6 @@ function toolArgs(tool, cacheKey) {
 // for use inside the view templates.
 function toolResponse(tool) {
     try {
-        // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
         // response lives under the tool call's _metadata key
         const p = JSON.parse(tool._metadata?.response);
         if (p !== null && typeof p === 'object') return p;

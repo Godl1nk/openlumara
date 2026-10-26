@@ -122,45 +122,23 @@
 
             <div class="item">
                 <div class="toggle-row">
-                    <label>Collapse processing chain by default</label>
+                    <label>Collapse processing chain</label>
                     <button class="toggle" type="button" :class="{ active: collapseChainDefault }" @click="handleCollapseChainToggle()">
                     </button>
                 </div>
                 <span class="description">Hide the details of what your AI is doing from you, and instead only show the basics on one line while your AI works. You can still expand the chain by clicking on it.</span>
             </div>
 
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-             Individual agentic steps: start collapsed, stay collapsed. -->
             <div class="item">
                 <div class="toggle-row">
-                    <label>Collapse steps by default</label>
-                    <button class="toggle" type="button" :class="{ active: collapseStepsDefault }" @click="handleCollapseStepsToggle()">
-                    </button>
+                    <label for="step-display-mode">Step display mode</label>
+                    <select id="step-display-mode" name="step-display-mode" x-model="stepDisplayMode" @change="handleStepDisplayModeChange($event.target.value)">
+                        <option value="default">Default (don't collapse anything)</option>
+                        <option value="thinking">Collapse thinking only</option>
+                        <option value="steps">Collapse entire step</option>
+                    </select>
                 </div>
-                <span class="description">Start each agentic step collapsed instead of expanded, and keep it that way unless you expand it yourself. The step header still shows what the AI is doing while it works.</span>
-            </div>
-
-            <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22)
-             Thinking blocks: start collapsed ("Thinking.." only) instead of
-             streaming the raw reasoning open. -->
-            <div class="item">
-                <div class="toggle-row">
-                    <label>Collapse thinking by default</label>
-                    <button class="toggle" type="button" :class="{ active: collapseThinkingDefault }" @click="handleCollapseThinkingToggle()">
-                    </button>
-                </div>
-                <span class="description">Keep your AI's thinking collapsed while it works, showing only "Thinking.." instead of the raw reasoning stream. Once it finishes, the header previews the last thought. You can always expand it to watch along.</span>
-            </div>
-
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-             Tool call cards: collapsed while streaming, details on expand. -->
-            <div class="item">
-                <div class="toggle-row">
-                    <label>Collapse tool calls by default</label>
-                    <button class="toggle" type="button" :class="{ active: collapseToolcallsDefault }" @click="handleCollapseToolcallsToggle()">
-                    </button>
-                </div>
-                <span class="description">Keep streaming tool calls collapsed to just their header. You can still expand them by clicking to see arguments and responses.</span>
+                <span class="description">Sets how each individual step gets displayed. Either full detail, collapsed thinking but you still see the tool streams, or just completely collapse each step</span>
             </div>
 
             <div class="item">
@@ -172,10 +150,6 @@
                 <span class="description">Apply a nice, gentle fade animation to every token that comes in.</span>
             </div>
 
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-             Streamed token fade settings: toggle + speed slider. Applied
-             live from localStorage (no save needed), like the other
-             appearance options. -->
             <div class="setting-item" x-show="tokenFadeEnabled">
                 <div class="slider-header">
                     <span class="slider-label">Fade Duration</span>
@@ -186,7 +160,8 @@
                        min="50"
                        max="1000"
                        step="50"
-                       @input="handleTokenFadeSpeed($event.target.value)">
+                       @input="handleTokenFadeSpeed($event.target.value)"
+                >
             </div>
 
             {{ extension_slot("settings") }}

@@ -1,34 +1,11 @@
 <!-- list of chats -->
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-     the category sidebar pane is gone - categories now live in a dropdown
-     above the search box. mobile drill-down logic was dropped along with
-     it (the dropdown replaces it on mobile too).
-     search goes through the backend (/api/chats/search, same endpoint
-     as the global search modal): one debounced request returns ALL matches
-     for the current category, no pagination. the paginated visibleChats
-     list is untouched while searching (scroll loader hidden), so clearing
-     the box is an instant switch back with no refetch. -->
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
-     sidebar tab shell: modules can drop sidebars/<name>.html (+ optional
-     same-name .svg icon) into their webui templates and it renders as an
-     extra tab in the sidebar. extension_sidebars() (channel.py) discovers
-     them; the tab bar is pure markup and the active tab is plain local
-     Alpine state - zero core JS. empty sidebarTab = the built-in chat
-     list; the tab bar auto-hides via CSS (:has) when no extension
-     panels exist, so with no extensions this is byte-identical behavior
-     to before. -->
-<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-13)
-     the selected tab is now persisted to localStorage so a page refresh
-     lands back on the same tab. a saved extension tab whose panel no
-     longer exists (module disabled/removed) is dropped on init so the
-     sidebar never loads with nothing shown. -->
 <div class="sidebar-shell" x-data="{
         sidebarTab: '',
         init() {
             const saved = localStorage.getItem('sidebarTab') || '';
             const tabs = Array.from(document.querySelectorAll('.sidebar-tab')).map(b => b.dataset.tab);
             this.sidebarTab = tabs.includes(saved) ? saved : '';
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
+                                   
             // with no extension tabs the tab bar is hidden, so a saved
             // collapsed state would leave an empty strip with no way to
             // expand - drop it in that case.
@@ -39,17 +16,13 @@
             }
         },
         setTab(tab) {
-            // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
-            // clicking the already-active tab collapses/expands the
-            // sidebar (desktop only - on mobile it's a full-screen
-            // overlay, so collapsing makes no sense there). the state
-            // lives in the ui store so #sidebar itself can shrink;
-            // persisted to localStorage.
+            // toggle the sidebar when clicking the active tab, except on mobile
             if (tab === this.sidebarTab && !$store.ui.isMobile) {
                 $store.ui.sidebarCollapsed = !$store.ui.sidebarCollapsed;
                 localStorage.setItem('sidebarCollapsed', String($store.ui.sidebarCollapsed));
                 return;
             }
+                                   
             this.sidebarTab = tab;
             localStorage.setItem('sidebarTab', tab);
             // switching to a different tab always reveals the panel again
@@ -76,20 +49,7 @@
         {% endfor %}
     </nav>
 
-<!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-     tagPanel: local state for the tag filter panel toggle below -->
-<!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
-     panels stay hidden while the sidebar is collapsed (active tab was
-     clicked); the isMobile escape hatch keeps the list visible if the
-     window shrinks to mobile while a collapsed desktop state is active. -->
 <div id="chat-list" x-ref="chat-list" x-cloak x-show="sidebarTab === '' && ($store.ui.isMobile || !$store.ui.sidebarCollapsed)" x-data="{ tagPanel: false }">
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-         category picker dropdown, replaces the old category sidebar -->
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-         custom dropdown (native <option>s can't render icons): trigger
-         shows the active category's icon + name, menu is teleported to
-         body like the chat action menu. 'general' gets home.svg, every
-         other category gets folder.svg. -->
     {{ extension_slot("top") }}
 
     <div class="category-select" x-data="{ open: false, top: 0, left: 0, width: 0 }">
@@ -144,13 +104,7 @@
     </div>
 
     <div class="search">
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-             magnifier sits inside the field on the left (absolute, so
-             it doesn't join the flex row); input gets left padding -->
         <span class="search-icon" x-show="!$store.chat.searchLoading">{% include 'svg/search.svg' %}</span>
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-02)
-             spinner swaps in for the magnifier while a search is in
-             flight; absolute in the same spot, so no layout shift -->
         <span class="search-spinner" x-show="$store.chat.searchLoading" x-cloak></span>
         <input name="search" type="text" placeholder="Search.."
             :value="$store.chat.searchQuery"
@@ -158,9 +112,6 @@
             :disabled="$store.stream.state !== 'idle'"
             >
 
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-             toggles searching message content in addition to titles.
-             when active, results gain a 3-line snippet of the match. -->
         <button type="button" class="search-toggle"
             :class="{ 'active': $store.chat.searchInContent }"
             @click="$store.chat.setSearchInContent(!$store.chat.searchInContent)"
@@ -177,9 +128,6 @@
             </svg>
         </button>
 
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-             opens/closes the tag filter panel (below). lit up whenever
-             one or more tags are filtering the list. -->
         <button type="button" class="search-toggle"
             :class="{ 'active': $store.chat.selectedTags.length > 0 || tagPanel }"
             @click="tagPanel = !tagPanel"
@@ -193,10 +141,6 @@
         </button>
     </div>
 
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-26)
-         tag filter panel: collapsed by default, toggled by the tag
-         button above. chips toggle tags (AND semantics, handled by the
-         store); 'clear filter' resets everything at once. -->
     <div class="tag-filter" x-show="tagPanel" x-transition.opacity.duration.120ms>
         <template x-if="$store.chat.availableTags.length === 0">
             <div class="tag-filter-empty">no tags in this category yet</div>
@@ -226,8 +170,6 @@
         {{ extension_slot("top_of_chat_list") }}
 
         <!-- search loading state -->
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-02)
-             spinner next to the 'searching..' label -->
         <template x-if="$store.chat.searching && $store.chat.searchLoading && $store.chat.searchResults.length === 0">
             <div class="item search-loading-row">
                 <span class="search-spinner-inline"></span>
@@ -240,12 +182,6 @@
             <div class="item">no chats found</div>
         </template>
 
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-             option d: all day headers render from the cheap
-             /api/chats/days list; each group fetches its own chats when
-             expanded (paginated per day, with a per-group loader).
-             today expanded by default, everything else collapsed;
-             search results are grouped client-side and always open. -->
         <template x-for="group in $store.chat.displayGroups()" :key="group.key">
             <div class="day-group">
                 <button type="button" class="day-header"
@@ -294,16 +230,7 @@
                         "
                     >
                         <div>
-                            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                                 meta line is gone (date is redundant under the day
-                                 headers): single row with title on the left, then the
-                                 tag icon (hover popup, same as the old pill) and the
-                                 three-dot actions on the right. -->
                             <div class="title-row">
-                                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-02)
-                                     search results render the backend's pre-escaped,
-                                     pre-highlighted title (same string the global
-                                     modal uses); normal browsing keeps plain x-text -->
                                 <template x-if="!renaming && chat.title_highlighted">
                                     <span class="title" x-html="chat.title_highlighted"></span>
                                 </template>
@@ -332,10 +259,6 @@
                                 </template>
 
                                 <template x-if="(chat.tags ?? []).length > 0">
-                                    <!-- popup teleported to body (chat cards
-                                         transform on hover, which would trap
-                                         and clip a fixed child), anchored via
-                                         the icon's viewport rect -->
                                     <span class="tag-icon-wrap" x-data="{ open: false, top: 0, left: 0 }"
                                         @mouseenter="const r = $el.getBoundingClientRect(); top = r.top - 8; left = Math.max(8, Math.min(r.left, window.innerWidth - 236)); open = true"
                                         @mouseleave="open = false">
@@ -388,13 +311,6 @@
                     </div>
                         </template>
 
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                             per-day pagination loader: shows while the group
-                             is expanded and has chats left to fetch (or the
-                             first page hasn't landed yet). the fill loop runs
-                             while it's visible (a loader that renders already
-                             in view never fires x-intersect); once content
-                             pushes it out, entry events take over. -->
                         <template x-if="!$store.chat.searching && (!group.loaded || group.hasMore)">
                             <div :data-day-loader="group.key"
                                 x-intersect.enter="$store.chat.ensureDayChatsFilled(group, $el)"
@@ -407,18 +323,9 @@
 
     </div>
 
-    {# -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-03)
-       footer wrapper: bottom_of_chat_list moved out of the scrollable
-       .chats area, and buttons + New Chat grouped with it, so the whole
-       block is pinned to the bottom of the sidebar (margin-top:auto in
-       sidebar.css) no matter how many extension buttons there are #}
     <div class="sidebar-footer">
         {{ extension_slot("bottom_of_chat_list") }}
         {{ extension_slot("buttons") }}
-        {# -- AI GENERATED CODE (Qwen3.8-Flash-Next-Q4) :: (2026-10-04)
-           on mobile the sidebar is a full-screen overlay: dismiss it after
-           creating the chat so the fresh chat is revealed (matches the
-           characters panel's new-chat behavior) #}
         <button class="sidebar-btn" :disabled="$store.stream.state !== 'idle'"
             @click="
                 $store.chat.newChat();
@@ -430,14 +337,8 @@
     </div>
 </div>
 
-    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-04)
-         extension sidebar panels: each module template in sidebars/ is a
-         self-contained panel body (it toggles itself via the shared
-         sidebarTab state above, same trick modals use with currentModal).
-         panels are expected to be a flex-column like #chat-list. -->
     {% for panel in extension_sidebars() %}
-    {# -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-14)
-       the owning module's settings are exposed to the included panel as
+    {# the owning module's settings are exposed to the included panel as
        `module_config` (a loop-scoped set is visible to includes) #}
     {% set module_config = panel.config %}
     <div class="sidebar-panel" x-show="sidebarTab === '{{ panel.module }}/{{ panel.name }}' && ($store.ui.isMobile || !$store.ui.sidebarCollapsed)" x-cloak>

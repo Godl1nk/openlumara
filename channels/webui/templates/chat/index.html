@@ -39,33 +39,6 @@
     {{ extension_slot("above_chat_history") }}
 
     <!-- historical turns -->
-    <!--
-        -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-11)
-        bottom-up lazy mount (controller lives in the ui store: turnMounted,
-        prepareBottomWindow, _mountPass). long-running chats were hoarding
-        ~1gb of tab ram because every turn's full markdown/hljs dom was
-        mounted permanently, so turns are placeholders until they near the
-        viewport and get recycled once they drift far outside it.
-
-        this replaced the old x-intersect approach, which stored `rendered`
-        per turn element and toggled it on observer edge events: x-for keys
-        by index, so replacing turnHistory reused elements WITHOUT
-        re-evaluating their x-data, and a stale rendered=false stranded turns
-        as invisible placeholders in plain view (no new intersection = no
-        remount). instant programmatic scroll jumps could also cross the mount
-        zone between observer deliveries with the same stranded result.
-        mount state now lives in the store and a rAF-coalesced pass
-        recomputes it from live geometry - level-triggered, so nothing can
-        stay stuck.
-
-        opening a chat mounts the NEWEST turn first, then walks upward until
-        ~2 viewports of real dom exist (prepareBottomWindow), so the bottom
-        lands with stable heights instead of needing an aggressive timed
-        autoscroll. the 800px mount / 2500px unmount margins keep the
-        hysteresis; unmounts capture the exact height first (no document
-        shift), mounts above the viewport are compensated manually
-        (overflow-anchor: none). remounting is cheap: markdown is cached.
-    -->
     <template x-for="(turn, turnIndex) in $store.chat.turnHistory" :key="turnIndex">
         <div class="fullwidth turn" :data-turn-index="turnIndex">
 
@@ -87,28 +60,12 @@
                 </div>
             </template>
 
-            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                 live streaming assistant turn: moved INSIDE the turn x-for.
-                 the live turn joins turnHistory on its first token (see
-                 turn_stream in websockets.js) and stream_complete flips
-                 live to false IN PLACE - so the streaming DOM and the
-                 finalized history DOM swap inside this one turn element.
-                 #messages itself never gains or loses a child when a
-                 stream ends, which keeps the x-animate FLIP from playing
-                 a leave+enter on the reply. the markup reads `turn` (the
-                 very object the stream store feeds) instead of
-                 $store.stream.turn. -->
             <template x-if="turn.live === true">
                 <div class="message-wrapper assistant">
                     <div class="message assistant">
-                        <!-- streaming chain wrapper: expanded while streaming (content
-                             renders standalone until a newer segment pulls it back into
-                             the chain), but manually toggable -->
-                        <template x-if="streamTurnSplit(turn).chain.length > 0">
-                            <!-- header shows "Processing.." + spinning gear while the
-                                 stream is active; when collapsed, the last chain item's
-                                 label appears in parentheses so you can see what the
-                                 agent is busy with without expanding -->
+                        <!-- streaming chain wrapper -->
+                        <template x-if="(turn.steps ?? []).length > 0">
+                            <!-- "Processing.." header -->
                             <div class="agent-chain" :class="{ 'is-streaming': processing }" x-data="{
                                      // initial collapse state follows the Appearance
                                      // setting (read fresh at mount, so it applies
@@ -121,17 +78,11 @@
                                      {% endif %}
                                      get processing() { return $store.stream.state !== 'idle' },
                                      get lastLabel() {
-                                         // look at the turn's LAST segment overall, not just
-                                         // the chain: once final content arrives it moves
-                                         // OUT of the chain, so checking the chain alone
-                                         // kept showing the previous 'thinking' label
-                                         const split = streamTurnSplit(turn);
-                                         const items = split.chain.concat(split.final);
-                                         if (!items.length) return '';
-                                         const label = items[items.length - 1].label ?? '';
-                                         // finished reasoning reads Thoughts, only the
-                                         // live stream keeps Thinking.. (no double
-                                         // quotes in here, this lives in an html attr!)
+                                         const finals = turn.final_messages ?? [];
+                                         const steps = turn.steps ?? [];
+                                         const lastItem = finals[finals.length - 1] ?? steps[steps.length - 1];
+                                         const label = lastItem?.label ?? '';
+                                         // show 'Thinking..' when still thinking, 'Thoughts' when done
                                          return $store.stream.state === 'idle' ? label.replace('Thinking..', 'Thoughts') : label;
                                      }
                                  }">
@@ -142,23 +93,13 @@
                                 {% else %}
                                 <div class="agent-chain-header" @click="collapsed = !collapsed">
                                 {% endif %}
-                                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                                         header chevron removed: the gear sits flush
-                                         left, centered on the spine, and is handle
-                                         enough (the whole header toggles) -->
                                     {% include 'svg/gear.svg' %}
                                     <span class="label" x-text="processing ? 'Processing..' : 'Process'"></span>
                                     <span class="activity" x-show="collapsed && lastLabel" x-text="'(' + lastLabel + ')'"></span>
                                 </div>
-                                <!-- timeline layout (see history chain). no finish flag
-                                     while streaming: we can't know which content segment
-                                     is the final one until the stream ends. the newest
-                                     station's node pulses instead. -->
                                 <template x-if="!collapsed">
                                     <div class="agent-chain-body">
-                                        <!-- segments carry backend step numbers; streamSteps()
-                                             folds them into step objects matching history steps -->
-                                        <template x-for="(message, messageIndex) in streamSteps(streamTurnSplit(turn).chain)" :key="messageIndex">
+                                        <template x-for="(step, stepIndex) in turn.steps" :key="stepIndex">
                                             <div class="chain-station">
                                                 <div class="chain-rail"><div class="chain-dot"></div></div>
                                                 <div class="chain-content">
@@ -176,13 +117,12 @@
                                                 </div>
                                             </div>
                                         </template>
-
                                     </div>
                                 </template>
                             </div>
                         </template>
 
-                        <template x-for="(message, messageIndex) in streamTurnSplit(turn).final" :key="'final-'+messageIndex">
+                        <template x-for="(message, messageIndex) in (turn.final_messages ?? [])" :key="'final-'+messageIndex">
                             {% include 'chat/turns/assistant_stream.html' %}
                         </template>
                     </div>
@@ -193,40 +133,16 @@
             <template x-if="turn.role === 'assistant' && !turn.live">
                 <div class="message-wrapper assistant">
                     <div class="message assistant">
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-                             everything that isn't the turn's final content (the
-                             thinking -> toolcall -> thinking chain) is grouped into
-                             a collapsible wrapper. history turns start collapsed -->
-                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                             steps arrive precomputed from the backend
-                             (core/turns.py group_history) -->
                         <template x-if="(turn.steps ?? []).length > 0">
-                            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                 mount-once collapse: x-if keeps the (possibly huge)
-                                 chain body OUT of the DOM until the first expand
-                                 (agentic chains can be gigantic), but from then on
-                                 the body persists and x-show just hides it - so
-                                 re-expanding is instant instead of rebuilding the
-                                 whole chain (the jump). -->
                             <div class="agent-chain" x-data="{ collapsed: !turnHasImageResult(turn), mounted: turnHasImageResult(turn),
-                                     // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                     // tool-less chain (just reasoning/content):
-                                     // the header reads standalone Thoughts
+                                     // tool-less chain (just reasoning/content)
                                      get thoughtsOnly() { return turn.steps.every(s => s.status === 'thoughts') } }">
-                                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                     reasoning display disabled: the chain is locked
-                                     collapsed - no chevron, clicking does nothing -->
+                                {# lock the chain from being expanded if it's turned off - useful in public UI exposure #}
                                 {% if not config.get('enable_chain_expansion') %}
                                 <div class="agent-chain-header locked">
                                 {% else %}
                                 <div class="agent-chain-header" @click="collapsed = !collapsed; if (!collapsed) mounted = true">
                                 {% endif %}
-                                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
-                                         header chevron removed (matches the live
-                                         branch): gear flush left on the spine -->
-                                    <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                         thoughts-only turns swap the gear + Process
-                                         label for a thought bubble + Thoughts -->
                                     <template x-if="!thoughtsOnly">
                                         {% include 'svg/gear.svg' %}
                                     </template>
@@ -236,41 +152,28 @@
                                     <span class="label" x-text="thoughtsOnly ? 'Thoughts' : 'Process'"></span>
                                     <span class="activity" x-show="collapsed && !thoughtsOnly" x-text="'(' + turn.steps.length + (turn.steps.length === 1 ? ' step)' : ' steps)')"></span>
                                 </div>
-                                <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-                                     timeline layout: each chain segment is a station
-                                     with a node dot on the spine that starts at the
-                                     Process chevron; the turn's chain ends on a
-                                     finish flag. -->
                                 <template x-if="mounted">
                                     <div class="agent-chain-body" x-show="!collapsed" x-collapse.duration.250>
-                                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                             thoughts-only turn: the reasoning IS the whole
-                                             chain, so render it straight as a block - no
-                                             stations, step badges, spine or finish flag -->
+                                        <!-- thoughts-only turn -->
                                         <template x-if="thoughtsOnly">
                                             <div>
-                                                <template x-for="(message, messageIndex) in turn.steps" :key="'th-'+messageIndex">
+                                                <template x-for="(step, stepIndex) in turn.steps" :key="'th-'+stepIndex">
                                                     <div class="combined-block expanded">
                                                         <div class="block">
-                                                            <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                                                 no bubble icon here: the Thoughts
-                                                                 header already shows one -->
-                                                            <div class="reasoning-row" x-show="message.reasoning_content">
-                                                                <div class="reasoning-text" x-fade-text="message.reasoning_content"></div>
+                                                            <div class="reasoning-row" x-show="step.reasoning_content">
+                                                                <div class="reasoning-text" x-fade-text="step.reasoning_content"></div>
                                                             </div>
-                                                            <template x-if="message.content">
-                                                                <div class="step-content" x-md="{ message: message, live: false }"></div>
+                                                            <template x-if="step.content">
+                                                                <div class="step-content" x-md="{ message: step, live: false }"></div>
                                                             </template>
                                                         </div>
                                                     </div>
                                                 </template>
                                             </div>
                                         </template>
-                                        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-                                             every chain item is a backend step now; no more
-                                             combined-vs-regular runtime branch -->
                                         <template x-if="!thoughtsOnly">
-                                            <template x-for="(message, messageIndex) in turn.steps" :key="messageIndex">
+                                            <!-- this is where the steps get displayed -->
+                                            <template x-for="(step, stepIndex) in turn.steps" :key="stepIndex">
                                                 <div class="chain-station">
                                                     <div class="chain-rail"><div class="chain-dot"></div></div>
                                                     <div class="chain-content">
@@ -280,6 +183,7 @@
                                                 </div>
                                             </template>
                                             <div class="chain-end">
+                                                <!-- DEPRECATED. kept around for if it's ever needed again -->
                                                 {% include 'svg/finish_flag.svg' %}
                                                 <span class="chain-end-label">Finished</span>
                                             </div>
@@ -304,10 +208,6 @@
             <!-- /lazy-mount wrappers -->
         </div>
     </template>
-
-    <!-- streaming assistant turn: moved inside the turn x-for above as the
-         turn.live branch (2026-10-12) so stream finalization is an in-place
-         promotion instead of a remove+add on #messages -->
 
     <!-- typing indicator -->
     <template x-if="$store.stream.state === 'message_sending' || $store.stream.state === 'message_received'">

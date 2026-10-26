@@ -1,23 +1,20 @@
 #!/bin/bash
+# resolve this script's real location
+target="$0"
+while [ -L "$target" ]; do
+    link=$(readlink "$target")
+    case "$link" in
+        /*) target="$link" ;;
+        *)  target="$(dirname "$target")/$link" ;;
+    esac
+done
+cd "$(dirname "$target")" || exit 1
 
-# detect Python binary
-if command -v python3 >/dev/null 2>&1; then
-    PYTHON_BIN="python3"
-elif command -v python >/dev/null 2>&1; then
-    PYTHON_BIN="python"
-else
-    echo "error: no python binary found (checked python3 and python)"
-    exit 1
-fi
-
-# set up virtual environment
-if [ ! -d "venv" ]; then
-    echo "setting up virtual environment with $PYTHON_BIN..."
-    $PYTHON_BIN -m venv venv
-    venv/bin/pip install --upgrade pip
-    venv/bin/pip install -r requirements.txt
+# first run? set up the venv via install.sh, then continue
+if [ ! -x "venv/bin/python" ]; then
+    sh ./install.sh || exit 1
 fi
 
 # aaand run!
 source venv/bin/activate
-python main.py "$@"
+exec python main.py "$@"

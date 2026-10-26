@@ -19,15 +19,8 @@ const AudioManager = {
     processingStartTime: 0, // Track when processing started
     toneTimer: null, // Timer for processing tones
     processingChain: null,
-    synthLPF: null, // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15) shared lowpass for synth fallback tones, built once instead of per play() call
+    synthLPF: null,
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-    // play() fires on every streamed token, and it was doing 3-5 synchronous
-    // localStorage reads per call (enabled flag, token freq, token vol,
-    // typing freq). localStorage is a slow synchronous api; this caches the
-    // settings in memory. every writer of these keys goes through
-    // AudioManager or the audio store, and the store calls
-    // refreshSettings() on change, so the cache can never go stale.
     enabledFlags: null,
     typingFreq: null,
     tokenFreq: null,
@@ -52,11 +45,6 @@ const AudioManager = {
         return Boolean(this.enabledFlags[id]);
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-    // the lowpass used by the synth fallbacks was being created fresh on every
-    // play() call (including per-token) even though its config is static, and
-    // the token path never even connected it. one cached filter, pre-connected
-    // to the master gain.
     getSynthLPF: function(ctx) {
         if (this.synthLPF) return this.synthLPF;
 
@@ -70,10 +58,6 @@ const AudioManager = {
         return lpf;
     },
 
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) - (2026-09-15)
-    // builds the reverb chain for the synth processing fallback exactly once.
-    // generating the impulse response costs ~235KB per call and prompt_progress
-    // tokens fire many times per second, so rebuilding it per call was pure churn.
     getProcessingChain: function(ctx) {
         if (this.processingChain) return this.processingChain;
 
@@ -121,9 +105,6 @@ const AudioManager = {
         return new Promise((resolve, reject) => {
             // Load volume from storage
             this.volume = parseFloat(localStorage.getItem('sfxVolume') || '1.0');
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-            // seed the token volume cache so playback uses the stored value
-            // even before the audio store's init() calls setTokenVolume()
             this.tokenVolume = parseFloat(localStorage.getItem('sfxTokenVolume') || '0.7');
 
             // 1. Open IndexedDB
@@ -211,15 +192,8 @@ const AudioManager = {
         this.tokenVolume = vol;
         localStorage.setItem('sfxTokenVolume', vol);
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // note: this used to also clobber the MASTER gain node with the
-        // token volume, which made every sound play at token volume. master
-        // gain now only follows setVolume().
     },
     setTokenFreq: function(freq) {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // this.tokenFreq doubles as the cached value read by the per-token
-        // playback path, so updating it here keeps the cache in sync.
         this.tokenFreq = freq;
         localStorage.setItem('sfxTokenFreq', freq);
     },
@@ -297,9 +271,6 @@ const AudioManager = {
 
     // Play the sound asynchronously to avoid UI blocking
     play: function(id) {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // enabled check now hits the in-memory cache instead of reading
-        // localStorage on every streamed token.
         if (!this.isSoundEnabled(id)) return;
 
         // ── Critical: Resume context synchronously on user gesture ──
@@ -311,7 +282,6 @@ const AudioManager = {
         }
 
         const buffer = this.buffers[id];
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
         // cached instead of a synchronous localStorage read per play() call
         if (this.typingFreq === null) {
             this.typingFreq = Number(localStorage.getItem('typingFreq')) || 440;
@@ -333,7 +303,6 @@ const AudioManager = {
             const vol = this.volume;
             const master = this.masterGainNode;
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
             // lpf creation moved below the token branch (token never used it)
             // and now reuses a single cached filter via getSynthLPF().
             let lpf = null;
@@ -346,7 +315,6 @@ const AudioManager = {
                 osc.type = 'sine';
                 osc.frequency.value = freq;
 
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
                 // the shared lpf is pre-connected to master inside getSynthLPF(),
                 // so the per-call lpf.connect(master) here is removed.
                 osc.connect(gain);
@@ -386,7 +354,6 @@ const AudioManager = {
             };
 
             if (id === 'token') {
-                // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
                 // per-token localStorage reads replaced with in-memory values
                 // (kept in sync by setTokenFreq/setTokenVolume below)
                 if (this.tokenFreq === null) {
@@ -425,9 +392,6 @@ const AudioManager = {
             }
 
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15)
-            // grab the shared lowpass only now that we know this isn't the
-            // token path (which never uses a filter at all).
             lpf = this.getSynthLPF(ctx);
 
             if (id === 'typing') {
@@ -440,17 +404,11 @@ const AudioManager = {
                 const gain = ctx.createGain();
                 gain.gain.value = 0;
 
-                // Chain: osc → gain → shared LPF → master
-                // (gain must come first: the shared lpf is permanently wired
-                // to master, so envelope-shaped audio can't pass through it
-                // on a second parallel path)
                 osc.connect(gain);
                 gain.connect(lpf);
 
                 osc.start(t);
 
-                // Envelope: 10ms attack, 100ms decay
-                // Adjusted volume to match token sound (~25%)
                 gain.gain.linearRampToValueAtTime(vol * 0.7, t + 0.01);
                 gain.gain.exponentialRampToValueAtTime(0.00001, t + 0.1);
                 osc.stop(t + 0.1);
@@ -529,19 +487,10 @@ const AudioManager = {
     },
 
     playProcessingSound: function() {
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16)
-        // fires on every prompt_progress token; enabled check now hits the
-        // in-memory cache instead of localStorage. (note: this is also a
-        // behavior fix - the old check required an explicit 'true' in
-        // storage, so it disagreed with play()'s default handling.)
         if (!this.isSoundEnabled('processing')) {
             return;
         }
 
-        // -- AI GENERATED CODE (Qwen3.8-Flash-Next) - (2026-09-15)
-        // if a processing sound is already running, leave it alone. this gets
-        // called on every prompt_progress token, and restarting the tone chain
-        // per token churned nodes and reset the elapsed timer constantly.
         if (this.processingSound) return;
 
         // Synchronously resume context for mobile compatibility
@@ -630,12 +579,6 @@ const AudioManager = {
             // Start the first tone (it will internally wait if < 0.2s elapsed)
             playSoftTone();
 
-            // -- AI GENERATED CODE (Qwen3.8-Flash-Next) - (2026-09-15)
-            // cleanup function: previously stop() only killed the timer chain,
-            // so an already-scheduled tone rang out its full 1.5s envelope and
-            // its reverb tail kept decaying. now we hard-stop the live
-            // oscillator (tiny 20ms fade to avoid a click) and mute the reverb
-            // chain to cut the tail.
             this.processingSound = {
                 stop: () => {
                     isPlaying = false;

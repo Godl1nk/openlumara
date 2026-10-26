@@ -176,3 +176,7 @@
     -webkit-appearance: none;
     appearance: none;
 }
+
+#step-display-mode {
+    width: 30% !important;
+}

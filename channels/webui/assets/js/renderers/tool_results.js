@@ -1,8 +1,3 @@
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-// full rewrite: arrays always render as index->value rows (never inline
-// [a, b] previews), objects as nested key/value rows; adds the missing
-// toolResponseRenderer (content field first, keyless, full width).
-
 function isStructured(v) {
     return v !== null && typeof v === 'object';
 }
@@ -70,9 +65,7 @@ function toolResponseRenderer(parsed) {
     }
     const rest = { ...parsed };
     delete rest.content;
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-    // wrap the remaining fields so css can draw a hairline between
-    // the content block and the rest of the response
+    
     if (Object.keys(rest).length > 0) {
         const sep = 'content' in parsed ? ' response-rest' : '';
         html += `<div class="${sep.trim()}">${toolResultsRenderer(rest, 0)}</div>`;

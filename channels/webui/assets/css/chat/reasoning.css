@@ -26,9 +26,6 @@
             flex-shrink: 0;
         }
 
-        /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-           thought bubble in em (16px = 1.18em at 0.85rem) so it scales
-           with font size like the timeline nodes */
         .icon {
             width: 1.18em;
             height: 1.18em;
@@ -54,9 +51,6 @@
         opacity: 1;
     }
 
-    /* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-         left border + indent removed: inside the agent chain, the timeline
-         spine provides the visual structure */
     .content {
         max-height: 120px;
         overflow-y: auto;
@@ -109,9 +103,6 @@
     margin-top: 0;
 }
 
-/* -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17)
-   chevron only outside an agent chain; inside one, the node dot already
-   shows the expand/collapse state */
 .standalone-chevron {
     width: 1em;
     height: 1em;
@@ -127,6 +118,4 @@
 .agent-chain .standalone-chevron {
     display: none;
 }
-
-
 

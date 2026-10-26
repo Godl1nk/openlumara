@@ -232,6 +232,7 @@ class WebSearch(modules.http.Http):
     # AI Tools
     # ---------------------------------------------------------
 
+    @core.module.tool
     async def text(self, query: str, region: str = "us-en", safesearch: str = "moderate", timelimit: str | None = None, max_results: int = 10, page: int = 1, backend: str = "auto"):
         """
         Search the web for text results.
@@ -250,6 +251,7 @@ class WebSearch(modules.http.Http):
             region=region, safesearch=safesearch, timelimit=timelimit, max_results=max_results, page=page, backend=backend
         )
 
+    @core.module.tool
     async def images(self, query: str, region: str = "us-en", safesearch: str = "moderate", timelimit: str | None = None, max_results: int = 10, page: int = 1, backend: str = "auto", size: str | None = None, color: str | None = None, type_image: str | None = None, layout: str | None = None, license_image: str | None = None):
         """
         Search the web for image URLs.
@@ -273,6 +275,7 @@ class WebSearch(modules.http.Http):
             region=region, safesearch=safesearch, timelimit=timelimit, max_results=max_results, page=page, backend=backend, size=size, color=color, type_image=type_image, layout=layout, license_image=license_image
         )
 
+    @core.module.tool
     async def news(self, query: str, region: str = "us-en", safesearch: str = "moderate", timelimit: str | None = None, max_results: int = 10, page: int = 1, backend: str = "auto"):
         """
         Search the web for recent news articles.
@@ -291,6 +294,7 @@ class WebSearch(modules.http.Http):
             region=region, safesearch=safesearch, timelimit=timelimit, max_results=max_results, page=page, backend=backend
         )
 
+    @core.module.tool
     async def videos(self, query: str, region: str = "us-en", safesearch: str = "moderate", timelimit: str | None = None, max_results: int = 10, page: int = 1, backend: str = "auto", resolution: str | None = None, duration: str | None = None, license_videos: str | None = None):
         """
         Search the web for video results.
@@ -312,6 +316,7 @@ class WebSearch(modules.http.Http):
             region=region, safesearch=safesearch, timelimit=timelimit, max_results=max_results, page=page, backend=backend, resolution=resolution, duration=duration, license_videos=license_videos
         )
 
+    @core.module.tool
     async def books(self, query: str, max_results: int = 10, page: int = 1, backend: str = "auto"):
         """
         Search the web for book results.
@@ -326,6 +331,32 @@ class WebSearch(modules.http.Http):
             "books", query, "url", ("title", "author", "publisher", "info"),
             max_results=max_results, page=page, backend=backend
         )
+
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    # one-line RESULT hint for the webui tool header (port of the old JS
+    # summary callback): how many results came back. private by naming
+    # convention (the loader only registers @core.module.tool methods).
+    # called by turns.TurnCollector.on_result_summary once a response exists;
+    # crashes are swallowed by the caller and output is flattened/capped there.
+    def on_tool_summary(self, name, args, response):
+        match name:
+            case ("web_search_text" | "web_search_images" | "web_search_news"
+                  | "web_search_videos" | "web_search_books"):
+                # response shape: { status, content: [wrapped, instruction] }
+                # with the actual results under wrapped.web_content
+                content = response.get("content") if isinstance(response, dict) else None
+                if not isinstance(content, list):
+                    return ""
+                items = []
+                for c in content:
+                    if isinstance(c, dict) and isinstance(c.get("web_content"), list):
+                        items = c["web_content"]
+                        break
+                n = len(items)
+                if not n:
+                    return ""
+                return f"{n} result" + ("" if n == 1 else "s")
+        return ""
 
 #     async def extract(self, url: str, fmt: str = "text_markdown"):
 #         """

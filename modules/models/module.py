@@ -54,6 +54,7 @@ class Models(core.module.Module):
                 return None
             self._models_cache = models
 
+    @core.module.tool
     async def get_available(self):
         """Returns a list of AI/LLM models available to switch to, along with current model, image model, and reasoning efforts."""
         await self._load_models()
@@ -73,6 +74,7 @@ class Models(core.module.Module):
             "custom_reasoning_effort": custom_effort
         })
 
+    @core.module.tool
     async def switch(self, name: str):
         """Switches the active chat model."""
         await self._load_models()
@@ -96,6 +98,7 @@ class Models(core.module.Module):
             return self.result("An image model cannot be used as the active chat model.", success=False)
         return self.result(f"Model has been switched to {found_id}", success=True)
 
+    @core.module.tool
     async def set_image_model(self, name: str):
         """Sets the designated model to be used for image generation and editing."""
         name_clean = str(name).strip()
@@ -106,6 +109,7 @@ class Models(core.module.Module):
             return self.result("The active chat model cannot also be the default image model.", success=False)
         return self.result(f"Image model has been set to '{name_clean}'.", success=True)
 
+    @core.module.tool
     async def set_reasoning_effort(self, effort: str, custom: bool = False):
         """
         Sets the model's reasoning effort level (preset or custom).
@@ -122,6 +126,7 @@ class Models(core.module.Module):
             self.manager.API.set_reasoning_effort(effort=eff, custom="")
             return self.result(f"Reasoning effort set to '{eff}'.", success=True)
 
+    @core.module.tool
     async def toggle_model(self, name: str, enable: bool = True):
         """
         Enables or disables an AI model in the switcher.

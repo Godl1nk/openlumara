@@ -54,7 +54,7 @@ class Channel:
         self.console_buffer = [] # used to log system messages
 
         self.tc_manager = core.toolcalls.ToolcallManager(self)
-        self.turncollector = core.turns.TurnCollector()
+        self.turncollector = core.turns.TurnCollector(self)
         self.tool_loader = core.tool_loader.ToolLoader(self)
         self.tool_loader.register_meta_tools()
 
@@ -864,7 +864,7 @@ class Channel:
 
     async def format_stream_for_text(self, stream, chunk_size=None, use_markdown=True, strings: dict = None, show_indicators=True):
         """
-        Formats a stream of turn segments into text deltas for text-based channels.
+        Formats a step-based stream into text deltas for text-based channels.
         """
         def text_to_token(text):
             return {"type": "formatted", "content": text}
@@ -889,14 +889,19 @@ class Channel:
                     "tool_call_header": "🔧 calling tool {tool_name}"
                 }
 
-        first_turn = True
-        last_turn_type = None
         currently_reasoning = False
         shown_reasoning_indicator = False
-        
+
+        step_state = {}
+        final_text = {}
+
         # Per-tool-call tracking: {tool_id: {key: formatted_value}}
         last_tool_state = {}
-        last_content = {}
+
+        # separator bookkeeping: which (field, step) emitted text last
+        # (mirrors the old segment-type transition rule)
+        last_key = None
+        first_growth = True
         
         # track characters for chunk boundaries
         char_counter = 0
@@ -907,49 +912,87 @@ class Channel:
                 yield {"type": "new_chunk", "content": ""}
                 char_counter = 0
 
-        async for token in self.group_stream(stream):
-            # always yield the raw token for manual processing by the channel
-            if token.get("type") == "token":
-                yield token.get("content")
+        # ROSE22 TODO: turn this into an actual step-based display somehow despite
+        # not being able to edit UI elements when using this function...??????
+        async def emit_step_text(step):
+            nonlocal last_key, first_growth, currently_reasoning
+            nonlocal shown_reasoning_indicator, char_counter
 
-            if token.get("type") != "turn":
-                continue
-            
-            segment = token.get("content")
-            if not segment:
-                continue
-            
-            segment_type = segment.get("type")
-            
-            if segment.get("role") != "assistant":
-                continue
-            
-            if segment_type != last_turn_type:
-                if first_turn:
-                    first_turn = False
-                else:
-                    if strings.get("separator"):
+            sn = step.get("step") or 0
+            st = step_state.setdefault(
+                sn,
+                {"reasoning": "", "content": "", "step_obj": {}},
+            )
+            st["step_obj"] = step
+
+            live_final = final_text.get(sn, "")
+            step_content = step.get("content") or ""
+            if live_final and step_content:
+                content = step_content + "\n\n" + live_final
+            else:
+                content = live_final or step_content
+
+            async def transition(field):
+                nonlocal last_key, first_growth, char_counter
+                if last_key == (field, sn):
+                    return
+                if not first_growth and strings.get("separator"):
+                    async for _ in check_chunk_boundary():
+                        yield _
+                    yield text_to_token("\n"+strings["separator"]+"\n")
+                    char_counter += len("\n"+strings["separator"]+"\n")
+                last_key = (field, sn)
+                first_growth = False
+
+            reasoning = step.get("reasoning_content") or ""
+            r_delta = (
+                reasoning[len(st["reasoning"]):]
+                if reasoning.startswith(st["reasoning"])
+                else reasoning
+            )
+
+            if r_delta:
+                async for _ in transition("reasoning"):
+                    yield _
+
+                if show_reasoning:
+                    if not currently_reasoning:
                         # create a new chunk if needed
                         async for _ in check_chunk_boundary():
                             yield _
-                        yield text_to_token("\n"+strings["separator"]+"\n")
-                        char_counter += len("\n"+strings["separator"]+"\n")
 
-                last_content = {}
-                
-                if segment_type == "reasoning" and show_reasoning:
+                        yield text_to_token(strings["thinking_header"])
+                        char_counter += len(strings["thinking_header"])
+                        yield text_to_token(strings["thinking_newline"])
+                        char_counter += len(strings["thinking_newline"])
                     currently_reasoning = True
-                    # create a new chunk if needed
+
+                    delta = r_delta.replace("\n", strings["thinking_newline"])
                     async for _ in check_chunk_boundary():
                         yield _
+                    yield text_to_token(delta)
+                    char_counter += len(delta)
+                elif not shown_reasoning_indicator:
+                    if show_indicators:
+                        async for _ in check_chunk_boundary():
+                            yield _
 
-                    yield text_to_token(strings["thinking_header"])
-                    char_counter += len(strings["thinking_header"])
-                    yield text_to_token(strings["thinking_newline"])
-                    char_counter += len(strings["thinking_newline"])
-                elif segment_type == "content" and currently_reasoning:
-                    currently_reasoning = False
-                    # create a new chunk if needed
+                        yield text_to_token("thinking..\n")
+                        char_counter += len("thinking..\n")
+                    shown_reasoning_indicator = True
+                st["reasoning"] = reasoning
+
+            c_delta = (
+                content[len(st["content"]):]
+                if content.startswith(st["content"])
+                else content
+            )
+            if c_delta:
+                async for _ in transition("content"):
+                    yield _
+
+                shown_reasoning_indicator = False
+                if currently_reasoning:
                     async for _ in check_chunk_boundary():
                         yield _
 
@@ -957,148 +1000,139 @@ class Channel:
                     char_counter += len(strings["conclusion_header"])
                     yield text_to_token("\n")
                     char_counter += len("\n")
-                elif segment_type == "tool_calls":
-                    # Will be handled per-tool below
-                    pass
+                    currently_reasoning = False
 
-            if segment_type == "reasoning":
-                if show_reasoning:
-                    current = segment.get("reasoning_content") or ""
-                    delta = current[len(last_content.get("reasoning", "")):]
-                    if delta:
-                        # create a new chunk if needed
-                        async for _ in check_chunk_boundary():
-                            yield _
+                async for _ in check_chunk_boundary():
+                    yield _
+                yield text_to_token(c_delta)
+                char_counter += len(c_delta)
+                st["content"] = content
 
-                        delta = delta.replace("\n", strings["thinking_newline"])
-                        yield text_to_token(delta)
-                        char_counter += len(delta)
-                    if "last_content" not in dir():
-                        last_content = {}
-                    last_content["reasoning"] = current
-                elif not shown_reasoning_indicator:
-                    if show_indicators:
-                        # create a new chunk if needed
-                        async for _ in check_chunk_boundary():
-                            yield _
+            # tool calls: one header per call, then per-argument deltas
+            tool_calls = step.get("tool_calls") or []
+            if tool_calls:
+                async for _ in transition("tool_calls"):
+                    yield _
 
-                        yield text_to_token("thinking..\n")
-                        char_counter += len("thinking..\n")
-                    shown_reasoning_indicator = True
+            for tc in tool_calls:
+                tc_id = tc.get("id", "")
+                if not tc_id:
+                    continue
 
-            elif segment_type == "content":
-                shown_reasoning_indicator = False
+                meta = tc.get("_metadata") or {}
+                tool_name = (
+                    (tc.get("function") or {}).get("name")
+                    or meta.get("display_name")
+                    or "unknown"
+                )
+                args_str = (tc.get("function") or {}).get("arguments", "")
 
-                current = segment.get("content") or ""
-                content_index = 0
+                prev_state = last_tool_state.get(tc_id, {})
+                prev_name = prev_state.get("_name")
 
-                if last_content:
-                    content_index = len(last_content.get("content", ""))
-
-                delta = current[content_index:]
-                if delta:
-                    # create a new chunk if needed
+                if prev_name != tool_name:
+                    # New tool or name changed - print header
+                    header = strings["tool_call_header"].format(tool_name=tool_name)
                     async for _ in check_chunk_boundary():
                         yield _
-                    yield text_to_token(delta)
-                    char_counter += len(delta)
-                if "last_content" not in dir():
-                    last_content = {}
-                last_content["content"] = current
+                    yield text_to_token("\n")
+                    char_counter += len("\n")
+                    yield text_to_token(header)
+                    char_counter += len(header)
 
-            elif segment_type == "tool_calls":
-                tool_calls = segment.get("tool_calls") or []
-                
-                for tc in tool_calls:
-                    tc_id = tc.get("id", "")
-                    if not tc_id:
-                        continue
-                        
-                    tool_name = tc.get("function", {}).get("name", "unknown")
-                    args_str = tc.get("function", {}).get("arguments", "")
-                    
-                    # Check if we need to print the tool header (new tool or name changed)
-                    prev_state = last_tool_state.get(tc_id, {})
-                    prev_name = prev_state.get("_name")
-                    
-                    if prev_name != tool_name:
-                        # New tool or name changed - print header
-                        header = strings["tool_call_header"].format(tool_name=tool_name)
-                        # create a new chunk if needed
+                try:
+                    current_args = partial_json_parser.loads(args_str, allow_partial=partial_json_parser.Allow.ALL)
+                    if not isinstance(current_args, dict):
+                        current_args = {}
+                except Exception:
+                    current_args = {}
+
+                prev_args = prev_state.get("_args", {})
+
+                all_keys = set(list(prev_args.keys()) + list(current_args.keys()))
+                for key in all_keys:
+                    prev_val = prev_args.get(key)
+                    current_val = current_args.get(key)
+
+                    if prev_val is None:
+                        # New key - print the whole key: value
+                        val_str = json.dumps(current_val) if isinstance(current_val, (dict, list)) else str(current_val)
                         async for _ in check_chunk_boundary():
                             yield _
+
                         yield text_to_token("\n")
                         char_counter += len("\n")
-                        yield text_to_token(header)
-                        char_counter += len(header)
-                    
-                    # Parse the current arguments as partial JSON
-                    try:
-                        current_args = partial_json_parser.loads(args_str, allow_partial=partial_json_parser.Allow.ALL)
-                        if not isinstance(current_args, dict):
-                            current_args = {}
-                    except Exception:
-                        current_args = {}
-                    
-                    # Get previous parsed args
-                    prev_args = prev_state.get("_args", {})
-                    
-                    # Compare keys and yield deltas
-                    all_keys = set(list(prev_args.keys()) + list(current_args.keys()))
-                    for key in all_keys:
-                        prev_val = prev_args.get(key)
-                        current_val = current_args.get(key)
-                        
-                        if prev_val is None:
-                            # New key - print the whole key: value
-                            val_str = json.dumps(current_val) if isinstance(current_val, (dict, list)) else str(current_val)
-                            # create a new chunk if needed
-                            async for _ in check_chunk_boundary():
-                                yield _
+                        yield text_to_token(f"**{key}**: ")
+                        char_counter += len(f"**{key}**: ")
+                        yield text_to_token(val_str)
+                        char_counter += len(val_str)
+                        yield text_to_token("\n")
+                        char_counter += len("\n")
+                    elif current_val is None:
+                        # Key removed (shouldn't happen during streaming)
+                        pass
+                    else:
+                        prev_val_str = json.dumps(prev_val) if isinstance(prev_val, (dict, list)) else str(prev_val)
+                        current_val_str = json.dumps(current_val) if isinstance(current_val, (dict, list)) else str(current_val)
 
-                            yield text_to_token("\n")
-                            char_counter += len("\n")
-                            yield text_to_token(f"**{key}**: ")
-                            char_counter += len(f"**{key}**: ")
-                            yield text_to_token(val_str)
-                            char_counter += len(val_str)
-                            yield text_to_token("\n")
-                            char_counter += len("\n")
-                        elif current_val is None:
-                            # Key removed (shouldn't happen during streaming but handle it)
-                            pass
-                        else:
-                            # Key exists in both - check for value change
-                            prev_val_str = json.dumps(prev_val) if isinstance(prev_val, (dict, list)) else str(prev_val)
-                            current_val_str = json.dumps(current_val) if isinstance(current_val, (dict, list)) else str(current_val)
-                            
-                            if prev_val_str != current_val_str:
-                                # Value changed - yield the delta
-                                if current_val_str.startswith(prev_val_str):
-                                    delta = current_val_str[len(prev_val_str):]
-                                else:
-                                    delta = current_val_str
-                                if delta:
-                                    # create a new chunk if needed
-                                    async for _ in check_chunk_boundary():
-                                        yield _
-                                    yield text_to_token(delta)
-                                    char_counter += len(delta)
-                    
-                    # Update state
-                    last_tool_state[tc_id] = {
-                        "_name": tool_name,
-                        "_args": current_args
-                    }
+                        if prev_val_str != current_val_str:
+                            # Value changed - yield the delta
+                            if current_val_str.startswith(prev_val_str):
+                                delta = current_val_str[len(prev_val_str):]
+                            else:
+                                delta = current_val_str
+                            if delta:
+                                async for _ in check_chunk_boundary():
+                                    yield _
+                                yield text_to_token(delta)
+                                char_counter += len(delta)
 
-            last_turn_type = segment_type
+                last_tool_state[tc_id] = {
+                    "_name": tool_name,
+                    "_args": current_args
+                }
+
+        async for event in self.group_stream(stream):
+            event_type = event.get("type")
+
+            # always yield the raw token for manual processing by the channel
+            if event_type == "token":
+                yield event.get("content")
+                continue
+
+            if event_type == "step":
+                step = event.get("content")
+                if isinstance(step, dict):
+                    async for out in emit_step_text(step):
+                        yield out
+
+            elif event_type == "final":
+                # re-render every step whose live final text changed
+                touched = set(final_text)
+                final_text.clear()
+                for message in event.get("content") or []:
+                    sn = message.get("step") or 0
+                    final_text[sn] = message.get("content") or ""
+                    touched.add(sn)
+
+                for sn in sorted(touched):
+                    st = step_state.get(sn)
+                    step_obj = (st or {}).get("step_obj")
+                    if step_obj is None:
+                        # a pure content answer: render it standalone
+                        step_obj = {"step": sn, "content": "", "reasoning_content": ""}
+                    async for out in emit_step_text(step_obj):
+                        yield out
+
+
 
     async def group_stream(self, stream):
         """
-        groups incoming tokens into "turns" using the TurnCollector defined in core/turns.py
+        groups incoming tokens into step events using the
+        TurnCollector defined in core/turns.py
 
-        a turn is a group of assistant messages, such as reasoning, content, toolcalls, and so on,
-        that have all been grouped together into one object, for display in your preferred UI.
+        yields {"type": "token"}, {"type": "step"}, and {"type": "final"} objects
+        see TurnCollector.group_stream for the full description!
 
         this used to be exclusive to the webUI, but i've ported it over to the core, so that it
         can be reused across channels

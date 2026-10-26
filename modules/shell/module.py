@@ -392,13 +392,6 @@ class Shell(core.module.Module):
             limit = self.config.get("temporary_filesystem_size_limit", default="512m")
             cmd.extend(['--tmpfs', f"{home_dir}:size={limit}"])
 
-        # mount dockerfile read-only if using dockerfile method
-        if method == "dockerfile" and dockerfile_path:
-            expanded_path = self._resolve_dockerfile_path(dockerfile_path)
-            if os.path.isfile(expanded_path):
-                cmd.extend(['-v', f"{expanded_path}:{dockerfile_mount}:ro"])
-                self.log("sandbox_shell", f"Mounted Dockerfile read-only at {dockerfile_mount}")
-
         cmd.extend(['-w', home_dir, img])
 
         self.log(self.name, "starting using command: "+' '.join(cmd))
@@ -580,6 +573,7 @@ class Shell(core.module.Module):
         except Exception as e:
             return self.result(f"Error while running passthrough shell command: {e}", False)
 
+    @core.module.tool
     async def run(self, command):
         """Executes a command inside the existing persistent container."""
         if self.passthrough:
@@ -766,3 +760,30 @@ class Shell(core.module.Module):
             return self._get_setup()
         except Exception as e:
             return f"sandbox not initialized: {core.detail_error(e)}"
+
+    # -- AI GENERATED CODE (qwen3.8-flash-next) :: (2026-10-25) harness:openlumara
+    # one-line RESULT hint for the webui tool header (port of the old JS
+    # summary callback). private by naming convention (the loader only
+    # registers @core.module.tool methods). called by
+    # turns.TurnCollector.on_result_summary once a response exists; crashes
+    # are swallowed by the caller and output is flattened/capped there.
+    def on_tool_summary(self, name, args, response):
+        match name:
+            case "shell_run":
+                # silent non-zero exits deserve a hint; the terminal view
+                # already shows (exit code N) when the output is empty
+                if not isinstance(response, dict):
+                    return ""
+                content = response.get("content")
+                if not isinstance(content, dict):
+                    return ""
+                code = content.get("exit_code")
+                # bool is an int subclass - exclude it explicitly
+                if isinstance(code, bool) or not isinstance(code, (int, float)):
+                    return ""
+                if code == 0:
+                    return ""
+                if isinstance(code, float) and code.is_integer():
+                    code = int(code)
+                return f"exit {code}"
+        return ""

@@ -1,16 +1,27 @@
 /* alpine.js directive that adds autoscrolling to any element
  * by adding x-auto-scroll to your element
  */
-// -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-17) (02:45)
-// lerp-chase autoscroll (mirrors ui._chaseScrollToBottom): each frame moves
-// scrollTop a fraction of the remaining distance toward the bottom, target
-// re-read per frame so streamed content folds into the same glide.
-// knob: 0.2 = glidey, 0.5 = snappy, 1 = instant.
-const AUTO_SCROLL_SPEED = 0.2;
+// autoscroll is a pure JS lerp pump: every animation frame the loop moves
+// scrollTop itself, closing a fraction of the remaining gap to the bottom.
+// the browser is only ever told "be here now" (behavior: instant) - all
+// easing is our own exponential decay.
+//
+// knobs, read fresh per hop so they can be tweaked live from the devtools
+// console (shared with stores/ui.js; first file to load initialises):
+//   window.AUTOSCROLL_DAMP     gap fraction closed per hop at a 60Hz
+//                              reference (converted by actual frame time,
+//                              see dampFor). 1 = teleport,
+//                              0.1 = the locked-in feel, higher = snappier
+//   window.AUTOSCROLL_PUMP_MS  throttle: 0 = every frame; raise it only to
+//                              deliberately cut hop frequency (DAMP then
+//                              needs raising to keep the overall speed)
+window.AUTOSCROLL_DAMP ??= 0.1;
+window.AUTOSCROLL_PUMP_MS ??= 0;
 
 function autoScroll(el) {
   let isAtBottom = true;
-  let raf = null;
+  let pumpRaf = null;
+  let pumpLast = 0;
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -19,37 +30,68 @@ function autoScroll(el) {
     isAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < threshold;
   };
 
-  const stopChase = () => {
-    if (raf !== null) {
-      cancelAnimationFrame(raf);
-      raf = null;
+  const stopPump = () => {
+    if (pumpRaf !== null) {
+      cancelAnimationFrame(pumpRaf);
+      pumpRaf = null;
     }
-    el.removeEventListener('wheel', stopChase);
-    el.removeEventListener('touchstart', stopChase);
   };
 
-  const step = () => {
-    // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
-    // scrollTo with behavior:'instant' overrides the global
-    // scroll-behavior:smooth; plain scrollTop writes would spawn a browser
-    // smooth-scroll animation per frame that the next frame interrupts,
-    // double-easing the chase and reading back lagging positions.
-    const target = el.scrollHeight - el.clientHeight;
-    const remaining = target - el.scrollTop;
-    if (Math.abs(remaining) < 1) {
-      el.scrollTo({ top: target, behavior: 'instant' });
-      stopChase();
+  // DAMP is a per-hop fraction at a 60Hz reference, but rAF fires at the
+  // display's real refresh rate - so convert by elapsed frame time:
+  // 1 - (1-DAMP)^(dt/16.67ms). mathematically identical at 60Hz, and on a
+  // 120Hz panel each hop automatically shrinks so the follow runs at the
+  // same on-screen speed instead of compounding double-fast. dt is capped
+  // so a backgrounded tab or long stall converges in one big hop instead
+  // of chasing stale time.
+  const dampFor = (dt) => {
+    const base = window.AUTOSCROLL_DAMP;
+    if (base >= 1) return 1;
+    return 1 - Math.pow(1 - base, Math.min(dt, 100) / (1000 / 60));
+  };
+
+  // one hop: move scrollTop directly, dampFor(dt) of the remaining gap
+  // closer. returns false once the bottom is reached (1px + final snap),
+  // which stops the loop and re-evaluates the resting position.
+  const pumpHop = (dt) => {
+    const bottom = el.scrollHeight - el.clientHeight;
+    const remaining = bottom - el.scrollTop;
+    if (remaining <= 1) {
+      el.scrollTo({ top: bottom, behavior: 'instant' });
+      stopPump();
       checkBottom();
-      return;
+      return false;
     }
-    el.scrollTo({ top: el.scrollTop + remaining * AUTO_SCROLL_SPEED, behavior: 'instant' });
-    raf = requestAnimationFrame(step);
+    el.scrollTo({ top: el.scrollTop + remaining * dampFor(dt), behavior: 'instant' });
+    return true;
+  };
+
+  // rAF driver: hop every animation frame (throttled by AUTOSCROLL_PUMP_MS).
+  // dt comes from the rAF timestamps, so hop size adapts to whatever
+  // refresh rate - or hiccup - the display throws at it.
+  const pumpStep = (now) => {
+    const dt = now - pumpLast;
+    if (dt >= window.AUTOSCROLL_PUMP_MS) {
+      pumpLast = now;
+      if (!pumpHop(dt)) {
+        pumpRaf = null;
+        return;
+      }
+    }
+    pumpRaf = requestAnimationFrame(pumpStep);
+  };
+
+  // user input wins: give up the pump; onScroll resumes bottom-tracking
+  const giveUp = () => {
+    stopPump();
+    el.removeEventListener('wheel', giveUp);
+    el.removeEventListener('touchstart', giveUp);
   };
 
   const onScroll = () => {
-    // ignore the intermediate positions of our own chase; the resting
-    // position is checked when the chase stops
-    if (raf !== null) return;
+    // ignore the intermediate positions of our own pump; the resting
+    // position is checked when the pump stops
+    if (pumpRaf !== null) return;
     checkBottom();
   };
 
@@ -63,18 +105,22 @@ function autoScroll(el) {
       return;
     }
 
-    if (raf === null) {
-      // user input wins: give up the chase, onScroll resumes tracking
-      el.addEventListener('wheel', stopChase, { passive: true });
-      el.addEventListener('touchstart', stopChase, { passive: true });
-      raf = requestAnimationFrame(step);
+    if (pumpRaf === null) {
+      el.addEventListener('wheel', giveUp, { passive: true });
+      el.addEventListener('touchstart', giveUp, { passive: true });
+      // seed with the current time so the very first hop sees a real
+      // frame-sized dt instead of "time since page load"
+      pumpLast = performance.now();
+      pumpRaf = requestAnimationFrame(pumpStep);
     }
   });
 
   observer.observe(el, { childList: true, subtree: true });
 
   return () => {
-    stopChase();
+    stopPump();
+    el.removeEventListener('wheel', giveUp);
+    el.removeEventListener('touchstart', giveUp);
     el.removeEventListener('scroll', onScroll);
     observer.disconnect();
   };
