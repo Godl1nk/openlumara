@@ -1,32 +1,22 @@
 /* alpine.js directive that adds autoscrolling to any element
  * by adding x-auto-scroll to your element
  */
-// -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-25) harness:openlumara status:reviewed
-// native smooth scroll exposes no speed/duration parameter - the curve
-// belongs to the browser - so instead of one hop at the true bottom, the
-// pump re-aims a browser-eased hop at a FRACTION of the remaining gap
-// every animation frame. per-frame retargeting keeps Chrome's velocity-
-// blended smooth-scroll animation continuously in cruise (slower re-aim
-// rates let each short hop finish its ease-out between aims, which reads
-// as micro stop-and-go), and re-reading the bottom per hop folds streamed
-// growth into one glide. the browser owns 100% of the easing; the pump
-// only picks the targets.
+// autoscroll is a pure JS lerp pump: every animation frame the loop moves
+// scrollTop itself, closing a fraction of the remaining gap to the bottom.
+// the browser is only ever told "be here now" (behavior: instant) - all
+// easing is our own exponential decay.
 //
 // knobs, read fresh per hop so they can be tweaked live from the devtools
 // console (shared with stores/ui.js; first file to load initialises):
-//   window.NATIVE_AUTOSCROLL_DAMP  fraction of the gap closed per hop AT A
-//                                  60HZ REFERENCE - the pump converts it by
-//                                  actual frame time (see dampFor), so the
-//                                  glide runs at the same speed on 60/90/
-//                                  120/144Hz screens and through refresh
-//                                  hiccups. 1 = plain hop, 0.15 = relaxed
-//                                  glide, 0.07 = very languid
-//   window.NATIVE_PUMP_MS          throttle: 0 = every frame; raise it
-//                                  only to deliberately cut retarget
-//                                  frequency (DAMP then needs raising to
-//                                  keep the overall speed)
-window.NATIVE_AUTOSCROLL_DAMP ??= 0.15;
-window.NATIVE_PUMP_MS ??= 0;
+//   window.AUTOSCROLL_DAMP     gap fraction closed per hop at a 60Hz
+//                              reference (converted by actual frame time,
+//                              see dampFor). 1 = teleport,
+//                              0.1 = the locked-in feel, higher = snappier
+//   window.AUTOSCROLL_PUMP_MS  throttle: 0 = every frame; raise it only to
+//                              deliberately cut hop frequency (DAMP then
+//                              needs raising to keep the overall speed)
+window.AUTOSCROLL_DAMP ??= 0.1;
+window.AUTOSCROLL_PUMP_MS ??= 0;
 
 function autoScroll(el) {
   let isAtBottom = true;
@@ -50,20 +40,19 @@ function autoScroll(el) {
   // DAMP is a per-hop fraction at a 60Hz reference, but rAF fires at the
   // display's real refresh rate - so convert by elapsed frame time:
   // 1 - (1-DAMP)^(dt/16.67ms). mathematically identical at 60Hz, and on a
-  // 120Hz panel each hop automatically shrinks so the glide runs at the
+  // 120Hz panel each hop automatically shrinks so the follow runs at the
   // same on-screen speed instead of compounding double-fast. dt is capped
-  // so a backgrounded tab or long stall converges with one big eased hop
-  // instead of an instant teleport.
+  // so a backgrounded tab or long stall converges in one big hop instead
+  // of chasing stale time.
   const dampFor = (dt) => {
-    const base = window.NATIVE_AUTOSCROLL_DAMP;
+    const base = window.AUTOSCROLL_DAMP;
     if (base >= 1) return 1;
     return 1 - Math.pow(1 - base, Math.min(dt, 100) / (1000 / 60));
   };
 
-  // one hop: a browser-smooth scrollTo aimed at dampFor(dt) of the
-  // remaining gap. returns false once the bottom is reached (1px +
-  // instant snap), which stops the loop and re-evaluates the resting
-  // position.
+  // one hop: move scrollTop directly, dampFor(dt) of the remaining gap
+  // closer. returns false once the bottom is reached (1px + final snap),
+  // which stops the loop and re-evaluates the resting position.
   const pumpHop = (dt) => {
     const bottom = el.scrollHeight - el.clientHeight;
     const remaining = bottom - el.scrollTop;
@@ -73,17 +62,16 @@ function autoScroll(el) {
       checkBottom();
       return false;
     }
-    el.scrollTo({ top: el.scrollTop + remaining * dampFor(dt),
-                  behavior: 'smooth' });
+    el.scrollTo({ top: el.scrollTop + remaining * dampFor(dt), behavior: 'instant' });
     return true;
   };
 
-  // rAF driver: hop every animation frame (throttled by NATIVE_PUMP_MS).
+  // rAF driver: hop every animation frame (throttled by AUTOSCROLL_PUMP_MS).
   // dt comes from the rAF timestamps, so hop size adapts to whatever
   // refresh rate - or hiccup - the display throws at it.
   const pumpStep = (now) => {
     const dt = now - pumpLast;
-    if (dt >= window.NATIVE_PUMP_MS) {
+    if (dt >= window.AUTOSCROLL_PUMP_MS) {
       pumpLast = now;
       if (!pumpHop(dt)) {
         pumpRaf = null;
