@@ -44,7 +44,7 @@ core_settings_schema = {
         },
         "module_libraries": {
             "description": "A list of git repo urls containing modules, channels, skills and themes you want to be able to download and update in openlumara.",
-            "default": []
+            "default": ["https://github.com/Rose22/openlumara-rose22-content"]
         }
     },
     "api": {
