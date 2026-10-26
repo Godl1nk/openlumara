@@ -3,7 +3,11 @@ import regex as re
 import sys
 import json
 import time
-import readline
+
+# readline does not exist on windows
+if sys.platform != "win32":
+    import readline
+
 import asyncio
 import random
 import concurrent.futures
