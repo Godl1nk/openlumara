@@ -3,22 +3,22 @@
      x-data="{
                  displayMode: localStorage.getItem('stepDisplayMode') || 'default',
 
+                 // steps mode is the only mode that starts folded; the other
+                 // two unfold the moment the step's streaming starts
                  collapsed: $store.stream.state === 'idle'
                  ||
-                 localStorage.getItem('stepDisplayMode') === 'steps'
-                 ||
-             	 (localStorage.getItem('stepDisplayMode') === 'thinking'
-                    && step.reasoning_live
-                 ),
+                 localStorage.getItem('stepDisplayMode') === 'steps',
              
                  autoCollapsed: false,
-                 // the auto-open for arriving tool calls fires once per step
+                 // the unfold-on-streaming-start fires once per step
                  autoOpened: false,
              	 done: $store.stream.state === 'idle',
              
                  get thinkingHidden() {
-             		 // if display mode is set to hide thinking, hide it 
-                     return this.displayMode === 'thinking' && !this.done && (step.tool_calls?.length ?? 0) > 0
+             		 // collapse-thinking-only mode
+                     if (this.displayMode !== 'thinking') return false;
+                     if ($store.stream.state === 'idle') return false;
+                     return !(turn.steps ?? []).some(s => s.step != null && s.step > step.step)
                  },
 
                  // a finished tool step at the end of the chain (waiting for
@@ -32,19 +32,18 @@
                const hasNewerStep = (turn.steps ?? []).some(s => s.step != null && s.step > step.step);
                done = $store.stream.state === 'idle' || hasNewerStep || step.status === 'done' || step.status === 'failed' || step.status === 'thoughts';
 
-               // the moment this live step's first tool call arrives, open
-               // the step (once) so the toolcards take the stage - the
-               // thinkingHidden getter keeps the raw reasoning out of sight
-               // for the rest of this step's streaming.
-               if (displayMode === 'thinking' && !done && (step.tool_calls?.length ?? 0) > 0 && !autoOpened) {
+               // the moment this step's streaming starts unfold it once.
+               if (displayMode !== 'steps' && !done && !autoOpened) {
                    autoOpened = true;
                    collapsed = false;
                }
 
-               if (done && !autoCollapsed) {
+               // the step tucks itself away
+               // when the next step starts, or when the stream ends
+               if ((hasNewerStep || $store.stream.state === 'idle') && !autoCollapsed) {
                    autoCollapsed = true;
-                   // steps mode keeps folded steps folded; the other modes
-                   // tuck finished steps away so the chain stays tidy
+                   // steps mode keeps folded steps folded and leaves a
+                   // manually opened step exactly as the user left it
                    if (displayMode !== 'steps') collapsed = true
                }
     "
