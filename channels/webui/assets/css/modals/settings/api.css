@@ -563,7 +563,7 @@
 }
 
 .models-list-scroll {
-    max-height: 280px;
+    max-height: 420px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -613,6 +613,11 @@
 
 .model-item-row.active_image {
     border-color: var(--accent);
+}
+
+.model-item-row.active_edit:not(.active_image) {
+    border-color: color-mix(in srgb, var(--accent) 65%, var(--border-color));
+    border-style: dashed;
 }
 
 .model-item-row.disabled {
@@ -665,11 +670,19 @@
 }
 
 .model-role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 10px;
     font-weight: 700;
-    padding: 1px 6px;
+    padding: 2px 6px;
     border-radius: 4px;
-    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.model-role-badge svg {
+    width: 10px;
+    height: 10px;
 }
 
 .model-role-badge.chat {
@@ -683,6 +696,12 @@
     border: 1px solid var(--accent);
 }
 
+.model-role-badge.edit {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px dashed var(--accent);
+}
+
 /* Controls on Right: Context, Temperature, Thinking, Image Capability */
 .model-item-right {
     display: flex;
@@ -691,6 +710,111 @@
     gap: 6px;
     flex-shrink: 0;
     flex-wrap: wrap;
+}
+
+.model-chat-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.model-advanced-btn {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.15s ease;
+}
+
+.model-advanced-btn:hover,
+.model-advanced-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow, rgba(255, 255, 255, 0.08));
+}
+
+.model-advanced-panel {
+    margin-top: 5px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-tertiary);
+}
+
+.model-advanced-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.model-advanced-scope {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.model-advanced-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.model-advanced-field {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.model-advanced-field.wide {
+    grid-column: 1 / -1;
+}
+
+.model-advanced-field small {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1.4;
+}
+
+.modal .model-advanced-input {
+    width: 100% !important;
+    min-height: 34px;
+    padding: 7px 9px !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-sm, 6px) !important;
+    background: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    font-size: 12px !important;
+    box-sizing: border-box;
+}
+
+.modal .model-advanced-input:focus {
+    border-color: var(--accent) !important;
+}
+
+.modal textarea.model-advanced-json {
+    resize: vertical;
+    font-family: var(--code-font);
+    line-height: 1.45;
 }
 
 .model-pill-select-wrap {
@@ -720,35 +844,6 @@
 .modal select.model-pill-select option {
     background: var(--bg-secondary);
     color: var(--text-primary);
-}
-
-.modal .model-pill-btn {
-    height: 30px !important;
-    padding: 0 12px !important;
-    font-size: 12px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    border: 1px solid var(--border-color) !important;
-    border-radius: var(--radius-sm, 6px) !important;
-    background: var(--bg-secondary) !important;
-    color: var(--text-secondary) !important;
-    cursor: pointer !important;
-    transition: all 0.15s ease !important;
-}
-
-.modal .model-pill-btn:hover {
-    color: var(--text-primary) !important;
-    border-color: var(--accent) !important;
-}
-
-.modal .model-pill-btn.role-chat.active,
-.modal .model-pill-btn.role-image.active {
-    color: var(--accent) !important;
-    border-color: var(--accent) !important;
-    background: var(--accent-glow, rgba(255, 255, 255, 0.08)) !important;
-    opacity: 1 !important;
-    cursor: default !important;
 }
 
 .modal .model-image-icon-btn {
@@ -782,16 +877,128 @@
     color: var(--accent) !important;
 }
 
-.modal .model-image-icon-btn:disabled {
-    cursor: default !important;
-    opacity: 1 !important;
-}
-
 .api-settings-group-desc {
     margin: 0;
     color: var(--text-muted);
     font-size: 12px;
     line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+ * Default Models
+ * -------------------------------------------------------------------------- */
+
+.model-defaults-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md, 10px);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.model-defaults-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.model-defaults-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    padding-top: 1px;
+}
+
+.model-defaults-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.model-defaults-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.model-defaults-desc {
+    margin: 3px 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.model-defaults-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.default-model-field {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+}
+
+.default-model-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.default-model-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.35px;
+}
+
+.default-model-badge.chat {
+    background: var(--accent);
+    color: var(--bg-primary);
+}
+
+.default-model-badge.image {
+    background: var(--accent-glow, rgba(255, 255, 255, 0.1));
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+.default-model-badge.edit {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px dashed var(--accent);
+}
+
+.modal select.default-model-select {
+    width: 100% !important;
+    height: 38px !important;
+    background-color: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-sm, 6px) !important;
+    color: var(--text-primary) !important;
+    font-size: 12px !important;
+}
+
+.modal select.default-model-select:focus {
+    border-color: var(--accent) !important;
+}
+
+.default-model-hint {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.4;
 }
 
 .models-empty,
@@ -956,12 +1163,6 @@
     box-sizing: border-box !important;
 }
 
-.image-gen-model-input-wrap {
-    flex: 1;
-    display: flex;
-    align-items: center;
-}
-
 .image-edit-section-header {
     font-size: 14px;
     font-weight: 700;
@@ -1044,5 +1245,17 @@
         width: 100%;
         justify-content: flex-end;
         flex-wrap: wrap;
+    }
+    .model-defaults-grid {
+        grid-template-columns: 1fr;
+    }
+    .model-advanced-grid {
+        grid-template-columns: 1fr;
+    }
+    .model-advanced-field.wide {
+        grid-column: auto;
+    }
+    .models-bar-hint {
+        display: none;
     }
 }

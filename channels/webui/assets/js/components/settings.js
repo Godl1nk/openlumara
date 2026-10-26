@@ -184,6 +184,13 @@ function settingsModal() {
             }
         },
 
+        isPerModelSetting(key) {
+            return [
+                "name", "image_model", "image_edit_model", "disabled_models", "model_profiles",
+                "temperature", "reasoning_effort", "custom_reasoning_effort"
+            ].includes(key);
+        },
+
         updateSetting(settingObj, value) {
             settingObj.value = value;
             

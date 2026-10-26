@@ -30,6 +30,18 @@ of truth for the framework itself.
   result stay expanded, so the picture is visible without opening the process block.
 - Optional approval gate before generating or editing, answered either from the inline
   card or with a normal chat message ("yes, approve the resize" works).
+- Separate default choices for image generation and image editing; editing can follow
+  generation automatically or use a different marked image model.
+
+### Model management
+
+- One API page for providers and models. The picture icon marks image capability.
+- Default chat, image-generation, and image-editing models are selected below the model
+  list and reflected by badges and borders on the rows.
+- Chat-only settings live on each chat model: context, temperature, thinking effort,
+  output limit, message-history limit, history trim block, developer role, and custom
+  request fields. “Default” sends no override so the host server decides.
+- Image-marked models hide chat-only settings and cannot also be the default chat model.
 
 ### Human-in-the-loop questions
 

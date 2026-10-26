@@ -62,15 +62,15 @@ core_settings_schema = {
         },
         "max_output_tokens": {
             "default": 8192,
-            "description": "Maximum number of tokens for model output. This controls how much text your AI is allowed to generate. If you like short and sweet responses, set this to a low amount! But if you're coding or having it write entire books or something, you may want to up this value."
+            "description": "Legacy default for the maximum number of tokens a model may generate. Provider models configure this individually."
         },
         "max_messages": {
             "default": 200,
-            "description": "Maximum number of messages to keep in conversation history. If this amount of messages is exceeded, it will trim the context window even if the token limit hasn't been reached!"
+            "description": "Message History Limit: the maximum number of recent messages kept in a conversation. Older messages are dropped once this limit is exceeded, even if the context-token limit has not been reached. This is separate from the model's context window."
         },
         "evict_block": {
             "default": 32,
-            "description": "When the message history exceeds max_messages, messages are removed in blocks of this size. (example: if set to 32, it'll remove 32 messages from history to make space for the next 32 messages)"
+            "description": "History Trim Block: when the Message History Limit is exceeded, remove messages in groups of this size. Larger blocks reduce repeated trimming and prompt-cache churn."
         },
         "use_developer_role": {
             "default": False,
@@ -158,7 +158,11 @@ When disabled, it will instead remove your old messages from context to make spa
         },
         "image_model": {
             "default": "dall-e-3",
-            "description": "The designated model to use for image generation and image editing tools."
+            "description": "The default model to use for image generation."
+        },
+        "image_edit_model": {
+            "default": "",
+            "description": "Optional model for image editing. Empty uses the same model as image generation."
         },
         "disabled_models": {
             "default": [],

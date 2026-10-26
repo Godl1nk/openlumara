@@ -46,7 +46,7 @@
             <select class="model-select" :value="currentModel" :disabled="saving"
                     @change="setModel($event.target.value)"
                     @focus="lazyFetch()"
-                    title="Switch active chat model">
+                    title="Switch default chat model">
                 <template x-for="model in enabledOptions" :key="model">
                     <option :value="model" x-text="model"></option>
                 </template>

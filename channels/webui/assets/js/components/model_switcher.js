@@ -33,6 +33,7 @@ const MODEL_MANAGER_STORE = {
     providers: [],
     currentChatModel: "",
     imageModel: "dall-e-3",
+    imageEditModel: "",
     loading: false,
     _pollTimer: null,
 
@@ -44,6 +45,7 @@ const MODEL_MANAGER_STORE = {
                 this.providers = Array.isArray(res.providers) ? res.providers : [];
                 this.currentChatModel = res.current_model || this.currentChatModel || "";
                 this.imageModel = res.image_model || this.imageModel || "dall-e-3";
+                this.imageEditModel = res.image_edit_model || "";
             }
         } catch (e) {
             // Ignore background network/auth errors silently
@@ -87,11 +89,11 @@ function modelQuickSwitch() {
             return null;
         },
 
-        // the effort that actually applies: a model's own override wins over
-        // the global preset (same precedence as core/api.py at request time)
         get currentEffort() {
-            const own = String(this.activeModelRef?.model?.thinking_effort || "default").trim().toLowerCase();
-            if (own && own !== "default") return own;
+            const model = this.activeModelRef?.model;
+            if (model) {
+                return String(model.thinking_effort || "default").trim().toLowerCase() || "default";
+            }
 
             const settings = Alpine.store("settings")?.categories?.model?.settings;
             const custom = String(settings?.custom_reasoning_effort?.value || "").trim();
@@ -191,6 +193,7 @@ function providerManagerComponent() {
         editingProviderId: null,
         searchTerms: {},
         collapsedMap: {},
+        advancedModels: {},
 
         init() {
             const store = Alpine.store("modelManager");
@@ -213,6 +216,210 @@ function providerManagerComponent() {
 
         get imageModel() {
             return Alpine.store("modelManager")?.imageModel || "";
+        },
+
+        get imageEditModel() {
+            return Alpine.store("modelManager")?.imageEditModel || "";
+        },
+
+        _modelKey(prov, model) {
+            return prov.id + ":" + model.id;
+        },
+
+        isModelAdvancedOpen(prov, model) {
+            return Boolean(this.advancedModels[this._modelKey(prov, model)]);
+        },
+
+        toggleModelAdvanced(prov, model) {
+            const key = this._modelKey(prov, model);
+            this.advancedModels[key] = !this.advancedModels[key];
+        },
+
+        modelAdvancedValue(model, key) {
+            const value = model?.[key];
+            return value === undefined || value === null || value === "" ? "default" : value;
+        },
+
+        modelAdvancedNumber(model, key) {
+            const value = model?.[key];
+            return value === undefined || value === null || value === "" || value === "default" ? "" : value;
+        },
+
+        modelDeveloperRoleValue(model) {
+            const value = model?.use_developer_role;
+            if (value === true || value === "true" || value === "on") return "on";
+            if (value === false || value === "false" || value === "off") return "off";
+            return "default";
+        },
+
+        modelCustomFieldsText(model) {
+            const value = model?.custom_fields;
+            if (!value || value === "default" || typeof value !== "object" || Array.isArray(value)) return "";
+            return JSON.stringify(value, null, 2);
+        },
+
+        async updateModelAdvanced(prov, model, key, value, kind = "text", input = null) {
+            const previous = model[key];
+            let normalized = value;
+            if (kind === "int") {
+                if (value === "" || value === "default") {
+                    normalized = "default";
+                } else {
+                    const parsed = Number(value);
+                    if (!Number.isInteger(parsed) || parsed < 1) {
+                        alert("Use a whole number greater than zero, or Default.");
+                        if (input) input.value = this.modelAdvancedNumber(model, key);
+                        return;
+                    }
+                    normalized = parsed;
+                }
+            } else if (kind === "developer") {
+                normalized = value === "on" ? true : (value === "off" ? false : "default");
+            }
+
+            model[key] = normalized;
+            try {
+                await simpleApiPost("/api/provider/model/update", {
+                    provider_id: prov.id,
+                    model_id: model.id,
+                    settings: { [key]: normalized }
+                });
+            } catch (e) {
+                model[key] = previous;
+                if (input) {
+                    input.value = kind === "developer"
+                        ? this.modelDeveloperRoleValue(model)
+                        : this.modelAdvancedNumber(model, key);
+                }
+                alert("Failed to update advanced model settings: " + e);
+            }
+        },
+
+        async updateModelCustomFields(prov, model, text, input) {
+            const previous = model.custom_fields;
+            let parsed = "default";
+            if (text.trim()) {
+                try {
+                    parsed = JSON.parse(text);
+                } catch {
+                    parsed = null;
+                }
+                if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+                    alert("Custom request fields must be a JSON object, or left empty for Default.");
+                    if (input) input.value = this.modelCustomFieldsText(model);
+                    return;
+                }
+            }
+
+            model.custom_fields = parsed;
+            try {
+                await simpleApiPost("/api/provider/model/update", {
+                    provider_id: prov.id,
+                    model_id: model.id,
+                    settings: { custom_fields: parsed }
+                });
+            } catch (e) {
+                model.custom_fields = previous;
+                if (input) input.value = this.modelCustomFieldsText(model);
+                alert("Failed to update custom request fields: " + e);
+            }
+        },
+
+        _defaultModelOptions(imageCapable) {
+            const options = [];
+            const seen = new Set();
+            for (const prov of this.providers) {
+                if (prov.enabled === false) continue;
+                for (const model of (prov.models || [])) {
+                    if (!model.enabled || Boolean(model.is_image) !== imageCapable) continue;
+                    if (seen.has(model.id)) continue;
+                    seen.add(model.id);
+                    options.push({ id: model.id, label: model.id });
+                }
+            }
+            const current = imageCapable ? this.imageModel : this.currentChatModel;
+            if (current && !seen.has(current)) {
+                options.unshift({ id: current, label: current + " (current, unavailable)" });
+            }
+            return options;
+        },
+
+        get chatModelOptions() {
+            return this._defaultModelOptions(false);
+        },
+
+        get imageModelOptions() {
+            return this._defaultModelOptions(true);
+        },
+
+        get imageEditModelOptions() {
+            const options = this.imageModelOptions.map(option => ({ ...option }));
+            const current = this.imageEditModel;
+            if (current && !options.some(option => option.id === current)) {
+                options.unshift({ id: current, label: current + " (current, unavailable)" });
+            }
+            return options;
+        },
+
+        findManagedModel(modelId) {
+            for (const prov of this.providers) {
+                for (const model of (prov.models || [])) {
+                    if (model.id === modelId) return model;
+                }
+            }
+            return null;
+        },
+
+        async setDefaultChat(modelId) {
+            const model = this.findManagedModel(modelId);
+            if (!model) {
+                alert("That model is no longer available. Refresh the provider and try again.");
+                await Alpine.store("modelManager").fetchProviders();
+                return;
+            }
+            if (model.id !== this.currentChatModel) {
+                await this.setAsActiveChat(model);
+            }
+        },
+
+        async setDefaultImageByName(modelId) {
+            const model = this.findManagedModel(modelId);
+            if (!model) {
+                alert("That model is no longer available. Refresh the provider and try again.");
+                await Alpine.store("modelManager").fetchProviders();
+                return;
+            }
+            await this.setAsDefaultImage(model);
+        },
+
+        async setDefaultImageEdit(modelId) {
+            if (!modelId) {
+                try {
+                    await simpleApiPost("/api/model/image/edit/set", { name: "" });
+                    Alpine.store("modelManager").imageEditModel = "";
+                    syncManagedModelSetting("image_edit_model", "");
+                } catch (e) {
+                    alert("Failed to use the generation model for image editing: " + e);
+                }
+                return;
+            }
+            const model = this.findManagedModel(modelId);
+            if (!model) {
+                alert("That model is no longer available. Refresh the provider and try again.");
+                await Alpine.store("modelManager").fetchProviders();
+                return;
+            }
+            if (!model.is_image || model.id === this.currentChatModel) {
+                alert("Choose a marked, non-chat image model for image editing.");
+                return;
+            }
+            try {
+                await simpleApiPost("/api/model/image/edit/set", { name: model.id });
+                Alpine.store("modelManager").imageEditModel = model.id;
+                syncManagedModelSetting("image_edit_model", model.id);
+            } catch (e) {
+                alert("Failed to set the image editing model: " + e);
+            }
         },
 
         applyPreset() {
@@ -352,19 +559,6 @@ function providerManagerComponent() {
             }
         },
 
-        async toggleImageProvider(prov) {
-            try {
-                const nextState = !prov.is_image_provider;
-                await simpleApiPost("/api/provider/update", {
-                    id: prov.id,
-                    updates: { is_image_provider: nextState }
-                });
-                prov.is_image_provider = nextState;
-            } catch (e) {
-                alert("Failed to mark image provider: " + e);
-            }
-        },
-
         async removeProvider(prov) {
             if (!confirm(`Delete provider "${prov.name}" and remove all its models?`)) return;
             try {
@@ -413,7 +607,7 @@ function providerManagerComponent() {
 
         async setAsActiveChat(model) {
             if (model.is_image) {
-                alert("An image model cannot also be the active chat model.");
+                alert("An image model cannot also be the default chat model.");
                 return;
             }
             try {
@@ -430,9 +624,12 @@ function providerManagerComponent() {
         },
 
         async toggleAsImageModel(prov, model) {
-            if (model.id === this.imageModel && model.is_image) return;
+            if (model.is_image && (model.id === this.imageModel || model.id === this.imageEditModel)) {
+                alert("Choose a different default image model before removing image capability.");
+                return;
+            }
             if (!model.is_image && model.id === this.currentChatModel) {
-                alert("Switch the active chat model first. A model cannot be used for both chat and images.");
+                alert("Choose a different default chat model first. A model cannot be used for both chat and images.");
                 return;
             }
             const nextState = !model.is_image;
@@ -452,16 +649,13 @@ function providerManagerComponent() {
         async setAsDefaultImage(model) {
             if (!model.is_image || model.id === this.imageModel) return;
             if (model.id === this.currentChatModel) {
-                alert("An image model cannot also be the active chat model.");
+                alert("An image model cannot also be the default chat model.");
                 return;
             }
             try {
                 await simpleApiPost("/api/model/image/set", { name: model.id });
                 Alpine.store("modelManager").imageModel = model.id;
                 syncManagedModelSetting("image_model", model.id);
-                window.dispatchEvent(new CustomEvent("image-model-changed", {
-                    detail: { name: model.id }
-                }));
             } catch (e) {
                 alert("Failed to set default image model: " + e);
             }
@@ -522,7 +716,6 @@ function imageGenSettingsComponent() {
             enabled: true,
             ask_before_generate: false,
             endpoint: "auto",
-            model: "Qwen-Image-2.1",
             quality: "high"
         },
         providers: [],
@@ -537,12 +730,8 @@ function imageGenSettingsComponent() {
                     this.settings.enabled = res.enabled !== false;
                     this.settings.ask_before_generate = Boolean(res.ask_before_generate);
                     this.settings.endpoint = res.endpoint || "auto";
-                    this.settings.model = res.model || "Qwen-Image-2.1";
                     this.settings.quality = res.quality || "high";
-                    this.providers = (Array.isArray(res.providers) ? res.providers : []).map(p => ({
-                        ...p,
-                        models: (p.models || []).map(m => typeof m === "string" ? { id: m, is_image: true } : m)
-                    }));
+                    this.providers = Array.isArray(res.providers) ? res.providers : [];
                     this.error = "";
                 }
             } catch (e) {
@@ -552,23 +741,10 @@ function imageGenSettingsComponent() {
                     this.providers = (mgr.providers || []).map(p => ({
                         id: p.id,
                         name: p.name,
-                        enabled: p.enabled,
-                        models: (p.models || []).map(m => ({ id: m.id, is_image: Boolean(m.is_image) }))
+                        enabled: p.enabled
                     }));
                 }
             }
-        },
-
-        get availableModels() {
-            const models = new Set();
-            for (const p of this.providers) {
-                if (p.enabled === false) continue;
-                if (this.settings.endpoint !== "auto" && p.name !== this.settings.endpoint) continue;
-                for (const m of (p.models || [])) {
-                    if (m.is_image) models.add(m.id);
-                }
-            }
-            return Array.from(models);
         },
 
         async save() {
@@ -581,14 +757,14 @@ function imageGenSettingsComponent() {
             try {
                 do {
                     this.pendingSave = false;
-                    await simpleApiPost("/api/ext/image_tools/settings", this.settings);
+                    await simpleApiPost("/api/ext/image_tools/settings", {
+                        enabled: this.settings.enabled,
+                        ask_before_generate: this.settings.ask_before_generate,
+                        endpoint: this.settings.endpoint,
+                        quality: this.settings.quality
+                    });
                     this.error = "";
                 } while (this.pendingSave);
-                const mgr = Alpine.store("modelManager");
-                if (mgr && this.settings.model) {
-                    mgr.imageModel = this.settings.model;
-                    syncManagedModelSetting("image_model", this.settings.model);
-                }
             } catch (e) {
                 this.error = "Could not save image settings: " + (typeof e === "string" ? e : (e?.error || e?.message || "unknown error"));
             } finally {

@@ -48,14 +48,14 @@ def register(app, channel):
         live_api = core.config.config.get("api") or {}
         flat_api = flattened.get("api")
         if isinstance(flat_api, dict):
-            for live_key in ("url", "key", "providers"):
+            for live_key in ("url", "key", "providers", "max_context"):
                 if live_key in live_api:
                     flat_api[live_key] = copy.deepcopy(live_api[live_key])
 
         live_model = core.config.config.get("model") or {}
         flat_model = flattened.get("model")
         if isinstance(flat_model, dict):
-            for live_key in ("name", "image_model", "disabled_models"):
+            for live_key in ("name", "image_model", "image_edit_model", "disabled_models"):
                 if live_key in live_model:
                     flat_model[live_key] = copy.deepcopy(live_model[live_key])
 

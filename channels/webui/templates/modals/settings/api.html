@@ -11,8 +11,9 @@
                     <h3 class="section-title">API & Models</h3>
                 </div>
                 <div class="api-page-role-badges">
-                    <span class="model-mgr-active-chat-badge" x-show="currentChatModel" x-text="'Active chat: ' + currentChatModel"></span>
-                    <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Default image: ' + imageModel"></span>
+                    <span class="model-mgr-active-chat-badge" x-show="currentChatModel" x-text="'Default chat: ' + currentChatModel"></span>
+                    <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Image gen: ' + imageModel"></span>
+                    <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Image edit: ' + (imageEditModel || 'same as generation')"></span>
                 </div>
             </div>
             <p class="section-desc">Manage endpoints, chat and image models, and model behavior in one place. Changes to providers and model selection apply immediately.</p>
@@ -138,15 +139,6 @@
                             <button
                                 type="button"
                                 class="provider-tool-btn"
-                                :class="{ active: prov.is_image_provider }"
-                                @click="toggleImageProvider(prov)"
-                                title="Mark this provider as the designated image provider"
-                            >
-                                <span x-text="prov.is_image_provider ? 'Image Provider ✓' : 'Mark image'"></span>
-                            </button>
-                            <button
-                                type="button"
-                                class="provider-tool-btn"
                                 @click="toggleProviderEnabled(prov)"
                                 x-text="prov.enabled ? 'Disable' : 'Enable'"
                             ></button>
@@ -177,7 +169,7 @@
                         <!-- Models Bar: Title, Count, Actions -->
                         <div class="provider-models-bar">
                             <span class="models-bar-title">MODELS</span>
-                            <span class="models-bar-hint">A model can be used for chat or images, not both</span>
+                            <span class="models-bar-hint">Image icon marks capability; defaults are selected below</span>
                             <div class="models-bar-controls">
                                 <span class="models-bar-count" x-text="enabledModelCount(prov) + '/' + (prov.models || []).length + ' ENABLED'"></span>
                                 <button type="button" class="models-link-btn" @click="refreshProvider(prov)">Refresh</button>
@@ -203,7 +195,8 @@
                             </template>
 
                             <template x-for="m in filteredModels(prov)" :key="prov.id + '-' + m.id">
-                                <div class="model-item-row" :class="{ disabled: !m.enabled, active_chat: m.id === currentChatModel, active_image: m.id === imageModel }">
+                                <div class="model-entry">
+                                <div class="model-item-row" :class="{ disabled: !m.enabled, active_chat: m.id === currentChatModel, active_image: m.id === imageModel, active_edit: !!imageEditModel && m.id === imageEditModel }">
                                     <!-- Checkbox + Model Name -->
                                     <div class="model-item-left">
                                         <button
@@ -216,35 +209,24 @@
                                             <svg x-show="m.enabled" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                                         </button>
                                         <span class="model-name-text" x-text="m.id"></span>
-                                        <span class="model-role-badge chat" x-show="m.id === currentChatModel">Active chat</span>
-                                        <span class="model-role-badge image" x-show="m.id === imageModel">Default image</span>
+                                        <span class="model-role-badge chat" x-show="m.id === currentChatModel">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+                                            <span>Default chat</span>
+                                        </span>
+                                        <span class="model-role-badge image" x-show="m.id === imageModel">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                                            <span>Default gen</span>
+                                        </span>
+                                        <span class="model-role-badge edit" x-show="!!imageEditModel && m.id === imageEditModel">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                            <span>Default edit</span>
+                                        </span>
                                     </div>
 
-                                    <!-- Controls on Right: Roles, Context, Temperature, Thinking, Image Capability -->
+                                    <!-- Chat-only controls; image models only expose image capability -->
                                     <div class="model-item-right">
                                         <template x-if="!m.is_image">
-                                            <button
-                                                type="button"
-                                                class="model-pill-btn role-chat"
-                                                :class="{ active: m.id === currentChatModel }"
-                                                :disabled="m.id === currentChatModel"
-                                                @click="setAsActiveChat(m)"
-                                                x-text="m.id === currentChatModel ? 'Active chat' : 'Use for chat'"
-                                                title="Use this model for new chat requests"
-                                            ></button>
-                                        </template>
-                                        <template x-if="m.is_image">
-                                            <button
-                                                type="button"
-                                                class="model-pill-btn role-image"
-                                                :class="{ active: m.id === imageModel }"
-                                                :disabled="m.id === imageModel"
-                                                @click="setAsDefaultImage(m)"
-                                                x-text="m.id === imageModel ? 'Default image' : 'Use for images'"
-                                                title="Use this image-capable model for generation and editing"
-                                            ></button>
-                                        </template>
-
+                                            <div class="model-chat-controls">
                                         <!-- Context Dropdown/Button -->
                                         <div class="model-pill-select-wrap">
                                             <select
@@ -272,9 +254,9 @@
                                                 class="model-pill-select temperature"
                                                 :value="(m.temperature === undefined || m.temperature === null || m.temperature === '') ? 'default' : m.temperature"
                                                 @change="updateModelTemperature(prov, m, $event.target.value)"
-                                                title="Temperature for this model. Host default uses the Model Behavior temperature."
+                                                title="Temperature for this model. Default sends no override, so the host server decides."
                                             >
-                                                <option value="default">Temp: Host default</option>
+                                                <option value="default">Temp: Default</option>
                                                 <option value="0">Temp: 0.0</option>
                                                 <option value="0.2">Temp: 0.2</option>
                                                 <option value="0.4">Temp: 0.4</option>
@@ -294,9 +276,9 @@
                                                 class="model-pill-select thinking"
                                                 :value="m.thinking_effort || 'default'"
                                                 @change="updateModelThinking(prov, m, $event.target.value)"
-                                                title="Thinking effort for this model. Host default uses the Model Behavior reasoning settings."
+                                                title="Reasoning effort for this model. Default sends no override, so the host server decides."
                                             >
-                                                <option value="default">Thinking: Host default</option>
+                                                <option value="default">Thinking: Default</option>
                                                 <option value="none">Thinking: None</option>
                                                 <option value="low">Thinking: Low</option>
                                                 <option value="medium">Thinking: Medium</option>
@@ -305,15 +287,35 @@
                                                 <option value="max">Thinking: Max</option>
                                             </select>
                                         </div>
+                                            </div>
+                                        </template>
+
+                                        <template x-if="!m.is_image">
+                                            <button
+                                                type="button"
+                                                class="model-advanced-btn"
+                                                :class="{ active: isModelAdvancedOpen(prov, m) }"
+                                                @click="toggleModelAdvanced(prov, m)"
+                                                :aria-expanded="isModelAdvancedOpen(prov, m)"
+                                                title="Advanced request settings for this chat model"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+                                                    <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+                                                    <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+                                                    <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
+                                                    <line x1="17" y1="16" x2="23" y2="16"/>
+                                                </svg>
+                                            </button>
+                                        </template>
 
                                         <!-- Image capability is independent from the default image model -->
                                         <button
                                             type="button"
                                             class="model-image-icon-btn"
                                             :class="{ active: m.is_image }"
-                                            :disabled="(m.id === currentChatModel && !m.is_image) || (m.id === imageModel && m.is_image)"
                                             @click="toggleAsImageModel(prov, m)"
-                                            :title="(m.id === currentChatModel && !m.is_image) ? 'Switch the active chat model before marking this model image-capable' : (m.id === imageModel && m.is_image ? 'The default image model must remain image-capable' : (m.is_image ? 'Remove image capability' : 'Mark as image-capable'))"
+                                            :title="(m.id === currentChatModel && !m.is_image) ? 'Choose a different default chat model before marking this model image-capable' : (m.id === imageModel && m.is_image ? 'Choose a different default image model before removing image capability' : (m.is_image ? 'Remove image capability' : 'Mark as image-capable'))"
                                             :aria-label="m.is_image ? 'Remove image capability' : 'Mark as image-capable'"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -324,6 +326,71 @@
                                         </button>
                                     </div>
                                 </div>
+
+                                <div class="model-advanced-panel" x-show="!m.is_image && isModelAdvancedOpen(prov, m)" x-cloak>
+                                    <div class="model-advanced-head">
+                                        <span>Advanced request settings</span>
+                                        <span class="model-advanced-scope">Chat only · this model</span>
+                                    </div>
+                                    <div class="model-advanced-grid">
+                                        <label class="model-advanced-field">
+                                            <span>Output Token Limit</span>
+                                            <select class="model-advanced-input"
+                                                    :value="modelAdvancedValue(m, 'max_output_tokens')"
+                                                    @change="updateModelAdvanced(prov, m, 'max_output_tokens', $event.target.value, 'int', $event.target)">
+                                                <option value="default">Default (host server)</option>
+                                                <option value="1024">1,024</option>
+                                                <option value="2048">2,048</option>
+                                                <option value="4096">4,096</option>
+                                                <option value="8192">8,192</option>
+                                                <option value="16384">16,384</option>
+                                                <option value="32768">32,768</option>
+                                                <option value="65536">65,536</option>
+                                            </select>
+                                            <small>Maximum tokens this model may generate in one reply.</small>
+                                        </label>
+
+                                        <label class="model-advanced-field">
+                                            <span>Message History Limit</span>
+                                            <input type="number" min="2" step="1" class="model-advanced-input"
+                                                   :value="modelAdvancedNumber(m, 'max_messages')"
+                                                   placeholder="Default (200)"
+                                                   @change="updateModelAdvanced(prov, m, 'max_messages', $event.target.value, 'int', $event.target)"/>
+                                            <small>Recent messages kept before older messages are dropped. Separate from the context-token limit.</small>
+                                        </label>
+
+                                        <label class="model-advanced-field">
+                                            <span>History Trim Block</span>
+                                            <input type="number" min="1" step="1" class="model-advanced-input"
+                                                   :value="modelAdvancedNumber(m, 'evict_block')"
+                                                   placeholder="Default (32)"
+                                                   @change="updateModelAdvanced(prov, m, 'evict_block', $event.target.value, 'int', $event.target)"/>
+                                            <small>How many old messages to remove at once when the history limit is hit.</small>
+                                        </label>
+
+                                        <label class="model-advanced-field">
+                                            <span>Developer Role</span>
+                                            <select class="model-advanced-input"
+                                                    :value="modelDeveloperRoleValue(m)"
+                                                    @change="updateModelAdvanced(prov, m, 'use_developer_role', $event.target.value, 'developer', $event.target)">
+                                                <option value="default">Default (off)</option>
+                                                <option value="on">On</option>
+                                                <option value="off">Off</option>
+                                            </select>
+                                            <small>Use the OpenAI <code>developer</code> role for system prompts.</small>
+                                        </label>
+
+                                        <label class="model-advanced-field wide">
+                                            <span>Custom Request Fields (JSON)</span>
+                                            <textarea rows="3" class="model-advanced-input model-advanced-json"
+                                                      :value="modelCustomFieldsText(m)"
+                                                      placeholder='Optional JSON object, for example {"top_k": 40}'
+                                                      @change="updateModelCustomFields(prov, m, $event.target.value, $event.target)"></textarea>
+                                            <small>Extra fields sent only for this model. Leave empty to send nothing extra.</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                </div>
                             </template>
                         </div>
                     </div>
@@ -331,10 +398,86 @@
             </template>
         </div>
 
-        <!-- 2. IMAGE GENERATION -->
+        <!-- DEFAULT MODELS -->
+        <div class="model-defaults-card">
+            <div class="model-defaults-header">
+                <span class="model-defaults-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                </span>
+                <div>
+                    <div class="model-defaults-title">Default Models</div>
+                    <p class="model-defaults-desc">Choose the chat model, the image generation model, and optionally a separate model for image editing.</p>
+                </div>
+            </div>
+
+            <div class="model-defaults-grid">
+                <div class="default-model-field">
+                    <label class="default-model-label" for="default-chat-model">
+                        <span class="default-model-badge chat">Chat</span>
+                        <span>Default chat model</span>
+                    </label>
+                    <select
+                        id="default-chat-model"
+                        class="default-model-select"
+                        :value="currentChatModel"
+                        @change="setDefaultChat($event.target.value)"
+                    >
+                        <template x-if="chatModelOptions.length === 0">
+                            <option value="" disabled>No chat model available</option>
+                        </template>
+                        <template x-for="option in chatModelOptions" :key="'default-chat-' + option.id">
+                            <option :value="option.id" x-text="option.label" :selected="option.id === currentChatModel"></option>
+                        </template>
+                    </select>
+                    <span class="default-model-hint">Image-capable models are excluded from chat.</span>
+                </div>
+
+                <div class="default-model-field">
+                    <label class="default-model-label" for="default-image-model">
+                        <span class="default-model-badge image">Image</span>
+                        <span>Image generation model</span>
+                    </label>
+                    <select
+                        id="default-image-model"
+                        class="default-model-select"
+                        :value="imageModel"
+                        @change="setDefaultImageByName($event.target.value)"
+                    >
+                        <template x-if="imageModelOptions.length === 0">
+                            <option value="" disabled>No image-capable model available</option>
+                        </template>
+                        <template x-for="option in imageModelOptions" :key="'default-image-' + option.id">
+                            <option :value="option.id" x-text="option.label" :selected="option.id === imageModel"></option>
+                        </template>
+                    </select>
+                    <span class="default-model-hint">Only marked image-capable models are listed.</span>
+                </div>
+
+                <div class="default-model-field">
+                    <label class="default-model-label" for="default-image-edit-model">
+                        <span class="default-model-badge edit">Edit</span>
+                        <span>Image editing model</span>
+                    </label>
+                    <select
+                        id="default-image-edit-model"
+                        class="default-model-select"
+                        :value="imageEditModel"
+                        @change="setDefaultImageEdit($event.target.value)"
+                    >
+                        <option value="" x-text="imageModel ? 'Same as generation (' + imageModel + ')' : 'Same as generation'"></option>
+                        <template x-for="option in imageEditModelOptions" :key="'default-edit-' + option.id">
+                            <option :value="option.id" x-text="option.label" :selected="option.id === imageEditModel"></option>
+                        </template>
+                    </select>
+                    <span class="default-model-hint">Local resize/crop/filter edits do not use a model.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- IMAGE GENERATION -->
         {% set img_cfg = core_config.get('modules', 'settings', 'image_tools', {}) or {} %}
         {% if 'image_tools' in (core_config.get('modules', 'enabled', []) or []) and img_cfg.get('enable_webui_extension', True) %}
-        <div class="image-gen-card" x-data="imageGenSettingsComponent()" @image-model-changed.window="settings.model = $event.detail.name">
+        <div class="image-gen-card" x-data="imageGenSettingsComponent()">
             <!-- Header Row with Master Toggle -->
             <div class="image-gen-header">
                 <div class="image-gen-title-group">
@@ -352,7 +495,7 @@
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            <div class="image-gen-subtext">Choose the default image-capable model and endpoint used for generation and editing.</div>
+            <div class="image-gen-subtext">Configure generation behavior. The default image model is selected in Default Models above.</div>
             <div class="provider-error-msg" x-show="error" x-text="error"></div>
 
             <!-- Ask Before Generate / Edit Row with Toggle -->
@@ -367,7 +510,7 @@
                 </label>
             </div>
 
-            <!-- Fields: Endpoint, Model, Quality -->
+            <!-- Fields: Endpoint, Quality -->
             <div class="image-gen-fields">
                 <!-- Endpoint -->
                 <div class="image-gen-field-row">
@@ -378,19 +521,6 @@
                             <option :value="p.name" x-text="p.name" :selected="settings.endpoint === p.name"></option>
                         </template>
                     </select>
-                </div>
-
-                <!-- Model -->
-                <div class="image-gen-field-row">
-                    <label class="field-label" for="image-gen-model-select">Model</label>
-                    <div class="image-gen-model-input-wrap">
-                        <select id="image-gen-model-select" class="image-gen-select" x-model="settings.model" @change="save()">
-                            <option x-show="settings.model && !availableModels.includes(settings.model)" :value="settings.model" x-text="settings.model + ' (not listed)'"></option>
-                            <template x-for="m in availableModels" :key="'img-m-' + m">
-                                <option :value="m" x-text="m" :selected="settings.model === m"></option>
-                            </template>
-                        </select>
-                    </div>
                 </div>
 
                 <!-- Quality -->
@@ -414,13 +544,13 @@
                 <span>Model Behavior</span>
             </button>
             <div class="api-advanced-fields" x-show="openBehavior">
-                <p class="api-settings-group-desc">Sampling, tools, context compression, and default reasoning behavior. Use the Save button below to apply these settings.</p>
+                <p class="api-settings-group-desc">Tools, context compression, and reasoning context behavior. Per-model sampling and effort controls are above. Use the Save button below to apply these settings.</p>
                 <template x-for="hierarchyItem in getHierarchicalSettings('model')" :key="hierarchyItem.key">
-                    <template x-if="!['name', 'image_model', 'disabled_models', 'model_profiles'].includes(hierarchyItem.key)">
+                    <template x-if="!isPerModelSetting(hierarchyItem.key)">
                         <div class="field-row" x-data="{ setting: hierarchyItem.setting }">
                             {% include 'modals/settings/fields.html' %}
                             <template x-for="child in hierarchyItem.children" :key="child.key">
-                                <template x-if="checkDependency(child.setting.depends, 'model')">
+                                <template x-if="!isPerModelSetting(child.key) && checkDependency(child.setting.depends, 'model')">
                                     <div class="setting-item setting-child" x-data="{ setting: child.setting }">
                                         {% include 'modals/settings/fields.html' %}
                                     </div>
@@ -432,24 +562,5 @@
             </div>
         </div>
 
-        <!-- ADVANCED API SETTINGS -->
-        <div class="api-advanced-settings-card" x-data="{ openAdvanced: false }">
-            <button type="button" class="api-advanced-toggle-btn" @click="openAdvanced = !openAdvanced">
-                <svg x-show="!openAdvanced" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                <svg x-show="openAdvanced" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                <span>Advanced API Settings</span>
-            </button>
-
-            <div class="api-advanced-fields" x-show="openAdvanced">
-                <template x-for="hierarchyItem in getHierarchicalSettings()" :key="hierarchyItem.key">
-                    <template x-if="!['url', 'key', 'providers'].includes(hierarchyItem.key)">
-                        <div class="field-row" x-data="{ setting: hierarchyItem.setting }">
-                            <label class="field-label" x-text="hierarchyItem.setting.title || hierarchyItem.key"></label>
-                            {% include 'modals/settings/fields.html' %}
-                        </div>
-                    </template>
-                </template>
-            </div>
-        </div>
     </div>
 </template>

@@ -70,8 +70,6 @@ class APIClient():
         self._session = None
         self._ssl_ctx = None # only set when TLS verification is disabled
 
-        self.supports_developer_role = False
-
         # origin of the API when it's a llama.cpp router. enables the model load progress feed.
         self._router_origin = None
 
@@ -264,7 +262,6 @@ class APIClient():
             return APIError(None, e)
 
         self.connected = True
-        self.supports_developer_role = core.config.get("api", "use_developer_role", default=False)
 
         # probe for a llama.cpp router so we can stream model-load progress
         await self._detect_router()
@@ -468,9 +465,9 @@ class APIClient():
                     return int(ctx_val)
                 except (ValueError, TypeError):
                     pass
+            return int(self.detect_model_context(target))
 
-        # an explicitly configured window wins over the heuristic; "auto" means
-        # "use the global api.max_context" instead of guessing a different value
+        # legacy single-endpoint setups have no provider model to configure
         try:
             configured = int(core.config.get("api", "max_context", default=0) or 0)
             if configured > 0:
@@ -482,8 +479,53 @@ class APIClient():
         if detected:
             return int(detected)
         return 16768
+    def get_model_option(self, key, default=None, model_name=None):
+        """Resolve a per-model request option. Provider models don't inherit the
+        hidden legacy globals; single-endpoint setups still use them."""
+        target = model_name or self.get_model()
+        _, model = self.find_provider_for_model(target)
+        if model:
+            value = model.get(key)
+            if value is not None and not (isinstance(value, str) and value.strip().lower() in ("", "default")):
+                return value
+            return default
+        return core.config.get("api", key, default=default)
+
+    @property
+    def supports_developer_role(self):
+        value = self.get_model_option("use_developer_role", default=False)
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
+
     def get_image_model(self):
         return core.config.get("model", "image_model", default="dall-e-3")
+
+    def get_image_edit_model_setting(self):
+        return str(core.config.get("model", "image_edit_model", default="") or "").strip()
+
+    def get_image_edit_model(self):
+        configured = self.get_image_edit_model_setting()
+        if not configured or configured.casefold() == str(self.get_model()).strip().casefold():
+            return self.get_image_model()
+        _, model = self.find_provider_for_model(configured)
+        if model and not model.get("is_image"):
+            return self.get_image_model()
+        return configured
+
+    def set_image_edit_model(self, name: str):
+        clean_name = str(name or "").strip()
+        if clean_name:
+            if clean_name.casefold() == str(self.get_model()).strip().casefold():
+                return False
+            _, model = self.find_provider_for_model(clean_name)
+            if model and not model.get("is_image"):
+                return False
+        if "model" not in core.config.config:
+            core.config.config["model"] = {}
+        core.config.config["model"]["image_edit_model"] = clean_name
+        core.config.config.save()
+        return True
 
     def set_image_model(self, name: str):
         clean_name = str(name).strip()
@@ -711,7 +753,12 @@ class APIClient():
                     "is_image": is_img,
                     "context_length": "auto",
                     "temperature": "default",
-                    "thinking_effort": "default"
+                    "thinking_effort": "default",
+                    "max_output_tokens": "default",
+                    "max_messages": "default",
+                    "evict_block": "default",
+                    "use_developer_role": "default",
+                    "custom_fields": "default"
                 })
 
         target["models"] = merged
@@ -755,7 +802,10 @@ class APIClient():
                     if m.get("id") == model_id:
                         if settings.get("is_image") and model_id == self.get_model():
                             return None
-                        if settings.get("is_image") is False and model_id == self.get_image_model():
+                        if settings.get("is_image") is False and model_id in {
+                            self.get_image_model(),
+                            self.get_image_edit_model_setting(),
+                        }:
                             return None
                         for k, v in settings.items():
                             if k != "id":
@@ -899,38 +949,58 @@ class APIClient():
             if value is None: continue
             req[key] = value
 
-        custom_effort = core.config.get("model", {}).get("custom_reasoning_effort")
-        reasoning_effort = core.config.get("model", {}).get("reasoning_effort")
-        effective_effort = custom_effort if (custom_effort and str(custom_effort).strip()) else reasoning_effort
-        if effective_effort and str(effective_effort).strip().lower() != "none":
-            eff_str = str(effective_effort).strip()
-            if eff_str.isdigit():
-                req["reasoning_effort"] = int(eff_str)
-            else:
-                req["reasoning_effort"] = eff_str
-        # Model-specific thinking effort overrides
-        if model_entry and model_entry.get("thinking_effort"):
-            m_effort = str(model_entry["thinking_effort"]).strip()
+        if model_entry:
+            # Provider models own these parameters. "default" sends no override,
+            # so the host server decides; the hidden globals only cover legacy
+            # single-endpoint setups with no provider model entry.
+            m_effort = str(model_entry.get("thinking_effort") or "default").strip()
             if m_effort and m_effort.lower() != "default":
                 if m_effort.lower() == "none":
                     req.pop("reasoning_effort", None)
-                elif m_effort.isdigit():
-                    req["reasoning_effort"] = int(m_effort)
+                    req.setdefault("chat_template_kwargs", {})["enable_thinking"] = False
                 else:
-                    req["reasoning_effort"] = m_effort
+                    req.setdefault("chat_template_kwargs", {})["enable_thinking"] = True
+                    if m_effort.isdigit():
+                        req["reasoning_effort"] = int(m_effort)
+                    else:
+                        req["reasoning_effort"] = m_effort
+        else:
+            custom_effort = core.config.get("model", {}).get("custom_reasoning_effort")
+            reasoning_effort = core.config.get("model", {}).get("reasoning_effort")
+            effective_effort = custom_effort if (custom_effort and str(custom_effort).strip()) else reasoning_effort
+            if effective_effort and str(effective_effort).strip().lower() != "none":
+                eff_str = str(effective_effort).strip()
+                if eff_str.isdigit():
+                    req["reasoning_effort"] = int(eff_str)
+                else:
+                    req["reasoning_effort"] = eff_str
 
-        # Model-specific temperature override; "default" inherits the host value
-        model_temp = model_entry.get("temperature") if model_entry else None
-        if kwargs.get("temperature") is None and model_temp not in (None, "", "default"):
-            try:
-                temperature = float(model_temp)
-                if 0.0 <= temperature <= 2.0:
-                    req["temperature"] = temperature
-            except (ValueError, TypeError):
-                pass
+        if model_entry and kwargs.get("temperature") is None:
+            model_temp = model_entry.get("temperature")
+            if model_temp in (None, "", "default"):
+                req.pop("temperature", None)
+            else:
+                try:
+                    temperature = float(model_temp)
+                    if 0.0 <= temperature <= 2.0:
+                        req["temperature"] = temperature
+                except (ValueError, TypeError):
+                    pass
 
-        # allow inserting custom request fields
-        custom_fields = core.config.get("api", {}).get("custom_fields", {})
+        if model_entry:
+            output_limit = model_entry.get("max_output_tokens")
+            if output_limit in (None, "", "default"):
+                req.pop("max_completion_tokens", None)
+            else:
+                try:
+                    output_limit = int(output_limit)
+                    if output_limit > 0:
+                        req["max_completion_tokens"] = output_limit
+                except (ValueError, TypeError):
+                    pass
+
+        # allow inserting custom request fields (per-model, legacy fallback)
+        custom_fields = self.get_model_option("custom_fields", default={}, model_name=target_model)
         if isinstance(custom_fields, dict):
             for key, value in custom_fields.items():
                 req[key] = value

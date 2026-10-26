@@ -36,8 +36,14 @@ class Context:
                 return result
 
         # Configuration
-        max_messages = int(core.config.get("api").get("max_messages", 200))
-        max_tokens = self.channel.manager.API.get_max_context() if (hasattr(self.channel, 'manager') and hasattr(self.channel.manager, 'API') and hasattr(self.channel.manager.API, 'get_max_context')) else int(core.config.get("api", "max_context", default=16768))
+        api = getattr(getattr(self.channel, "manager", None), "API", None)
+        try:
+            max_messages = int(api.get_model_option("max_messages", default=200)) if api else int(core.config.get("api").get("max_messages", 200))
+        except (ValueError, TypeError):
+            max_messages = 200
+        if max_messages < 2:
+            max_messages = 2
+        max_tokens = api.get_max_context() if (api and hasattr(api, 'get_max_context')) else int(core.config.get("api", "max_context", default=16768))
         system_role = "system" if not self.channel.manager.API.supports_developer_role else "developer"
         dev_role = "developer" if self.channel.manager.API.supports_developer_role else "user"
 
@@ -107,7 +113,12 @@ class Context:
             # Apply max_messages limit to history first
             # prompt-cache optimization: evict in chunks instead of one
             # message per append. 
-            EVICT_BLOCK = int(core.config.get("api").get("evict_block", 32))
+            try:
+                EVICT_BLOCK = int(api.get_model_option("evict_block", default=32)) if api else int(core.config.get("api").get("evict_block", 32))
+            except (ValueError, TypeError):
+                EVICT_BLOCK = 32
+            if EVICT_BLOCK < 1:
+                EVICT_BLOCK = 1
             if len(messages) > max_messages:
                 overflow = len(messages) - max_messages
                 drop = ((overflow - 1) // EVICT_BLOCK + 1) * EVICT_BLOCK

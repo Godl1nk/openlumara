@@ -18,6 +18,7 @@ def register(app, channel):
             "models": result,
             "current": channel.manager.API.get_model(),
             "image_model": channel.manager.API.get_image_model(),
+            "image_edit_model": channel.manager.API.get_image_edit_model_setting(),
             "disabled_models": channel.manager.API.get_disabled_models(),
             "reasoning_effort": core.config.get("model", "reasoning_effort", default="none"),
             "custom_reasoning_effort": core.config.get("model", "custom_reasoning_effort", default="")
@@ -55,6 +56,21 @@ def register(app, channel):
             return utils.api_result("The default chat model cannot also be the default image model", success=False)
         return utils.api_result({"image_model": name}, success=True)
 
+    @app.post("/api/model/image/edit/set")
+    async def model_image_edit_set(request: fastapi.Request):
+        """Sets an optional editing model, or clears it to use generation"""
+        data = await request.json()
+        name = (data.get("name") or "").strip()
+        if name and not channel.manager.API.set_image_edit_model(name):
+            return utils.api_result("The editing model must be an image-capable model other than the default chat model", success=False)
+        if not name:
+            channel.manager.API.set_image_edit_model("")
+        configured = channel.manager.API.get_image_edit_model_setting()
+        return utils.api_result({
+            "image_edit_model": configured,
+            "effective_model": configured or channel.manager.API.get_image_model()
+        }, success=True)
+
     @app.post("/api/model/effort/set")
     async def model_effort_set(request: fastapi.Request):
         """Sets legacy global reasoning effort defaults"""
@@ -87,7 +103,8 @@ def register(app, channel):
         return utils.api_result({
             "providers": channel.manager.API.get_providers(),
             "current_model": channel.manager.API.get_model(),
-            "image_model": channel.manager.API.get_image_model()
+            "image_model": channel.manager.API.get_image_model(),
+            "image_edit_model": channel.manager.API.get_image_edit_model_setting()
         }, success=True)
 
     @app.post("/api/provider/test")
@@ -160,8 +177,25 @@ def register(app, channel):
             return utils.api_result("Missing provider_id or model_id", success=False)
         if settings.get("is_image") and mid == channel.manager.API.get_model():
             return utils.api_result("The default chat model cannot also be image-capable", success=False)
-        if settings.get("is_image") is False and mid == channel.manager.API.get_image_model():
-            return utils.api_result("The default image model must remain image-capable", success=False)
+        if settings.get("is_image") is False and mid in {
+            channel.manager.API.get_image_model(),
+            channel.manager.API.get_image_edit_model_setting(),
+        }:
+            return utils.api_result("A default image model must remain image-capable", success=False)
+
+        for key in ("max_output_tokens", "max_messages", "evict_block"):
+            value = settings.get(key)
+            if value in (None, "", "default"):
+                continue
+            try:
+                valid = int(value) > 0
+            except (ValueError, TypeError):
+                valid = False
+            if not valid:
+                return utils.api_result(f"{key} must be a positive whole number or Default", success=False)
+
+        if settings.get("custom_fields") not in (None, "default") and not isinstance(settings.get("custom_fields"), dict):
+            return utils.api_result("Custom request fields must be a JSON object or Default", success=False)
 
         model = channel.manager.API.update_model_settings(pid, mid, settings)
         return utils.api_result({

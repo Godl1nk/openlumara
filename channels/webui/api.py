@@ -21,8 +21,9 @@ Then call it from the frontend: GET /api/ext/my_module/my_thing/list
 or POST /api/ext/my_module/my_thing/do with a JSON body.
 
 CONTRACT:
-- Handler methods MUST be private (underscore-prefixed): the tool loader
-  auto-registers every public method as an AI tool and skips private ones.
+- Handler methods MUST be private (underscore-prefixed): AI tools are
+  registered only from methods explicitly marked with @core.module.tool,
+  and route names come from the decorator path.
   Routes are addressed by the path given to the decorator, so the method
   name itself is irrelevant - use it for clarity anyway.
 - Handlers are async with signature (self, body=None, query=None):

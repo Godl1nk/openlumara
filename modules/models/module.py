@@ -61,6 +61,7 @@ class Models(core.module.Module):
 
         current_model = self.manager.API.get_model()
         image_model = self.manager.API.get_image_model()
+        image_edit_model = self.manager.API.get_image_edit_model_setting()
         disabled_models = self.manager.API.get_disabled_models()
         reasoning_effort = core.config.get("model", "reasoning_effort", default="none")
         custom_effort = core.config.get("model", "custom_reasoning_effort", default="")
@@ -69,6 +70,8 @@ class Models(core.module.Module):
             "models": list(self._models_cache or []),
             "current": current_model,
             "image_model": image_model,
+            "image_edit_model": image_edit_model,
+            "effective_image_edit_model": self.manager.API.get_image_edit_model(),
             "disabled_models": disabled_models,
             "reasoning_effort": reasoning_effort,
             "custom_reasoning_effort": custom_effort
@@ -95,7 +98,7 @@ class Models(core.module.Module):
             return self.result(f"Model '{found_id}' is currently disabled. Enable it first with `/model enable {found_id}`.", success=False)
 
         if not self.manager.API.set_model(found_id):
-            return self.result("An image model cannot be used as the active chat model.", success=False)
+            return self.result("An image model cannot be used as the default chat model.", success=False)
         return self.result(f"Model has been switched to {found_id}", success=True)
 
     @core.module.tool
@@ -106,7 +109,7 @@ class Models(core.module.Module):
             return self.result("Image model name cannot be empty.", success=False)
 
         if not self.manager.API.set_image_model(name_clean):
-            return self.result("The active chat model cannot also be the default image model.", success=False)
+            return self.result("The default chat model cannot also be the default image model.", success=False)
         return self.result(f"Image model has been set to '{name_clean}'.", success=True)
 
     @core.module.tool
@@ -156,16 +159,17 @@ class Models(core.module.Module):
         if not args:
             curr = self.manager.API.get_model() or "None"
             img = self.manager.API.get_image_model() or "None"
+            img_edit = self.manager.API.get_image_edit_model_setting() or f"Same as generation ({img})"
             preset_effort = core.config.get("model", "reasoning_effort", default="none")
             custom_effort = core.config.get("model", "custom_reasoning_effort", default="")
             eff_display = f"Custom ({custom_effort})" if custom_effort else preset_effort
-            return f"**Active Chat Model**: `{curr}`\n**Image Model**: `{img}`\n**Reasoning Effort**: `{eff_display}`"
+            return f"**Active Chat Model**: `{curr}`\n**Image Generation Model**: `{img}`\n**Image Editing Model**: `{img_edit}`\n**Reasoning Effort**: `{eff_display}`"
 
         sub = args[0].lower()
         if sub == "image" and len(args) > 1:
             img_target = " ".join(args[1:]).strip()
             if not self.manager.API.set_image_model(img_target):
-                return "The active chat model cannot also be the default image model."
+                return "The default chat model cannot also be the default image model."
             return f"Image model set to `{img_target}`"
         elif sub == "effort" and len(args) > 1:
             eff_val = " ".join(args[1:]).strip()
@@ -200,6 +204,7 @@ class Models(core.module.Module):
 
         curr = self.manager.API.get_model()
         img = self.manager.API.get_image_model()
+        img_edit = self.manager.API.get_image_edit_model_setting()
         disabled = set(self.manager.API.get_disabled_models())
 
         lines = ["**Available Models**:"]
@@ -208,7 +213,9 @@ class Models(core.module.Module):
             if m == curr:
                 tags.append("ACTIVE CHAT")
             if m == img:
-                tags.append("IMAGE")
+                tags.append("IMAGE GEN")
+            if img_edit and m == img_edit:
+                tags.append("IMAGE EDIT")
             if m in disabled:
                 tags.append("DISABLED")
 

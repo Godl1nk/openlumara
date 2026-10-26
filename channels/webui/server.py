@@ -29,6 +29,7 @@ ADMIN_ONLY_ENDPOINTS = [
     "/api/models",
     "/api/model/set",
     "/api/model/image/set",
+    "/api/model/image/edit/set",
     "/api/model/effort/set",
     "/api/model/toggle",
     "/api/providers",
@@ -83,7 +84,7 @@ async def create_fastapi(channel):
             "/favicon.ico", "/favicon.svg", "/icon-192.png", "/icon-512.png",
             "/icon-maskable-512.png", "/manifest.json", "/sw.js",
         ]
-        public_prefixes = ("/assets/", "/themes/", "/api/themes")
+        public_prefixes = ("/assets/", "/ext-assets/", "/themes/", "/api/themes")
         if request.url.path in public_paths or str(request.url.path).startswith(public_prefixes):
             return await call_next(request)
         

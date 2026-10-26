@@ -88,6 +88,10 @@ def register(app, channel):
             themes_dir = os.path.realpath(themes_dir)
             full_path = os.path.realpath(os.path.join(themes_dir, file_name))
             if full_path.startswith(themes_dir + os.sep) and os.path.isfile(full_path):
-                return fastapi.responses.FileResponse(full_path, media_type="text/css")
+                return fastapi.responses.FileResponse(
+                    full_path,
+                    media_type="text/css",
+                    headers={"Cache-Control": "no-store"}
+                )
             
         raise fastapi.HTTPException(status_code=404, detail="Theme CSS not found")
