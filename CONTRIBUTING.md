@@ -1,5 +1,7 @@
 When submitting a PR, please do it towards the dev branch!
 
+Manual coding is always preferred. However, if you choose to use AI coding:
+
 # AI Usage Policy
 In addition to llamacpp's policy:
 > [!IMPORTANT]
