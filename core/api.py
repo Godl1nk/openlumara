@@ -415,10 +415,13 @@ class APIClient():
         return core.config.get("model", "name")
 
     def set_model(self, name: str):
+        p, m = self.find_provider_for_model(name)
+        if m and m.get("is_image"):
+            return False
+
         core.config.config["model"]["name"] = name
 
         # Sync api.url and api.key with the provider hosting this model
-        p, m = self.find_provider_for_model(name)
         if p and p.get("url"):
             if "api" not in core.config.config:
                 core.config.config["api"] = {}
@@ -466,9 +469,12 @@ class APIClient():
         return core.config.get("model", "image_model", default="dall-e-3")
 
     def set_image_model(self, name: str):
+        clean_name = str(name).strip()
+        if clean_name.casefold() == str(self.get_model()).strip().casefold():
+            return False
         if "model" not in core.config.config:
             core.config.config["model"] = {}
-        core.config.config["model"]["image_model"] = str(name).strip()
+        core.config.config["model"]["image_model"] = clean_name
         core.config.config.save()
 
         # keep modules that resolve their own image model in sync with the
@@ -687,6 +693,7 @@ class APIClient():
                     "enabled": True,
                     "is_image": is_img,
                     "context_length": "auto",
+                    "temperature": "default",
                     "thinking_effort": "default"
                 })
 
@@ -729,11 +736,13 @@ class APIClient():
             if p["id"] == provider_id:
                 for m in p.get("models", []):
                     if m.get("id") == model_id:
+                        if settings.get("is_image") and model_id == self.get_model():
+                            return None
+                        if settings.get("is_image") is False and model_id == self.get_image_model():
+                            return None
                         for k, v in settings.items():
                             if k != "id":
                                 m[k] = v
-                        if settings.get("is_image") is True:
-                            self.set_image_model(model_id)
 
                         # Sync active model parameters immediately
                         active_model = core.config.get("model", "name")
@@ -893,6 +902,15 @@ class APIClient():
                 else:
                     req["reasoning_effort"] = m_effort
 
+        # Model-specific temperature override; "default" inherits the host value
+        model_temp = model_entry.get("temperature") if model_entry else None
+        if kwargs.get("temperature") is None and model_temp not in (None, "", "default"):
+            try:
+                temperature = float(model_temp)
+                if 0.0 <= temperature <= 2.0:
+                    req["temperature"] = temperature
+            except (ValueError, TypeError):
+                pass
 
         # allow inserting custom request fields
         custom_fields = core.config.get("api", {}).get("custom_fields", {})

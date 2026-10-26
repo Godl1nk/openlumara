@@ -326,7 +326,7 @@ UI_STORE = {
         this.showSidebar = !this.showSidebar;
     },
 
-    async openModal(name) {
+    async openModal(name, settingsCategory = 'appearance') {
         // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-12)
         // opening another modal while settings is dirty used to silently
         // auto-save; now it asks first. cancelling keeps the settings
@@ -340,6 +340,9 @@ UI_STORE = {
             }
         }
 
+        if (name === 'settings') {
+            Alpine.store('settings').activeCategory = settingsCategory;
+        }
         this.currentModal = name;
 
         /*

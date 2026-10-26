@@ -20,6 +20,14 @@ function syncContextPill(maxContext) {
     }
 }
 
+function syncManagedModelSetting(key, value) {
+    const store = Alpine.store("settings");
+    const field = store?.categories?.model?.settings?.[key];
+    const original = store?.originalCategories?.model?.settings?.[key];
+    if (field) field.value = value;
+    if (original) original.value = value;
+}
+
 
 const MODEL_MANAGER_STORE = {
     providers: [],
@@ -49,7 +57,7 @@ const MODEL_MANAGER_STORE = {
         for (const prov of this.providers) {
             if (!prov.enabled) continue;
             for (const m of (prov.models || [])) {
-                if (m.enabled) {
+                if (m.enabled && !m.is_image) {
                     models.push(m.id);
                 }
             }
@@ -108,10 +116,13 @@ function modelQuickSwitch() {
                 } else {
                     // no provider entry (legacy single-endpoint setup): fall
                     // back to the global reasoning effort
+                    const effort = value === "default" ? "none" : value;
                     await simpleApiPost("/api/model/effort/set", {
-                        effort: value === "default" ? "none" : value,
+                        effort,
                         custom: ""
                     });
+                    syncManagedModelSetting("reasoning_effort", effort);
+                    syncManagedModelSetting("custom_reasoning_effort", "");
                 }
             } catch (err) {
                 alert("Failed to set reasoning effort: " + err);
@@ -153,9 +164,7 @@ function modelQuickSwitch() {
                 const res = await simpleApiPost("/api/model/set", { name });
                 const store = Alpine.store("modelManager");
                 if (store) store.currentChatModel = name;
-
-                const field = Alpine.store("settings")?.categories?.model?.settings?.name;
-                if (field) field.value = name;
+                syncManagedModelSetting("name", name);
 
                 if (res && res.max_context) {
                     syncContextPill(res.max_context);
@@ -402,12 +411,15 @@ function providerManagerComponent() {
             }
         },
 
-        async setAsActiveChat(modelId) {
+        async setAsActiveChat(model) {
+            if (model.is_image) {
+                alert("An image model cannot also be the active chat model.");
+                return;
+            }
             try {
-                const res = await simpleApiPost("/api/model/set", { name: modelId });
-                Alpine.store("modelManager").currentChatModel = modelId;
-                const field = Alpine.store("settings")?.categories?.model?.settings?.name;
-                if (field) field.value = modelId;
+                const res = await simpleApiPost("/api/model/set", { name: model.id });
+                Alpine.store("modelManager").currentChatModel = model.id;
+                syncManagedModelSetting("name", model.id);
 
                 if (res && res.max_context) {
                     syncContextPill(res.max_context);
@@ -418,17 +430,40 @@ function providerManagerComponent() {
         },
 
         async toggleAsImageModel(prov, model) {
+            if (model.id === this.imageModel && model.is_image) return;
+            if (!model.is_image && model.id === this.currentChatModel) {
+                alert("Switch the active chat model first. A model cannot be used for both chat and images.");
+                return;
+            }
+            const nextState = !model.is_image;
+            model.is_image = nextState;
             try {
-                await simpleApiPost("/api/model/image/set", { name: model.id });
-                Alpine.store("modelManager").imageModel = model.id;
-
                 await simpleApiPost("/api/provider/model/update", {
                     provider_id: prov.id,
                     model_id: model.id,
-                    settings: { is_image: true }
+                    settings: { is_image: nextState }
                 });
             } catch (e) {
-                alert("Failed to set image model: " + e);
+                model.is_image = !nextState;
+                alert("Failed to update image capability: " + e);
+            }
+        },
+
+        async setAsDefaultImage(model) {
+            if (!model.is_image || model.id === this.imageModel) return;
+            if (model.id === this.currentChatModel) {
+                alert("An image model cannot also be the active chat model.");
+                return;
+            }
+            try {
+                await simpleApiPost("/api/model/image/set", { name: model.id });
+                Alpine.store("modelManager").imageModel = model.id;
+                syncManagedModelSetting("image_model", model.id);
+                window.dispatchEvent(new CustomEvent("image-model-changed", {
+                    detail: { name: model.id }
+                }));
+            } catch (e) {
+                alert("Failed to set default image model: " + e);
             }
         },
 
@@ -450,28 +485,23 @@ function providerManagerComponent() {
             }
         },
 
-        async detectContext(prov, model) {
+        async updateModelTemperature(prov, model, val) {
+            const previous = model.temperature;
+            model.temperature = val;
             try {
-                const res = await simpleApiPost("/api/provider/detect_context", {
-                    model_id: model.id
+                await simpleApiPost("/api/provider/model/update", {
+                    provider_id: prov.id,
+                    model_id: model.id,
+                    settings: { temperature: val }
                 });
-                if (res && res.context_length) {
-                    model.context_length = String(res.context_length);
-                    const upd = await simpleApiPost("/api/provider/model/update", {
-                        provider_id: prov.id,
-                        model_id: model.id,
-                        settings: { context_length: model.context_length }
-                    });
-                    if (upd && upd.max_context && model.id === this.currentChatModel) {
-                        syncContextPill(upd.max_context);
-                    }
-                }
             } catch (e) {
-                alert("Failed to detect context: " + e);
+                model.temperature = previous;
+                alert("Failed to update temperature: " + e);
             }
         },
 
         async updateModelThinking(prov, model, val) {
+            const previous = model.thinking_effort;
             model.thinking_effort = val;
             try {
                 await simpleApiPost("/api/provider/model/update", {
@@ -480,6 +510,7 @@ function providerManagerComponent() {
                     settings: { thinking_effort: val }
                 });
             } catch (e) {
+                model.thinking_effort = previous;
                 alert("Failed to update thinking effort: " + e);
             }
         }
@@ -508,7 +539,10 @@ function imageGenSettingsComponent() {
                     this.settings.endpoint = res.endpoint || "auto";
                     this.settings.model = res.model || "Qwen-Image-2.1";
                     this.settings.quality = res.quality || "high";
-                    this.providers = Array.isArray(res.providers) ? res.providers : [];
+                    this.providers = (Array.isArray(res.providers) ? res.providers : []).map(p => ({
+                        ...p,
+                        models: (p.models || []).map(m => typeof m === "string" ? { id: m, is_image: true } : m)
+                    }));
                     this.error = "";
                 }
             } catch (e) {
@@ -518,7 +552,8 @@ function imageGenSettingsComponent() {
                     this.providers = (mgr.providers || []).map(p => ({
                         id: p.id,
                         name: p.name,
-                        models: (p.models || []).map(m => m.id || String(m))
+                        enabled: p.enabled,
+                        models: (p.models || []).map(m => ({ id: m.id, is_image: Boolean(m.is_image) }))
                     }));
                 }
             }
@@ -527,9 +562,10 @@ function imageGenSettingsComponent() {
         get availableModels() {
             const models = new Set();
             for (const p of this.providers) {
+                if (p.enabled === false) continue;
                 if (this.settings.endpoint !== "auto" && p.name !== this.settings.endpoint) continue;
                 for (const m of (p.models || [])) {
-                    models.add(m);
+                    if (m.is_image) models.add(m.id);
                 }
             }
             return Array.from(models);
@@ -551,6 +587,7 @@ function imageGenSettingsComponent() {
                 const mgr = Alpine.store("modelManager");
                 if (mgr && this.settings.model) {
                     mgr.imageModel = this.settings.model;
+                    syncManagedModelSetting("image_model", this.settings.model);
                 }
             } catch (e) {
                 this.error = "Could not save image settings: " + (typeof e === "string" ? e : (e?.error || e?.message || "unknown error"));

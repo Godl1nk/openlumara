@@ -92,7 +92,8 @@ class Models(core.module.Module):
         if found_id in disabled_models:
             return self.result(f"Model '{found_id}' is currently disabled. Enable it first with `/model enable {found_id}`.", success=False)
 
-        self.manager.API.set_model(found_id)
+        if not self.manager.API.set_model(found_id):
+            return self.result("An image model cannot be used as the active chat model.", success=False)
         return self.result(f"Model has been switched to {found_id}", success=True)
 
     async def set_image_model(self, name: str):
@@ -101,7 +102,8 @@ class Models(core.module.Module):
         if not name_clean:
             return self.result("Image model name cannot be empty.", success=False)
 
-        self.manager.API.set_image_model(name_clean)
+        if not self.manager.API.set_image_model(name_clean):
+            return self.result("The active chat model cannot also be the default image model.", success=False)
         return self.result(f"Image model has been set to '{name_clean}'.", success=True)
 
     async def set_reasoning_effort(self, effort: str, custom: bool = False):
@@ -157,7 +159,8 @@ class Models(core.module.Module):
         sub = args[0].lower()
         if sub == "image" and len(args) > 1:
             img_target = " ".join(args[1:]).strip()
-            self.manager.API.set_image_model(img_target)
+            if not self.manager.API.set_image_model(img_target):
+                return "The active chat model cannot also be the default image model."
             return f"Image model set to `{img_target}`"
         elif sub == "effort" and len(args) > 1:
             eff_val = " ".join(args[1:]).strip()

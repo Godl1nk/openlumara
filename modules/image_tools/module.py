@@ -454,7 +454,8 @@ class ImageTools(core.module.Module):
         if not clean_name:
             return self.result("Model name cannot be empty.", success=False)
         if hasattr(self.manager.API, "set_image_model"):
-            self.manager.API.set_image_model(clean_name)
+            if not self.manager.API.set_image_model(clean_name):
+                return self.result("The active chat model cannot also be the default image model.", success=False)
         return self.result(f"Image model has been set to '{clean_name}'.", success=True)
 
     # AI Tools - Local Image Manipulation (Pillow)
@@ -892,7 +893,14 @@ class ImageTools(core.module.Module):
                 providers.append({
                     "id": p["id"],
                     "name": p["name"],
-                    "models": [m["id"] if isinstance(m, dict) else str(m) for m in p.get("models", [])]
+                    "enabled": p.get("enabled", True),
+                    "models": [
+                        {
+                            "id": m["id"] if isinstance(m, dict) else str(m),
+                            "is_image": bool(m.get("is_image")) if isinstance(m, dict) else False,
+                        }
+                        for m in p.get("models", [])
+                    ]
                 })
 
         return {
@@ -908,12 +916,12 @@ class ImageTools(core.module.Module):
     async def _route_save_settings(self, body=None, query=None):
         """Saves image generation settings."""
         body = body or {}
+        if body.get("model") and hasattr(self.manager.API, "set_image_model"):
+            if not self.manager.API.set_image_model(body["model"]):
+                return self.result("The active chat model cannot also be the default image model.", success=False)
         for key in ("enabled", "ask_before_generate", "endpoint", "model", "quality"):
             if key in body:
                 self.config.set(key, body[key])
-        if "model" in body and body["model"]:
-            if hasattr(self.manager.API, "set_image_model"):
-                self.manager.API.set_image_model(body["model"])
         core.config.config.save()
         return self.result({"saved": True}, success=True)
 

@@ -130,7 +130,7 @@ function settingsModal() {
             this.themeFamily = Alpine.store('theme').family;
             this.themeMode = Alpine.store('theme').mode;
 
-            this.activeCategory = "appearance";
+            this.activeCategory = Alpine.store('settings').activeCategory || "appearance";
 
             // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
             // restore which sidebar categories were folded away last time
@@ -241,11 +241,11 @@ function settingsModal() {
          *                                  or an object mapping keys to expected values (e.g., {"some_field": true, "other": "value"})
          * @returns {boolean} True if all dependencies are satisfied, or if depends is null/empty
          */
-        checkDependency(depends) {
+        checkDependency(depends, categoryKey = this.activeCategory) {
             if (!depends) return true;
             
             const settingsStore = Alpine.store('settings');
-            const category = settingsStore.categories[this.activeCategory];
+            const category = settingsStore.categories[categoryKey];
             
             if (!category) return true;
             
@@ -295,9 +295,9 @@ function settingsModal() {
          * Builds a hierarchical structure from flat settings for nested rendering.
          * @returns {Array} Array of {setting, children: []} objects
          */
-        getHierarchicalSettings() {
+        getHierarchicalSettings(categoryKey = this.activeCategory) {
             const settingsStore = Alpine.store('settings');
-            const category = settingsStore.categories[this.activeCategory];
+            const category = settingsStore.categories[categoryKey];
             
             if (!category) return [];
             

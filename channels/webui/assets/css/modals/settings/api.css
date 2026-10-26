@@ -497,6 +497,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.models-bar-hint {
+    margin-right: auto;
+    color: var(--text-muted);
+    font-size: 11px;
 }
 
 .models-bar-title {
@@ -651,15 +659,9 @@
     font-weight: 500;
     color: var(--text-primary);
     font-family: var(--code-font);
-    cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.model-name-text:hover {
-    color: var(--accent);
-    text-decoration: underline;
 }
 
 .model-role-badge {
@@ -681,12 +683,14 @@
     border: 1px solid var(--accent);
 }
 
-/* Controls on Right: Context, Detect, Thinking, Image Icon */
+/* Controls on Right: Context, Temperature, Thinking, Image Capability */
 .model-item-right {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
     flex-shrink: 0;
+    flex-wrap: wrap;
 }
 
 .model-pill-select-wrap {
@@ -738,6 +742,15 @@
     border-color: var(--accent) !important;
 }
 
+.modal .model-pill-btn.role-chat.active,
+.modal .model-pill-btn.role-image.active {
+    color: var(--accent) !important;
+    border-color: var(--accent) !important;
+    background: var(--accent-glow, rgba(255, 255, 255, 0.08)) !important;
+    opacity: 1 !important;
+    cursor: default !important;
+}
+
 .modal .model-image-icon-btn {
     width: 30px !important;
     height: 30px !important;
@@ -767,6 +780,18 @@
     background: var(--accent-glow, rgba(255, 255, 255, 0.08)) !important;
     border-color: var(--accent) !important;
     color: var(--accent) !important;
+}
+
+.modal .model-image-icon-btn:disabled {
+    cursor: default !important;
+    opacity: 1 !important;
+}
+
+.api-settings-group-desc {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 .models-empty,

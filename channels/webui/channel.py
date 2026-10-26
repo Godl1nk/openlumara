@@ -1388,7 +1388,6 @@ ADMIN_ONLY_ENDPOINTS = [
     "/api/provider/delete",
     "/api/provider/refresh",
     "/api/provider/model/update",
-    "/api/provider/detect_context",
     "/api/reconnect",
     "/api/chat/prompt",
     "/api/system/logs",
@@ -2252,7 +2251,8 @@ async def create_fastapi(channel):
         if not name:
             return api_result("Model name cannot be empty", success=False)
 
-        channel.manager.API.set_model(name)
+        if not channel.manager.API.set_model(name):
+            return api_result("An image model cannot be used as the active chat model", success=False)
         connected = await channel.manager.API.connect(silent=True)
         if isinstance(connected, core.api.APIError):
             return api_result(str(connected), success=False)
@@ -2270,7 +2270,8 @@ async def create_fastapi(channel):
         if not name:
             return api_result("Image model name cannot be empty", success=False)
 
-        channel.manager.API.set_image_model(name)
+        if not channel.manager.API.set_image_model(name):
+            return api_result("The active chat model cannot also be the default image model", success=False)
         return api_result({"image_model": name}, success=True)
 
     @app.post("/api/model/effort/set")
@@ -2386,18 +2387,15 @@ async def create_fastapi(channel):
         settings = data.get("settings", {})
         if not pid or not mid:
             return api_result("Missing provider_id or model_id", success=False)
+        if settings.get("is_image") and mid == channel.manager.API.get_model():
+            return api_result("The active chat model cannot also be image-capable", success=False)
+        if settings.get("is_image") is False and mid == channel.manager.API.get_image_model():
+            return api_result("The default image model must remain image-capable", success=False)
         m = channel.manager.API.update_model_settings(pid, mid, settings)
         return api_result({
             "model": m,
             "max_context": channel.manager.API.get_max_context()
         }, success=bool(m))
-    @app.post("/api/provider/detect_context")
-    async def provider_detect_context(request: fastapi.Request):
-        """Detects context length for a model."""
-        data = await request.json()
-        mid = data.get("model_id", "")
-        ctx = channel.manager.API.detect_model_context(mid)
-        return api_result({"context_length": ctx}, success=True)
 
     # -- POST
     @app.post("/api/settings/save")
@@ -2411,16 +2409,28 @@ async def create_fastapi(channel):
         # with edited values; rebuild the raw config dict from it
         flattened = flatten_categories(data.get("categories", {}))
 
-        # api.url / api.key / api.providers are managed by the provider manager
-        # and are hidden from the settings form. keep the live values instead of
-        # writing back the snapshot taken when settings were opened, otherwise a
-        # save of any unrelated setting reverts provider changes.
+        # Provider and model selection controls save immediately. Keep their
+        # live values instead of writing back an older settings-modal snapshot.
         live_api = core.config.config.get("api") or {}
         flat_api = flattened.get("api")
         if isinstance(flat_api, dict):
             for live_key in ("url", "key", "providers"):
                 if live_key in live_api:
                     flat_api[live_key] = copy.deepcopy(live_api[live_key])
+
+        live_model = core.config.config.get("model") or {}
+        flat_model = flattened.get("model")
+        if isinstance(flat_model, dict):
+            for live_key in ("name", "image_model", "disabled_models"):
+                if live_key in live_model:
+                    flat_model[live_key] = copy.deepcopy(live_model[live_key])
+
+        live_image = core.config.get("modules", "settings", "image_tools", {}) or {}
+        flat_image = (flattened.get("modules", {}).get("settings", {}) or {}).get("image_tools")
+        if isinstance(flat_image, dict):
+            for live_key in ("enabled", "ask_before_generate", "endpoint", "model", "quality"):
+                if live_key in live_image:
+                    flat_image[live_key] = copy.deepcopy(live_image[live_key])
 
         # -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01)
         # snapshot the pre-save config so we can tell the frontend whether

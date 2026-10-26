@@ -27,6 +27,7 @@ SETTINGS_STORE = {
 
     get sortedCategories() {
         return Object.entries(this.categories)
+            .filter(([cat]) => cat !== 'model')
             .sort(([a, catA], [b, catB]) => (catA.order || 0) - (catB.order || 0));
     },
 

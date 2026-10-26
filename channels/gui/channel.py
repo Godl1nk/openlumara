@@ -475,7 +475,9 @@ class Qt6Channel(core.channel.Channel):
         self._emit_ui("set_status", self._status_text(None))
 
     async def _do_set_model(self, model_name):
-        self.manager.API.set_model(model_name)
+        if not self.manager.API.set_model(model_name):
+            self._emit_ui("set_status", "image models cannot be used for chat")
+            return
         self._emit_ui("set_status", f"model set to {model_name}")
 
     async def _do_save_settings(self, categories):
