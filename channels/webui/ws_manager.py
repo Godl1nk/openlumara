@@ -136,7 +136,19 @@ class WebSocketManager:
 
     async def start_stream(self, channel, chat_id: str, message: str, files: list = None):
         if self.active_stream_task and not self.active_stream_task.done():
-            self.active_stream_task.cancel()
+            # a turn is already running. instead of cancelling it, steer!
+            descriptor = await channel.queue_steering_message(
+                message,
+                files=files,
+                commands_authorized=channel.config.get("enable_admin_settings", False)
+            )
+
+            if descriptor:
+                await self.broadcast({
+                    "type": "queue_queued",
+                    "messages": [descriptor]
+                })
+            return
 
         await self.set_stream_state("message_sending")
 

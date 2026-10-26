@@ -597,11 +597,8 @@ CHAT_STORE = {
 
     async send(text) {
         stream = Alpine.store('stream');
-        if (stream.state !== 'idle') {
-            // don't allow sending during a stream
-            // (TODO: allow nudging (interrupting the stream and sending a new message))
-            return;
-        }
+
+        const wasSteering = stream.state !== 'idle';
 
         // record the sent text in the input history before clearing the box
         this.pushInputHistory(text);
@@ -640,7 +637,9 @@ CHAT_STORE = {
         // (and keep any attached files) so the user can retry
         if (success === false) {
             this.user_input = text;
-            Alpine.store("stream").state = "idle";
+            if (!wasSteering) {
+                Alpine.store("stream").state = "idle";
+            }
             return;
         }
 
