@@ -167,11 +167,6 @@ def build_settings_structure(original_data, module_info, core_sections):
         "isThemeCategory": True,
     }
 
-    # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-    # explicit display priority for the module/channel sections, so the
-    # sidebar groups as: appearance, audio, core config sections, channels,
-    # modules | get modules, user channels, user modules | info-only tabs.
-    # the 10+ base keeps these clear of the sequentially ordered sections.
     section_order = {
         "channels": 10,
         "modules": 11,
@@ -184,22 +179,14 @@ def build_settings_structure(original_data, module_info, core_sections):
         if top_key.lower() in ("theme", "theme_mode"):
             continue
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-        # special tab: browse, install, update and uninstall modules coming
-        # from the git repos in core.module_libraries (see core/module_manager.py).
-        # sits in its own slot between Modules and User Channels; the sidebar
-        # draws a divider above it.
         if top_key == "channels" and "module_library" not in categories:
             categories["module_library"] = {
-                "title": "Get Modules",
-                "description": "Install modules from external libraries",
+                "title": "Get Content",
+                "description": "Install content from external libraries",
                 "order": module_library_order,
                 "isThemeCategory": True,
             }
 
-        # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-        # display names for the user folders (where Get Modules installs to);
-        # the config keys and folders themselves stay user_modules/user_channels
         section_titles = {
             "user_channels": "Installed Channels",
             "user_modules": "Installed Modules",
@@ -220,7 +207,7 @@ def build_settings_structure(original_data, module_info, core_sections):
 
             descriptions = {}
             unsafe_modules = {}
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
+            
             # module_name -> declared category, so the frontend can group the list
             module_categories = {}
             for item_name, info in module_info.items():
@@ -250,7 +237,6 @@ def build_settings_structure(original_data, module_info, core_sections):
                     }
         else:
             # core config sections (api, model, core, etc.), schema from core_sections
-            # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
             section_schema = (core_sections.get(top_key) or {}).get("settings_schema") or {}
             if isinstance(top_value, dict) and top_value:
                 category["settings"] = build_field_settings(top_value, section_schema, top_key)
@@ -319,18 +305,7 @@ def flatten_categories(categories):
 
 
 def get_module_info():
-    """
-    -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-12)
-    schemas (descriptions, settings schemas, etc) for all modules/channels and for
-    the core config sections.
-
-    These are returned as TWO separate namespaces. They used to share one dict,
-    which meant a module named like a core config section (e.g. the `modules`
-    module vs the `modules` config section) would clobber the section's entry -
-    or, with the section loop running last, the section would clobber the
-    module's entry, silently losing its category/description/settings schema.
-    Returns (module_info, core_sections).
-    """
+    """schemas (descriptions, settings schemas, etc) for all modules/channels and for the core config sections"""
     module_info = {}
 
     for module_name, module_data in core.config.get_module_structure().items():
