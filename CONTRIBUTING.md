@@ -1,6 +1,10 @@
 When submitting a PR, please do it towards the dev branch!
 
 # AI Usage Policy
+In addition to llamacpp's policy:
+> [!IMPORTANT]
+> Do not use claude to contribute to the project. Unfortunately, claude's contributor badge is a stain that is often interpreted as "this project is vibecoded". I do not want that to stain this project.
+
 We use llamacpp's AI usage policy, which is as follows:
 
 > [!IMPORTANT]
@@ -8,8 +12,6 @@ We use llamacpp's AI usage policy, which is as follows:
 > AI-generated code is allowed. You are 100% responsible for every line, however it was produced.
 >
 > Undisclosed AI usage may result in your account being permanently banned from contributing to the project.
->
-> Do not use claude to contribute to the project. Unfortunately, claude's contributor badge is a stain that is often interpreted as "this project is vibecoded". I do not want that to stain this project.
 
 If AI is used to generate any portion of the code, contributors must adhere to the following requirements:
 
