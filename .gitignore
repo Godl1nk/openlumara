@@ -17,14 +17,12 @@ skills/*
 user_webui_themes/*
 !user_webui_themes/README.md
 config.yaml
-dev_run.sh
 *.1
 *~
 *.swp
 *.swo
 *.kate-swp
 .module_cache.json
-.tiktoken_cache/
 .requirements_hash
 
 Dockerfile
