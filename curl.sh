@@ -134,5 +134,6 @@ sh ./install.sh < /dev/null || die "dependency install failed - see output above
 
 echo
 say "${C_GRN}OpenLumara is installed!${C_OFF}"
-say "start it with:  $INSTALL_DIR/run.sh"
-say "tip: add a shortcut with:  ln -s \"$INSTALL_DIR/run.sh\" \"$HOME/.local/bin/openlumara\""
+say "start it with:  openlumara"
+say "(the command was set up automatically; if your shell can't find it yet,"
+say " reopen your shell or run:  export PATH=\"\$HOME/.local/bin:\$PATH\")"
