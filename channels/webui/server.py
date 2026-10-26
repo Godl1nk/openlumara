@@ -85,7 +85,7 @@ async def create_fastapi(channel):
         return await call_next(request)
 
     # SECOORITYYYYYY SOMEONE TUGGED ON MY HAAIIIIIRRR
-    session_lifetime_days = channel.config.get("login_lifetime")
+    session_lifetime_days = channel.config.get("login_lifetime") or 30
     signing_key = channel.session_secret_value
     cookie_name = "session_" + hashlib.sha256(signing_key.encode()).hexdigest()[:12]
     channel.session_cookie_name = cookie_name
