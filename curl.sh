@@ -117,14 +117,14 @@ export PYTHON_BIN
 # --- source code ----------------------------------------------------------
 if [ -d "$INSTALL_DIR/.git" ]; then
     say "found existing install at $INSTALL_DIR - updating..."
-    if ! git -C "$INSTALL_DIR" pull --ff-only; then
+    if ! git -C "$INSTALL_DIR" pull --ff-only < /dev/null; then
         warn "could not fast-forward (local changes or diverged branch) - continuing with existing checkout"
     fi
 elif [ -e "$INSTALL_DIR" ]; then
     die "$INSTALL_DIR exists but is not a git checkout. Remove it or choose another location: INSTALL_DIR=~/other sh <(curl ...)"
 else
     say "cloning $REPO_URL (branch: $BRANCH) into $INSTALL_DIR..."
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" \
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" < /dev/null \
         || die "clone failed - check your internet connection, or that the repo/branch exists"
 fi
 
