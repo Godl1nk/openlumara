@@ -25,23 +25,28 @@ Nowadays I use [DeSlop](https://github.com/Rose22/deslop), a tool i made, to qui
 # Screenshots
 
 Here are some screenshots and videos of the Web UI:
-> [!NOTE]
-> These screenshots are now very out of date. The dev branch contains a brand new design for the webui, and it supports extensions, which are a way for modules to extend the webui. This extensibility goes very far, allowing for a complete transformation of the webui in any ways you want. 
-> Screenshots kept here for now until i've uploaded new screenshots, which i have to do through the github website
 
-https://github.com/user-attachments/assets/c6bde601-022b-44c4-80b7-16ed6c7f74eb
+[Screencast_20261026_053113-00.00.00.000-00.01.21.016.webm](https://github.com/user-attachments/assets/c9d805f4-73b9-4bda-abff-b9aa9c0c4504)
 
-<img width="1203" height="765" alt="Screenshot_20260501_130111" src="https://github.com/user-attachments/assets/1924a3f6-06a7-495f-b4ee-320fd4f89037" />
+<img width="1920" height="963" alt="image" src="https://github.com/user-attachments/assets/1957cfd2-a7fd-4aa5-8ad0-c287e0f3b415" />
 
-<img width="1203" height="765" alt="Screenshot_20260501_130146" src="https://github.com/user-attachments/assets/b516836e-c248-47de-9c66-1d30067ff6e9" />
+<img width="1920" height="967" alt="image" src="https://github.com/user-attachments/assets/51cebecd-6412-48b9-88cf-e9c92ff6ad7d" />
 
-<img width="1469" height="961" alt="image" src="https://github.com/user-attachments/assets/146ce366-2eb1-45da-bf63-ef87fa142afc" />
+<img width="1553" height="887" alt="image" src="https://github.com/user-attachments/assets/5d4537b6-029f-4f44-bd7d-62b964a2d7f9" />
 
-<img width="1469" height="961" alt="Screenshot_20260501_131037" src="https://github.com/user-attachments/assets/f2b8eb91-2c0f-4243-aacc-c7a7b196685f" />
+<img width="1555" height="885" alt="image" src="https://github.com/user-attachments/assets/feb38610-48fe-4858-a9ca-facbed746f4d" />
 
-<img width="480" alt="Screenshot_20260513_203346" src="https://github.com/user-attachments/assets/20566b93-e37f-4676-ae76-401d5a905d2a" />
-<img width="480" alt="Screenshot_20260513_203353" src="https://github.com/user-attachments/assets/c2677f62-e315-47b6-b65c-8a66fa6e35f1" />
-<img width="480" alt="Screenshot_20260513_203359" src="https://github.com/user-attachments/assets/45e9f7b8-7f5a-44e2-bdc4-e9ea3f54d422" />
+<img width="1548" height="883" alt="image" src="https://github.com/user-attachments/assets/d960447d-f2b2-445c-820c-05bb90b5800f" />
+
+<img width="1920" height="958" alt="image" src="https://github.com/user-attachments/assets/a7fe3322-5688-404a-bfed-3972e3b4f3ab" />
+
+<img width="1563" height="895" alt="image" src="https://github.com/user-attachments/assets/516339d3-7895-47af-9851-aa60df5f2510" />
+
+<img width="1560" height="888" alt="image" src="https://github.com/user-attachments/assets/93987458-2f88-4483-be7d-93371ba91ee9" />
+
+<img width="1543" height="884" alt="image" src="https://github.com/user-attachments/assets/3373e1da-20ac-4f82-b03a-66c061223525" />
+
+<!-- old webui: https://github.com/user-attachments/assets/c6bde601-022b-44c4-80b7-16ed6c7f74eb -->
 
 > [!TIP]
 > Not sure how to use OpenLumara? Just ask your AI running on OpenLumara! It knows everything needed to get started.
