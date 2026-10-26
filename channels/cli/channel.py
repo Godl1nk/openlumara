@@ -1,5 +1,8 @@
 import os
+import regex as re
 import sys
+import json
+import time
 import readline
 import asyncio
 import random
@@ -20,6 +23,7 @@ import rich.text
 import rich.status
 import rich.progress
 import rich.markdown
+import rich.live
 import rich.traceback
 
 # openlumara core
@@ -29,6 +33,284 @@ def plaintext(text):
     """helper that makes the Rich library not auto-color text"""
 
     return rich.text.Text(text)
+
+
+# step-based live view, powered by core/turns.py step events.
+STATUS_ICONS = {
+    "thinking": ("◐", "dim"),
+    "running": ("⚙", "dim"),
+    "done": ("✓", "green"),
+    "failed": ("✗", "red"),
+    "thoughts": ("·", "dim"),
+}
+
+# braille frames of rich's "dots" spinner
+SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+def tail_text(text, max_lines):
+    """last max_lines lines of text, with a .. marker when lines were dropped.
+    max_lines of 0 means show everything."""
+    if not text:
+        return ""
+    
+    lines = text.rstrip().splitlines()
+    if max_lines and len(lines) > max_lines:
+        return ".." + "\n" + "\n".join(lines[-max_lines:])
+    
+    return "\n".join(lines)
+
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?\u2026])\s+")
+
+def thought_snippet(text, limit=80):
+    """one-line summary of a step's reasoning"""
+    t = re.sub(r"\s+", " ", text or "").strip()
+    if not t:
+        return ""
+
+    parts = SENTENCE_SPLIT.split(t)
+    s = parts[-1].strip()
+    if len(s) <= limit:
+        return s
+
+    win = s[:limit]
+    # greedy: matches up through the LAST sentence end inside the window
+    term = re.match(r"^[\s\S]*[.!?\u2026](?=\s|$)", win)
+    if term and len(term.group(0)) >= 12:
+        return term.group(0).strip()
+
+    sp = win.rfind(" ")
+    head = win[:sp] if sp > 20 else win[:limit - 1]
+    return head.rstrip() + "\u2026"
+
+class StepTreeView:
+    # live previews stay short so the live area never balloons past the screen
+    LIVE_REASONING_LINES = 2
+    LIVE_CONTENT_LINES = 4
+    LIVE_FINAL_LINES = 12
+    LIVE_ARG_LINES = 6
+
+    def __init__(self, channel):
+        self.channel = channel
+        self.steps = {}
+        self.order = []
+        self.final_messages = []
+        self.progress = None
+        self.progress_task = None
+        self.show_progress = False
+
+    def _get_progress(self):
+        if self.progress is None:
+            self.progress = rich.progress.Progress(expand=False, auto_refresh=False)
+            self.progress_task = None
+        return self.progress
+
+    def set_progress(self, desc, percent):
+        progress = self._get_progress()
+        accent = self.channel._get_accent_color()
+        desc = f"[{accent}]{desc}[/]"
+
+        # total=1 with a fraction, exactly like the classic handler
+        if self.progress_task is None:
+            if percent is None:
+                self.progress_task = progress.add_task(desc, total=None)
+            else:
+                self.progress_task = progress.add_task(desc, completed=percent / 100, total=1)
+        elif percent is None:
+            progress.update(self.progress_task, description=desc, completed=None, total=None)
+        else:
+            progress.update(self.progress_task, description=desc, completed=percent / 100, total=1)
+        self.show_progress = True
+
+    def update_step(self, step):
+        num = step.get("step") or 0
+        if num not in self.steps:
+            self.order.append(num)
+        self.steps[num] = step
+        
+        # real content arrived: any progress bar is obsolete now
+        self.show_progress = False
+
+    def set_final(self, messages):
+        self.final_messages = messages or []
+
+    def _tool_line(self, tool):
+        meta = tool.get("_metadata") or {}
+        name = meta.get("display_name") or (tool.get("function") or {}).get("name") or "unknown"
+        done = meta.get("response") is not None
+        failed = meta.get("failed")
+
+        line = rich.text.Text("  🔧 ")
+        line.append(name, style="bold red" if failed else "bold")
+
+        summary = meta.get("summary") or ""
+        if summary and (done or self.channel.config.get("stream_tool_calls")):
+            line.append(summary, style="dim")
+
+        result = meta.get("result_summary") or ""
+        if result:
+            line.append("  → " + result, style="red" if failed else "dim green")
+        elif not done:
+            line.append(" ..", style=self.channel._get_accent_color())
+
+        return line
+
+    def _arg_lines(self, tool):
+        meta = tool.get("_metadata") or {}
+        args = meta.get("args_parsed") or {}
+
+        lines = []
+        for key, value in args.items():
+            if key == "_raw":
+                continue
+            if isinstance(value, (dict, list)):
+                text = json.dumps(value, indent=2)
+            elif value is None:
+                text = "null"
+            elif isinstance(value, bool):
+                text = "true" if value else "false"
+            else:
+                text = str(value)
+
+            shown = tail_text(text, self.LIVE_ARG_LINES)
+            first = True
+            for ln in shown.splitlines():
+                arg = rich.text.Text()
+                if first:
+                    arg.append(f"      {key}: ", style="dim")
+                    first = False
+                else:
+                    arg.append("            ")
+                arg.append(ln)
+                lines.append(arg)
+        return lines
+
+    def _modules_text(self, step):
+        # module chips, webui-style: "Coder: file edit x2, Shell: run"
+        groups = []
+        for group in step.get("modules") or []:
+            actions = []
+            for action in group.get("actions") or []:
+                name = (action.get("name") or "").replace("_", " ")
+                if not name:
+                    continue
+                count = action.get("count") or 1
+                if count > 1:
+                    name += f" x{count}"
+                actions.append(name)
+            if actions:
+                groups.append(f"{group.get('module')}: {', '.join(actions)}")
+        return ", ".join(groups)
+
+    def _header_segments(self, step):
+        reasoning = (step.get("reasoning_content") or "").strip()
+        mods = self._modules_text(step)
+
+        segments = []
+        if reasoning:
+            if step.get("reasoning_live"):
+                segments.append(("Thinking..", "italic"))
+            else:
+                segments.append((thought_snippet(reasoning), ""))
+            if mods:
+                segments.append(("  " + mods, "dim"))
+            return segments
+
+        if mods:
+            segments.append((mods, ""))
+        elif step.get("reasoning_live"):
+            segments.append(("Thinking..", "italic"))
+        else:
+            segments.append(("writing", "dim"))
+
+        tool_calls = step.get("tool_calls") or []
+        if len(tool_calls) == 1:
+            meta = tool_calls[0].get("_metadata") or {}
+            summary = meta.get("summary") or ""
+            if summary:
+                segments.append((" " + summary, "dim"))
+            result = meta.get("result_summary") or ""
+            if result:
+                segments.append(("  \u2192 " + result, "dim green"))
+        return segments
+
+    def _step_lines(self, step, live):
+        accent = self.channel._get_accent_color()
+        show_reasoning = self.channel.config.get("show_reasoning")
+        is_tail = bool(step.get("is_tail"))
+
+        status = step.get("status") or "thinking"
+        if status == "thinking":
+            # animated spinner while the model reasons
+            icon = SPINNER_FRAMES[int(time.monotonic() * 8) % len(SPINNER_FRAMES)]
+            icon_style = accent
+        else:
+            icon, icon_style = STATUS_ICONS.get(status, ("·", "dim"))
+
+        header = rich.text.Text()
+        header.append(f" {icon} ", style=icon_style)
+        for i, (text, style) in enumerate(self._header_segments(step)):
+            if i == 0 and is_tail:
+                style = (style + " " if style else "") + accent
+            header.append(text, style=style)
+
+        lines = [header]
+
+        reasoning = step.get("reasoning_content") or ""
+        content = step.get("content") or ""
+        tool_lines = [self._tool_line(t) for t in step.get("tool_calls") or []]
+
+        if live:
+            # only the open (tail) step stays expanded
+            if is_tail:
+                if show_reasoning and reasoning.strip():
+                    for ln in tail_text(reasoning, self.LIVE_REASONING_LINES).splitlines():
+                        lines.append(rich.text.Text("     " + ln, style="dim italic"))
+                if content.strip():
+                    for ln in tail_text(content, self.LIVE_CONTENT_LINES).splitlines():
+                        lines.append(rich.text.Text("     " + ln))
+
+                for tool, tool_line in zip(step.get("tool_calls") or [], tool_lines):
+                    lines.append(tool_line)
+                    # stream the args of calls still being written
+                    streaming = (tool.get("_metadata") or {}).get("response") is None
+                    if streaming and self.channel.config.get("stream_tool_calls"):
+                        lines.extend(self._arg_lines(tool))
+            return lines
+
+        if show_reasoning and reasoning.strip():
+            for ln in reasoning.rstrip().splitlines():
+                lines.append(rich.text.Text("     " + ln, style="dim italic"))
+        if content.strip():
+            for ln in content.rstrip().splitlines():
+                lines.append(rich.text.Text("     " + ln))
+        if step.get("status") == "failed":
+            lines.extend(tool_lines)
+        return lines
+
+    def render(self, live=True):
+        lines = []
+
+        for num in self.order:
+            lines.extend(self._step_lines(self.steps[num], live))
+
+        # progress bar under the step list
+        if self.show_progress and self.progress is not None:
+            lines.append(self.progress)
+
+        if live:
+            for message in self.final_messages:
+                content = message.get("content") or ""
+                if not content.strip():
+                    continue
+                for ln in tail_text(content, self.LIVE_FINAL_LINES).splitlines():
+                    lines.append(rich.text.Text(ln))
+
+        if not lines:
+            return rich.text.Text("")
+        return rich.console.Group(*lines)
+
+    def final_answer_messages(self):
+        return [m for m in self.final_messages if (m.get("content") or "").strip()]
 
 class Cli(core.channel.Channel):
     """A basic CLI channel for openlumara"""
@@ -42,6 +324,10 @@ class Cli(core.channel.Channel):
         },
         "stream_tool_calls": {
             "description": "Whether to stream tool call arguments as they are written by the AI. Extremely useful when using toolcalls with long content, such as when using the Coder to write code",
+            "default": True
+        },
+        "show_steps": {
+            "description": "Show the AI's process as a live-updating list of steps instead of a flat text stream",
             "default": True
         },
         "accent_color": {
@@ -186,6 +472,98 @@ class Cli(core.channel.Channel):
         return prompt_toolkit.formatted_text.HTML(total_bar_str)
 
     async def on_stream(self, stream):
+        if self.config.get("show_steps"):
+            return await self._on_stream_steps(stream)
+        return await self._on_stream_classic(stream)
+
+    # step-based streaming via core/turns.py, rendered live with rich.live.
+    async def _on_stream_steps(self, stream):
+        accent_color = self._get_accent_color()
+        view = StepTreeView(self)
+
+        live = None
+        def repaint():
+            nonlocal live
+            if live is None:
+                live = rich.live.Live(
+                    view.render(live=True),
+                    console=self.console,
+                    refresh_per_second=60,
+                    transient=True,
+                    vertical_overflow="visible",
+                )
+                live.start()
+            else:
+                live.update(view.render(live=True))
+
+        cancelled = False
+        error_text = None
+
+        try:
+            async for event in self.turncollector.group_stream(stream):
+                event_type = event.get("type")
+
+                if event_type == "step":
+                    view.update_step(event.get("content"))
+                    repaint()
+                elif event_type == "final":
+                    view.set_final(event.get("content") or [])
+                    repaint()
+                else:
+                    token = event.get("content") or {}
+                    token_type = token.get("type")
+
+                    if token_type == "prompt_progress":
+                        progress = token.get("content") or {}
+                        view.set_progress("Processing..", progress.get("percent"))
+                        repaint()
+                    elif token_type == "model_load_progress":
+                        content = token.get("content") or {}
+                        model_name = (content.get("model") or "").split("/")[-1]
+                        labels = {"queued": "Queued", "downloading": "Downloading"}
+                        label = labels.get(content.get("status"), "Loading")
+                        desc = f"{label} {model_name}" if model_name else f"{label} model"
+                        view.set_progress(desc, content.get("percent"))
+                        repaint()
+                    elif token_type == "error":
+                        error_text = token.get("content")
+                        break
+                    # user_message / token_usage / timings: nothing to render
+        except asyncio.CancelledError:
+            cancelled = True
+        except KeyboardInterrupt:
+            cancelled = True
+        finally:
+            if live is not None:
+                live.stop()
+            self._token_usage = await self.context.get_total_tokens()
+
+        # permanent reprint: the settled step tree first,
+        # then the answer itself
+        if view.order:
+            self.console.print(view.render(live=False))
+            self.console.print()
+
+        if error_text is not None:
+            self.console.print(f"[red][bold]ERROR:[/bold] {error_text}[/red]")
+            return
+        if cancelled:
+            self.console.print(f"[{accent_color}]cancelled.[/]")
+            return
+
+        printed_any = False
+        for message in view.final_answer_messages():
+            content = message.get("content") or ""
+            if message.get("is_cmd"):
+                self.console.print(plaintext(content))
+            else:
+                self.console.print(rich.markdown.Markdown(content))
+            printed_any = True
+
+        if printed_any:
+            self.console.print()
+
+    async def _on_stream_classic(self, stream):
         accent_color = self._get_accent_color()
 
         processing_prompt = False
