@@ -59,8 +59,9 @@ of truth for the framework itself.
   back to an estimate over streamed text, which also covers vLLM and anything else.
   The last value stays visible between turns.
 - **Reasoning effort picker** next to the model selector, editing the active model's
-  thinking effort (Default / None / Low / Medium / High / xhigh / Max) with the global
-  preset as a fallback.
+  thinking effort (Default / None / Low / Medium / High / xhigh / Max).
+- **Mid-stream steering**: messages sent while the AI is working are queued and injected
+  at the next safe tool-call boundary instead of cancelling the turn.
 
 ### Themes and animated effects
 

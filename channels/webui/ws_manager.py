@@ -148,7 +148,18 @@ class WebSocketManager:
                 channel.log(channel.name, f"ask_user intercept failed: {core.detail_error(e)}")
 
         if self.active_stream_task and not self.active_stream_task.done():
-            self.active_stream_task.cancel()
+            # don't cancel the running turn: steer it at the next safe point
+            descriptor = await channel.queue_steering_message(
+                message,
+                files=files,
+                commands_authorized=channel.config.get("enable_admin_settings", False)
+            )
+            if descriptor:
+                await self.broadcast({
+                    "type": "queue_queued",
+                    "messages": [descriptor]
+                })
+            return
 
         await self.set_stream_state("message_sending")
 

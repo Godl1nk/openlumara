@@ -48,6 +48,9 @@ class Channel:
         self.commands = core.commands.Commands(self)
         self._last_cmd_was_temporary = False
 
+        self.queued_message = None # mid-stream steering for the next agentic round
+        self.sending_message = False
+
         self.context = core.context.Context(self) # each channel has its own context window
         # the path to a channel's chat is: channel -> context -> chat
 
@@ -254,6 +257,80 @@ class Channel:
             await self.context.chat.messages.add(message)
 
         await self.push_queue.put((message, defer))
+
+    def _queued_descriptor(self, queued_message):
+        """converts a queued steering message to plaintext"""
+        text = self._extract_content(queued_message)
+        if not text:
+            filenames = [f for f in (queued_message.get("_metadata") or {}).get("filenames", []) if f]
+            text = ", ".join(filenames) if filenames else "[attachment]"
+        return {"content": text, "is_cmd": False}
+
+    def _merge_user_messages(self, existing, new_message):
+        """Merge two user messages, combining text or multimodal blocks."""
+        if not existing:
+            return new_message
+
+        def to_blocks(content):
+            if isinstance(content, list):
+                return content
+            return [{"type": "text", "text": content or ""}]
+
+        existing_content = existing.get("content")
+        new_content = new_message.get("content")
+
+        if isinstance(existing_content, str) and isinstance(new_content, str):
+            existing["content"] = existing_content + "\n" + new_content
+        else:
+            existing["content"] = (
+                to_blocks(existing_content)
+                + [{"type": "text", "text": "\n"}]
+                + to_blocks(new_content)
+            )
+
+        new_meta = new_message.get("_metadata")
+        if new_meta:
+            meta = existing.setdefault("_metadata", {"filenames": []})
+            meta["filenames"] = meta.get("filenames", []) + new_meta.get("filenames", [])
+
+        return existing
+
+    async def queue_steering_message(self, message, files=None, commands_authorized=False):
+        """Queue a mid-stream message for the next safe agentic round boundary."""
+        if isinstance(message, dict):
+            message = message.get("content", "")
+
+        cmd_prefix = core.config.get("core", "cmd_prefix").strip().lower()
+        if isinstance(message, str) and message.strip().lower().startswith(cmd_prefix):
+            try:
+                await self.commands.process_input(message, authorized=commands_authorized)
+            except Exception as e:
+                self.log(self.name, f"Error while executing steering command: {core.detail_error(e)}")
+            return None
+
+        new_message = await self._process_multimodal(message=message, files=files)
+        if new_message is None:
+            return None
+
+        # no await between read and write, so concurrent steering can't clobber
+        self.queued_message = self._merge_user_messages(self.queued_message, new_message)
+        return self._queued_descriptor(self.queued_message)
+
+    async def drain_queued_message(self):
+        """Inject the queued steering message at a tool-call round boundary."""
+        if self.queued_message is None:
+            return []
+
+        queued = self.queued_message
+        self.queued_message = None
+
+        # mark it so web UI push handling knows this was already surfaced
+        # through the steering queue instead of a regular user message
+        queued.setdefault("_metadata", {})["steering"] = True
+
+        # defer=False inserts it into context before the next request is built
+        await self.push(queued, defer=False)
+        return [self._queued_descriptor(queued)]
 
     # --------------------
     # Helper methods
@@ -651,12 +728,32 @@ class Channel:
     async def send(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         """sends a message to the AI from within the current channel"""
 
+        if self.sending_message:
+            await self.queue_steering_message(message, files=files, commands_authorized=commands_authorized)
+            return
+
         # reset push defer flag
         self._chain_idle.clear()
+        self.sending_message = True
         try:
-            return await self._send_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs)
+            result = await self._send_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs)
+
+            if self.queued_message is not None:
+                queued = self.queued_message
+                self.queued_message = None
+                result = await self._send_inner(
+                    queued.get("content"),
+                    files=None,
+                    commands_authorized=commands_authorized,
+                    add_to_context=add_to_context,
+                    **kwargs
+                )
+            return result
         finally:
             self._chain_idle.set()
+            self.sending_message = False
+            if self.queued_message is not None:
+                await self.drain_queued_message()
 
     async def _send_inner(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         # preprocessing (API connection logic, command processing, user message module hooks, etc)
@@ -707,15 +804,38 @@ class Channel:
     async def send_stream(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         """sends a message to the AI from within the current channel, streaming version"""
 
+        if self.sending_message:
+            await self.queue_steering_message(message, files=files, commands_authorized=commands_authorized)
+            return
+
         # reset push defer flag
         self._chain_idle.clear()
+        self.sending_message = True
         try:
             async for token in self._send_stream_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs):
                 yield token
+
+            if self.queued_message is not None:
+                queued = self.queued_message
+                self.queued_message = None
+
+                async for token in self._send_stream_inner(
+                    queued.get("content"),
+                    files=None,
+                    commands_authorized=commands_authorized,
+                    add_to_context=add_to_context,
+                    emit_user_message=False,
+                    steering_descriptor=self._queued_descriptor(queued),
+                    **kwargs
+                ):
+                    yield token
         finally:
             self._chain_idle.set()
+            self.sending_message = False
+            if self.queued_message is not None:
+                await self.drain_queued_message()
 
-    async def _send_stream_inner(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
+    async def _send_stream_inner(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, emit_user_message=True, steering_descriptor=None, **kwargs):
         # preprocess in two stages: commands/hooks/persist first, then connect.
         # the user's message is announced between them so the bubble doesn't
         # wait on the API connection (which can block on a model swap)
@@ -745,14 +865,19 @@ class Channel:
         # yield user message as a special token for display in UI's (because user message can be modified by module hooks).
         # it is already persisted at this point, so UI reloads see it too;
         # connecting to the API happens afterwards on purpose
-        yield {"type": "user_message", "content": user_message}
+        if emit_user_message:
+            yield {"type": "user_message", "content": user_message}
 
         finished = await self._send_finish_preprocess()
         if finished["type"] == "error":
             yield await self.throw_stream_error(finished["content"])
             return
         processed = {**processed, **finished}
-        
+
+        if steering_descriptor is not None:
+            # the merged steering message is now in context; UI can pop its queue
+            yield {"type": "queue_flushed", "content": [steering_descriptor], "end_of_chain": True}
+
         # estimate tokens used for user message
         user_message_token_estimation = 0
         try:

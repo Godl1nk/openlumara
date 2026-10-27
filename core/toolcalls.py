@@ -274,6 +274,14 @@ class ToolcallManager:
             await self.channel.push("toolcalling chain cancelled", defer=False)
             return
 
+        if self.channel.queued_message is not None:
+            flushed = await self.channel.drain_queued_message()
+            if flushed:
+                # let channels know that the steering message was sent
+                # mid-chain. content is a list of {"content": str,
+                # "is_cmd": bool} dicts
+                yield {"type": "queue_flushed", "content": flushed}
+
         final_content = []
         final_reasoning = []
         had_recursive_call = False

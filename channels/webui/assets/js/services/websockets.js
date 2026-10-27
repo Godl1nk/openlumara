@@ -242,6 +242,31 @@ async function handleWebSocketMessage(data) {
             break;
         }
 
+        case "queue_queued":
+            stream.queued = data.messages ?? [];
+            break;
+
+        case "queue_flushed":
+            (data.messages ?? []).forEach(msg => {
+                const idx = stream.queued.findIndex(q => q.content === msg.content);
+                if (idx !== -1) stream.queued.splice(idx, 1);
+            });
+            AudioManager.play("token");
+
+            if (data.end_of_chain) {
+                const hist = chat.turnHistory;
+                if (hist.length > 0 && hist[hist.length - 1]?.live === true) {
+                    hist.pop();
+                }
+
+                stream.turn = { role: "assistant", live: true, steps: [], final_messages: [] };
+                await chat.reloadChat();
+                chat.turnHistory.push(stream.turn);
+                stream.userMsg = null;
+                await ui.forceScrollToBottom();
+            }
+            break;
+
         case "push":
             // it's a push messsage (like a scheduler reminder)
             if (stream.state !== 'idle' || streamFinalizing) {

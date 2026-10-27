@@ -804,7 +804,7 @@ class TurnCollector:
             yield {"type": "token", "content": token}
 
             # skip grouping for non-display tokens
-            if token.get("type") in ['prompt_progress', 'token_usage', 'timings', 'user_message', 'model_load_progress']:
+            if token.get("type") in ['prompt_progress', 'token_usage', 'timings', 'user_message', 'queue_flushed', 'model_load_progress']:
                 continue
 
             # remove timing data from the token

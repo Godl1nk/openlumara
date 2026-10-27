@@ -326,6 +326,10 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
         await self.server.serve()
 
     async def on_push(self, message):
+        if (isinstance(message, dict) and message.get("role") == "user"
+                and (message.get("_metadata") or {}).get("steering")):
+            return
+
         await self.websocket_manager.broadcast({
             "type": "push",
             "content": message
@@ -335,7 +339,22 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
         user_message_confirmed = False
         index = self._ws_stream_index
 
-        async for event in self.turncollector.group_stream(stream):
+        restart_grouping = False
+
+        async def grouped_events():
+            nonlocal restart_grouping
+            while True:
+                restart_grouping = False
+                grouped = self.turncollector.group_stream(stream)
+                async for event in grouped:
+                    yield event
+                    if restart_grouping:
+                        break
+                await grouped.aclose()
+                if not restart_grouping:
+                    return
+
+        async for event in grouped_events():
             payload = utils.serialize_for_json(event)
 
             if event.get("type") == "token":
@@ -354,6 +373,15 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
                         except Exception as e:
                             self.log(self.name, f"error sending user message: {core.detail_error(e)}")
                             return
+                    case "queue_flushed":
+                        await self.websocket_manager.broadcast({
+                            "type": "queue_flushed",
+                            "messages": token.get("content") or [],
+                            "end_of_chain": bool(token.get("end_of_chain", False))
+                        })
+
+                        if token.get("end_of_chain"):
+                            restart_grouping = True
                     case "error":
                         # an error ends the turn: go straight back to idle
                         await self.websocket_manager.set_stream_state("idle")

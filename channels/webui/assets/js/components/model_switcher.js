@@ -325,7 +325,7 @@ function providerManagerComponent() {
             }
         },
 
-        _defaultModelOptions(imageCapable) {
+        _defaultModelOptions(imageCapable, includeCurrent = true) {
             const options = [];
             const seen = new Set();
             for (const prov of this.providers) {
@@ -338,7 +338,7 @@ function providerManagerComponent() {
                 }
             }
             const current = imageCapable ? this.imageModel : this.currentChatModel;
-            if (current && !seen.has(current)) {
+            if (includeCurrent && current && !seen.has(current)) {
                 options.unshift({ id: current, label: current + " (current, unavailable)" });
             }
             return options;
@@ -353,7 +353,7 @@ function providerManagerComponent() {
         },
 
         get imageEditModelOptions() {
-            const options = this.imageModelOptions.map(option => ({ ...option }));
+            const options = this._defaultModelOptions(true, false);
             const current = this.imageEditModel;
             if (current && !options.some(option => option.id === current)) {
                 options.unshift({ id: current, label: current + " (current, unavailable)" });

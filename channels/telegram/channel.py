@@ -48,8 +48,7 @@ class Telegram(core.channel.Channel):
 
         self._shutting_down = False
 
-        # Queue for sequential processing of standard messages
-        self.message_queue = asyncio.Queue()
+        self._tg_update_queue = asyncio.Queue()
         self.queue_task = None
 
         if not self.token:
@@ -140,7 +139,7 @@ class Telegram(core.channel.Channel):
             asyncio.create_task(self._process_stream(update, context))
         else:
             # Queue normal messages for sequential processing
-            await self.message_queue.put((update, context))
+            await self._tg_update_queue.put((update, context))
 
     async def _process_queue_worker(self):
         """
@@ -150,7 +149,7 @@ class Telegram(core.channel.Channel):
         while self.running and not self._shutting_down:
             try:
                 # Wait for a message from the queue
-                update, context = await self.message_queue.get()
+                update, context = await self._tg_update_queue.get()
 
                 chat_id = update.effective_chat.id
                 user_msg = update.message.text.strip()
@@ -180,7 +179,7 @@ class Telegram(core.channel.Channel):
                         except asyncio.CancelledError:
                             pass
                     # Mark the task as done
-                    self.message_queue.task_done()
+                    self._tg_update_queue.task_done()
 
             except asyncio.CancelledError:
                 break

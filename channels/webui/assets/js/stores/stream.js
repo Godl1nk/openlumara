@@ -9,6 +9,9 @@ let STREAM_STORE = {
     // stores the final message after the stream has finished
     finalMessage: [],
 
+    // messages sent while the current turn is still running
+    queued: [],
+
     // live generation speed (tokens/sec), estimated while streaming
     tokens_per_second: 0,
     // "server" when the backend reported exact timings, "estimate" otherwise
@@ -60,6 +63,7 @@ let STREAM_STORE = {
         this.userMsg = null;
         this.processing = {};
         this.modelLoad = null;
+        this.queued = [];
         // the last speed stays visible; a new turn replaces it once it has data
         this._tokStart = 0;
         this._tokChars = 0;
