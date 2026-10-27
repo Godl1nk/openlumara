@@ -244,7 +244,6 @@
             <div class="steering-queue-header">steering</div>
             <template x-for="(msg, qIndex) in $store.stream.queued" :key="'steer-'+qIndex">
                 <div class="steering-item">
-                    <span class="steering-arrow" x-text="msg.is_cmd ? '⚡' : '→'"></span>
                     <span class="steering-text" x-text="msg.content"></span>
                 </div>
             </template>
