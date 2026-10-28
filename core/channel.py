@@ -738,7 +738,7 @@ class Channel:
         try:
             result = await self._send_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs)
 
-            if self.queued_message is not None:
+            while self.queued_message is not None:
                 queued = self.queued_message
                 self.queued_message = None
                 result = await self._send_inner(
@@ -815,7 +815,7 @@ class Channel:
             async for token in self._send_stream_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs):
                 yield token
 
-            if self.queued_message is not None:
+            while self.queued_message is not None:
                 queued = self.queued_message
                 self.queued_message = None
 
