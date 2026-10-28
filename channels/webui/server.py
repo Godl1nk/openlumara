@@ -104,27 +104,21 @@ async def create_fastapi(channel):
     # serve module-provided assets (<module>/webui/assets/) under /ext-assets/.
     @app.get("/ext-assets/{module_name}/{asset_path:path}")
     async def ext_module_assets(module_name: str, asset_path: str):
-        # a 'webui_asset_mounts' class attribute ({url_prefix: directory})
-        # serves extra folders under /ext-assets/<module>/<prefix>/
-        # useful for stuff like generated media
         module = channel.manager.modules.get(module_name)
         if module is not None and channel._ui_extension_enabled(module):
-            mounts = getattr(module, "webui_asset_mounts", None) or {}
+            mounts = getattr(module, "asset_mounts", None) or {}
             norm = str(asset_path).replace("\\", "/").lstrip("/")
-
             for prefix, root in mounts.items():
                 prefix = str(prefix).strip("/").lower()
-                if not prefix or not root or not os.path.isdir(str(root)):
+                root = os.path.expanduser(str(root)) if root else ""
+                if not prefix or not root or not os.path.isdir(root):
                     continue
-
                 if norm == prefix or norm.startswith(prefix + "/"):
                     rel = norm[len(prefix):].lstrip("/")
-                    root_real = os.path.realpath(str(root))
-                    full_path = os.path.realpath(os.path.join(str(root), rel))
-
+                    root_real = os.path.realpath(root)
+                    full_path = os.path.realpath(os.path.join(root, rel))
                     if not full_path.startswith(root_real + os.sep) or not os.path.isfile(full_path):
                         raise fastapi.HTTPException(status_code=404, detail="Asset not found")
-
                     return fastapi.responses.FileResponse(full_path)
 
         # default: <module>/webui/assets/
