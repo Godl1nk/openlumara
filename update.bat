@@ -6,8 +6,6 @@ cd /d "%~dp0"
 
 :: shared helpers: the environment lives in .venv\ for both uv and the pip
 :: fallback, and venv\ is the legacy name from before uv was supported
-call tools\venv.bat :have_uv
-if errorlevel 1 goto :pip
 
 :: 1. Smart auto-update
 echo checking for updates...
@@ -33,6 +31,10 @@ if !errorlevel! equ 0 (
 )
 
 :: 2. Ensure dependencies are up to date
+echo ensuring dependencies are up to date...
+call tools\venv.bat :have_uv
+if errorlevel 1 goto :pip
+
 call tools\venv.bat :uv_sync
 if errorlevel 1 exit /b 1
 goto :done
