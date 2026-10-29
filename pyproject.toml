@@ -2,7 +2,7 @@
 name = "openlumara"
 version = "1.0"
 description = "Modular, token-efficient, local-first AI agent framework"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 # exact pins: a version only moves when bumped by hand here
 dependencies = [
   "aiohttp==3.14.5",
