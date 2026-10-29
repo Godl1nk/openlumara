@@ -42,9 +42,25 @@ setup_command() {
 }
 setup_command
 
-if [ "${1:-}" = "--reinstall" ]; then
-    echo "removing existing venv..."
-    rm -rf venv
+# uv manages the environment when available, plain venv + pip otherwise
+if command -v uv >/dev/null 2>&1; then
+    if [ "${1:-}" = "--reinstall" ]; then
+        echo "removing existing environment..."
+        rm -rf .venv
+    fi
+
+    # honour PYTHON_BIN so the interpreter matches the one the caller picked
+    if [ -n "${PYTHON_BIN:-}" ]; then
+        UV_PYTHON="$PYTHON_BIN"
+        export UV_PYTHON
+    fi
+
+    echo "setting up the environment with uv..."
+    # --inexact keeps module dependencies the app installed at runtime
+    uv sync --frozen --inexact --extra webui --extra channels --extra modules || exit 1
+
+    echo "done! start OpenLumara with: openlumara   (or ./run.sh)"
+    exit 0
 fi
 
 if [ -x "venv/bin/python" ]; then
