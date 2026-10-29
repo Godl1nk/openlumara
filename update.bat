@@ -10,7 +10,7 @@ git fetch origin >nul 2>nul
 if %errorlevel% equ 0 (
     :: Get local HEAD
     for /f "tokens=*" %%i in ('git rev-parse HEAD') do set LOCAL=%%i
-    
+
     :: Get remote HEAD (using @{u} for upstream)
     set REMOTE=
     for /f "tokens=*" %%i in ('git rev-parse @{u} 2^>nul') do set REMOTE=%%i
@@ -41,12 +41,19 @@ if %errorlevel% equ 0 (
         exit /b 1
     )
 
-    if not exist "venv" (
-        python -m venv venv || exit /b 1
+    :: venv\ is the legacy name from before uv was supported. copy it to
+    :: .venv\ so the packages already installed are kept.
+    if exist "venv" if not exist ".venv" (
+        echo migrating venv\ to .venv\...
+        xcopy /E /I /Q /Y "venv" ".venv" >nul || exit /b 1
     )
 
-    venv\Scripts\python tools\dump_requirements.py --groups webui,channels,modules --output venv\requirements.txt || exit /b 1
-    venv\Scripts\python -m pip install -r venv\requirements.txt || exit /b 1
+    if not exist ".venv" (
+        python -m venv .venv || exit /b 1
+    )
+
+    .venv\Scripts\python tools\dump_requirements.py --groups webui,channels,modules --output .venv\requirements.txt || exit /b 1
+    .venv\Scripts\python -m pip install -r .venv\requirements.txt || exit /b 1
 )
 
 echo.

@@ -84,9 +84,9 @@ git clone https://github.com/Rose22/openlumara
 
 You can also choose to download the zip, but the update scripts won't work that way, because they use git.
 
-Once you have openlumara, run `run.sh` if you're on linux, `run.bat` if you're on windows! Both use [uv](https://docs.astral.sh/uv/) when it's installed and fall back to a plain `venv` + `pip` install (from a `requirements.txt` generated for the bundled extras by `tools/dump_requirements.py`) when it isn't.
+Once you have openlumara, run `run.sh` if you're on linux, `run.bat` if you're on windows! Both use [uv](https://docs.astral.sh/uv/) when it's installed and fall back to a plain `pip` install (from a `requirements.txt` generated for the bundled extras by `tools/dump_requirements.py`) when it isn't. Either way the environment lives in `.venv/`, so it stays usable if you install uv later.
 
-If you installed before uv was supported, your dependencies live in `venv/`, while uv expects them in `.venv/`. Running `install.sh` copies the directory over for you and fixes up the console scripts, so you keep the packages you already have (including module dependencies installed at runtime) instead of downloading everything again. The old `venv/` is left in place as a working fallback - delete it once you're happy with `.venv/`. Nothing is copied if you don't have uv installed, since the `venv` + `pip` path is unaffected. If both directories already exist, `install.sh` leaves them alone.
+If you installed before uv was supported, your dependencies live in `venv/`. Running `install.sh` copies that directory to `.venv/` and fixes up the console scripts, so you keep the packages you already have (including module dependencies installed at runtime) instead of downloading everything again. The old `venv/` is left in place as a working fallback - delete it once you're happy with `.venv/`.
 
 Once it's started up, open your browser and go to the url it displays. Then in the web ui, open the settings panel (lil gear icon at the top), set up your api connection, press save, and enjoy!
 

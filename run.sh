@@ -10,6 +10,10 @@ while [ -L "$target" ]; do
 done
 cd "$(dirname "$target")" || exit 1
 
+# shared helpers: the environment lives in .venv/ for both uv and the pip
+# fallback, and venv/ is the legacy name from before uv was supported
+. tools/venv.sh
+
 # uv manages the environment when available, plain venv + pip otherwise
 if command -v uv >/dev/null 2>&1; then
     # --inexact keeps module dependencies the app installed at runtime
@@ -26,11 +30,15 @@ else
     exit 1
 fi
 
-if [ ! -d "venv" ]; then
+# a legacy venv/ is copied to .venv/ so the packages that are already
+# installed are kept instead of being downloaded again
+migrate_venv
+
+if [ ! -d ".venv" ]; then
     echo "uv not found, setting up virtual environment with $PYTHON_BIN..."
-    $PYTHON_BIN -m venv venv || exit 1
-    venv/bin/python tools/dump_requirements.py --groups webui,channels,modules --output venv/requirements.txt || exit 1
-    venv/bin/pip install -r venv/requirements.txt || exit 1
+    $PYTHON_BIN -m venv .venv || exit 1
+    .venv/bin/python tools/dump_requirements.py --groups webui,channels,modules --output .venv/requirements.txt || exit 1
+    .venv/bin/pip install -r .venv/requirements.txt || exit 1
 fi
 
-exec venv/bin/python main.py "$@"
+exec .venv/bin/python main.py "$@"

@@ -23,15 +23,22 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-if not exist "venv" (
+:: venv\ is the legacy name from before uv was supported. copy it to .venv\
+:: so the packages already installed are kept instead of downloaded again.
+if exist "venv" if not exist ".venv" (
+    echo migrating venv\ to .venv\...
+    xcopy /E /I /Q /Y "venv" ".venv" >nul || exit /b 1
+)
+
+if not exist ".venv" (
     echo setting up virtual environment...
-    python -m venv venv || exit /b 1
-    venv\Scripts\python tools\dump_requirements.py --groups webui,channels,modules --output venv\requirements.txt || exit /b 1
-    venv\Scripts\python -m pip install -r venv\requirements.txt || exit /b 1
+    python -m venv .venv || exit /b 1
+    .venv\Scripts\python tools\dump_requirements.py --groups webui,channels,modules --output .venv\requirements.txt || exit /b 1
+    .venv\Scripts\python -m pip install -r .venv\requirements.txt || exit /b 1
 )
 
 echo starting openlumara...
-venv\Scripts\python main.py %*
+.venv\Scripts\python main.py %*
 
 :check
 if !errorlevel! neq 0 (
