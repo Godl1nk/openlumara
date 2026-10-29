@@ -4,10 +4,15 @@ setlocal enabledelayedexpansion
 :: Switch to the directory where this .bat file is located
 cd /d "%~dp0"
 
+:: shared helpers: the environment lives in .venv\ for both uv and the pip
+:: fallback, and venv\ is the legacy name from before uv was supported
+call tools\venv.bat :have_uv
+if errorlevel 1 goto :pip
+
 :: 1. Smart auto-update
 echo checking for updates...
 git fetch origin >nul 2>nul
-if %errorlevel% equ 0 (
+if !errorlevel! equ 0 (
     :: Get local HEAD
     for /f "tokens=*" %%i in ('git rev-parse HEAD') do set LOCAL=%%i
 
@@ -28,33 +33,17 @@ if %errorlevel% equ 0 (
 )
 
 :: 2. Ensure dependencies are up to date
-echo ensuring dependencies are up to date...
-where uv >nul 2>nul
-if %errorlevel% equ 0 (
-    uv sync --frozen --inexact --extra webui --extra channels --extra modules || exit /b 1
-) else (
-    echo uv not found, using venv + pip...
-    where python >nul 2>nul
-    if !errorlevel! neq 0 (
-        echo error: no python binary found. please make sure python is installed and in your PATH.
-        pause
-        exit /b 1
-    )
+call tools\venv.bat :uv_sync
+if errorlevel 1 exit /b 1
+goto :done
 
-    :: venv\ is the legacy name from before uv was supported. copy it to
-    :: .venv\ so the packages already installed are kept.
-    if exist "venv" if not exist ".venv" (
-        echo migrating venv\ to .venv\...
-        xcopy /E /I /Q /Y "venv" ".venv" >nul || exit /b 1
-    )
+:: the requirements are reinstalled, so a changed requirements.txt is
+:: picked up even when the environment already existed
+:pip
+echo uv not found, using venv + pip...
+call tools\venv.bat :refresh_venv
+if errorlevel 1 exit /b 1
 
-    if not exist ".venv" (
-        python -m venv .venv || exit /b 1
-    )
-
-    .venv\Scripts\python tools\dump_requirements.py --groups webui,channels,modules --output .venv\requirements.txt || exit /b 1
-    .venv\Scripts\python -m pip install -r .venv\requirements.txt || exit /b 1
-)
-
+:done
 echo.
 echo done!

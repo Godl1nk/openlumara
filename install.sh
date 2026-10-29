@@ -5,7 +5,21 @@
 
 # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-26) harness:openlumara
 set -eu
-cd "$(dirname "$0")"
+
+# resolve this script's real location, so it works from anywhere
+target="$0"
+while [ -L "$target" ]; do
+    link=$(readlink "$target")
+    case "$link" in
+        /*) target="$link" ;;
+        *)  target="$(dirname "$target")/$link" ;;
+    esac
+done
+cd "$(dirname "$target")" || exit 1
+
+# shared helpers: the environment lives in .venv/ for both uv and the pip
+# fallback, and venv/ is the legacy name from before uv was supported
+. tools/venv.sh
 
 # exposes an `openlumara` command by symlinking run.sh into ~/.local/bin
 # (done before the venv early-exit so re-running install.sh also repairs it)
@@ -42,61 +56,28 @@ setup_command() {
 }
 setup_command
 
-# shared helpers: the environment lives in .venv/ for both uv and the pip
-# fallback, and venv/ is the legacy name from before uv was supported
-. tools/venv.sh
-
 if [ "${1:-}" = "--reinstall" ]; then
     echo "removing existing environment..."
     rm -rf .venv venv
 else
     # a legacy venv/ is copied to .venv/ so the packages that are already
     # installed are kept instead of being downloaded again
-    migrate_venv
+    migrate_venv || exit 1
 fi
 
 # uv manages the environment when available, plain venv + pip otherwise
-if command -v uv >/dev/null 2>&1; then
-    # honour PYTHON_BIN so the interpreter matches the one the caller picked
-    if [ -n "${PYTHON_BIN:-}" ]; then
-        UV_PYTHON="$PYTHON_BIN"
-        export UV_PYTHON
-    fi
-
+if have_uv; then
     echo "setting up the environment with uv..."
-    # --inexact keeps module dependencies the app installed at runtime
-    uv sync --frozen --inexact --extra webui --extra channels --extra modules || exit 1
-
+    uv_sync || exit 1
     echo "done! start OpenLumara with: openlumara   (or ./run.sh)"
     exit 0
 fi
 
-if [ -x ".venv/bin/python" ]; then
+if [ -x .venv/bin/python ]; then
     echo ".venv already set up - nothing to do (use --reinstall to rebuild)"
     echo "start OpenLumara with: openlumara   (or ./run.sh)"
     exit 0
 fi
 
-if [ -n "${PYTHON_BIN:-}" ] && py_ok "$PYTHON_BIN"; then
-    :
-else
-    PYTHON_BIN=""
-    for cand in python3.13 python3.12 python3 python; do
-        if py_ok "$cand"; then PYTHON_BIN="$cand"; break; fi
-    done
-fi
-
-if [ -z "$PYTHON_BIN" ]; then
-    echo "error: no python ${MIN_PY}+ found (checked python3.13, python3.12, python3, python)"
-    echo "       hint: use the quick installer, it installs python for you:"
-    echo "             curl -fsSL https://raw.githubusercontent.com/Rose22/openlumara/main/curl.sh | sh"
-    exit 1
-fi
-
-echo "setting up virtual environment with $PYTHON_BIN ($($PYTHON_BIN -c 'import platform; print(platform.python_version())'))..."
-"$PYTHON_BIN" -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/python tools/dump_requirements.py --groups webui,channels,modules --output .venv/requirements.txt
-.venv/bin/pip install -r .venv/requirements.txt
-
+ensure_venv || exit 1
 echo "done! start OpenLumara with: openlumara   (or ./run.sh)"

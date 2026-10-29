@@ -4,41 +4,26 @@ setlocal enabledelayedexpansion
 :: Switch to the directory where this .bat file is located
 cd /d "%~dp0"
 
+:: shared helpers: the environment lives in .venv\ for both uv and the pip
+:: fallback, and venv\ is the legacy name from before uv was supported
+
 :: uv manages the environment when available, plain venv + pip otherwise
-where uv >nul 2>nul
-if %errorlevel% equ 0 (
-    :: --inexact keeps module dependencies the app installed at runtime
-    uv sync --frozen --inexact --extra webui --extra channels --extra modules || exit /b 1
-    echo starting openlumara...
-    uv run --frozen --no-sync main.py %*
-    goto :check
-)
+call tools\venv.bat :have_uv
+if not errorlevel 1 goto :uv
 
 echo uv not found, using venv + pip...
-
-where python >nul 2>nul
-if %errorlevel% neq 0 (
-    echo error: no python binary found. please make sure python is installed and in your PATH.
-    pause
-    exit /b 1
-)
-
-:: venv\ is the legacy name from before uv was supported. copy it to .venv\
-:: so the packages already installed are kept instead of downloaded again.
-if exist "venv" if not exist ".venv" (
-    echo migrating venv\ to .venv\...
-    xcopy /E /I /Q /Y "venv" ".venv" >nul || exit /b 1
-)
-
-if not exist ".venv" (
-    echo setting up virtual environment...
-    python -m venv .venv || exit /b 1
-    .venv\Scripts\python tools\dump_requirements.py --groups webui,channels,modules --output .venv\requirements.txt || exit /b 1
-    .venv\Scripts\python -m pip install -r .venv\requirements.txt || exit /b 1
-)
+call tools\venv.bat :ensure_venv
+if errorlevel 1 exit /b 1
 
 echo starting openlumara...
 .venv\Scripts\python main.py %*
+goto :check
+
+:uv
+call tools\venv.bat :uv_sync
+if errorlevel 1 exit /b 1
+echo starting openlumara...
+uv run --frozen --no-sync main.py %*
 
 :check
 if !errorlevel! neq 0 (
