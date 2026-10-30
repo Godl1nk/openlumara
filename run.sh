@@ -1,5 +1,6 @@
 #!/bin/bash
-# resolve this script's real location, so it works from anywhere
+# install.sh symlinks this script into ~/.local/bin as `openlumara`, so follow
+# the link back to the repository before touching any relative path
 target="$0"
 while [ -L "$target" ]; do
     link=$(readlink "$target")

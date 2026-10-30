@@ -6,16 +6,8 @@
 # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-26) harness:openlumara
 set -eu
 
-# resolve this script's real location, so it works from anywhere
-target="$0"
-while [ -L "$target" ]; do
-    link=$(readlink "$target")
-    case "$link" in
-        /*) target="$link" ;;
-        *)  target="$(dirname "$target")/$link" ;;
-    esac
-done
-cd "$(dirname "$target")" || exit 1
+# the repository root is the directory this script lives in
+cd "$(dirname "$0")" || exit 1
 
 # shared helpers: the environment lives in .venv/ for both uv and the pip
 # fallback, and venv/ is the legacy name from before uv was supported
