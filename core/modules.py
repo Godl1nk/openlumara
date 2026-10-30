@@ -12,9 +12,9 @@ import importlib.util
 import tomllib
 
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import version, distributions, PackageNotFoundError
 except ImportError:
-    from importlib_metadata import version, PackageNotFoundError
+    from importlib_metadata import version, distributions, PackageNotFoundError
 
 # modules that should have their prompts inserted even when tools are off
 nonagentic = ("characters", "writing_style", "time")
@@ -248,6 +248,27 @@ def _check_missing_deps(deps):
             missing.append(dep)
     return missing
 
+def _installed_requirements():
+    """map of installed package name -> the names it requires (extras and markers included)"""
+    requires = {}
+    for dist in distributions():
+        name = dist.metadata["Name"]
+        if name:
+            requires[_dep_name(name)] = [_dep_name(req) for req in (dist.requires or [])]
+    return requires
+
+def _requirement_closure(roots, requires):
+    """every installed package reachable from roots through their requirements"""
+    reached = set()
+    stack = [root for root in roots if root in requires]
+    while stack:
+        name = stack.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        stack.extend(dep for dep in requires.get(name, ()) if dep in requires)
+    return reached
+
 async def install_module_deps(package, module_name, manager):
     """install dependencies for a module if missing"""
     file_path = _get_module_file_path(package, module_name)
@@ -268,26 +289,30 @@ async def install_module_deps(package, module_name, manager):
 
 def _deps_of_enabled(section, package_name):
     """gather declared dependencies from every enabled module/channel in a config section"""
+    try:
+        package = importlib.import_module(package_name)
+        enabled = core.config.get(section, "enabled", [])
+    except Exception:
+        # a missing or broken package only costs us this section's protections
+        return []
+
     deps = []
-    for mod_name in core.config.get(section, "enabled", []):
-        file_path = _get_module_file_path(importlib.import_module(package_name), mod_name)
+    for mod_name in enabled:
+        file_path = _get_module_file_path(package, mod_name)
         if file_path:
             deps.extend(_extract_deps_from_file(file_path))
     return deps
 
 async def uninstall_module_deps(package, module_name, manager, exclude=None):
-    """uninstall dependencies for a module, but only those that are actually installed
-    and no longer needed by any enabled module or by openlumara itself"""
+    """uninstall dependencies for a module together with the packages they pulled in,
+    but only those that no enabled module and no base dependency still needs"""
     # figure out which dependencies are still required by other enabled modules
     if exclude is None:
         exclude = set()
-        try:
-            exclude.update(_deps_of_enabled("modules", "modules"))
-            exclude.update(_deps_of_enabled("user_modules", "user_modules"))
-            exclude.update(_deps_of_enabled("channels", "channels"))
-            exclude.update(_deps_of_enabled("user_channels", "user_channels"))
-        except Exception:
-            pass  # proceed without exclusion if config/package lookup fails
+        exclude.update(_deps_of_enabled("modules", "modules"))
+        exclude.update(_deps_of_enabled("user_modules", "user_modules"))
+        exclude.update(_deps_of_enabled("channels", "channels"))
+        exclude.update(_deps_of_enabled("user_channels", "user_channels"))
 
     file_path = _get_module_file_path(package, module_name)
     if not file_path:
@@ -297,20 +322,17 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
     if not deps:
         return False
 
-    # installed = declared deps that are present on this system
-    missing = _check_missing_deps(deps)
-    installed = [_dep_name(dep) for dep in deps if dep not in missing]
+    # walk the installed metadata so a package that only this module pulled in
+    # goes away with it, while anything openlumara or an enabled module still
+    # reaches (directly or through another package) stays
+    installed = _installed_requirements()
+    keep = _requirement_closure(
+        {_dep_name(dep) for dep in exclude} | {_dep_name(dep) for dep in _get_base_dependencies()},
+        installed,
+    )
+    removable = _requirement_closure({_dep_name(dep) for dep in deps}, installed) - keep
 
-    # keep deps that other enabled modules still need
-    exclude = {_dep_name(dep) for dep in exclude}
-    installed = [dep for dep in installed if dep not in exclude]
-
-    # keep deps from pyproject.toml (dependencies that openlumara ALWAYS needs)
-    base_deps = {_dep_name(dep) for dep in _get_base_dependencies()}
-
-    installed = [dep for dep in installed if dep not in base_deps]
-
-    if installed:
+    if removable:
         try:
             # import via the folder loader so we can find the uninstall hook
             mod = import_entry(package, module_name)
@@ -353,7 +375,7 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
                 if hasattr(instance, 'on_uninstall'):
                     await instance.on_uninstall()
 
-        await asyncio.to_thread(_uninstall_deps, module_name, installed, manager)
+        await asyncio.to_thread(_uninstall_deps, module_name, sorted(removable), manager)
         return True
 
 
