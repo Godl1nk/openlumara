@@ -332,9 +332,8 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
     if not deps:
         return False
 
-    # walk the installed metadata so a package that only this module pulled in
-    # goes away with it, while anything openlumara or an enabled module still
-    # reaches (directly or through another package) stays
+    # recursively walk to uninstall any transient dependencies (dependencies of dependencies)
+    # for dependencies that are marked for uninstall
     installed = _installed_requirements()
     keep = _requirement_closure(
         {_dep_name(dep) for dep in exclude} | {_dep_name(dep) for dep in _get_base_dependencies()},

@@ -1,7 +1,7 @@
 @echo off
 rem Shared helpers for run.bat and update.bat.
 rem
-rem The python environment lives in .venv\ for both uv and the plain pip fallback
+rem The python environment is in .venv\ for both uv and the plain pip fallback
 rem
 rem usage: call tools\venv.bat :label
 rem
