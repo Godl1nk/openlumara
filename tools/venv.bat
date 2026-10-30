@@ -29,7 +29,8 @@ exit /b 0
 
 :uv_sync
 rem --inexact keeps module dependencies the app installed at runtime
-uv sync --frozen --inexact --extra webui --extra channels --extra modules
+rem core dependencies only: channels and modules install their own on start
+uv sync --frozen --inexact
 exit /b %errorlevel%
 
 :note_legacy_venv
@@ -55,7 +56,7 @@ if errorlevel 1 exit /b 1
 exit /b 0
 
 :install_deps
-.venv\Scripts\python tools\dump_requirements.py --groups webui,channels,modules --output .venv\requirements.txt
+.venv\Scripts\python tools\dump_requirements.py --output .venv\requirements.txt
 if errorlevel 1 exit /b 1
 .venv\Scripts\python -m pip install -r .venv\requirements.txt
 if errorlevel 1 exit /b 1

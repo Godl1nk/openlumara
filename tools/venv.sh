@@ -26,6 +26,10 @@ have_uv() {
 }
 
 # sync the environment with uv
+#
+# only the core dependencies are installed: channels and modules install
+# what they need when they start, the extras in pyproject.toml are for
+# packaged builds, where the app cannot install anything at runtime
 uv_sync() {
     # honour the interpreter the caller picked, so uv and the pip fallback
     # end up using the same one
@@ -35,7 +39,7 @@ uv_sync() {
     fi
 
     # --inexact keeps module dependencies the app installed at runtime
-    uv sync --frozen --inexact --extra webui --extra channels --extra modules
+    uv sync --frozen --inexact
 }
 
 # pick an interpreter new enough to run Openlumara, into $PYTHON
@@ -87,7 +91,7 @@ create_venv() {
 
 # install the pinned requirements into the environment
 install_deps() {
-    .venv/bin/python tools/dump_requirements.py --groups webui,channels,modules --output .venv/requirements.txt || return 1
+    .venv/bin/python tools/dump_requirements.py --output .venv/requirements.txt || return 1
     .venv/bin/pip install -r .venv/requirements.txt
 }
 
