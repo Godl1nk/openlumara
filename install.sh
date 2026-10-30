@@ -6,11 +6,10 @@
 # -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-26) harness:openlumara
 set -eu
 
-# the repository root is the directory this script lives in
+# the repository root is the directory this script is in
 cd "$(dirname "$0")" || exit 1
 
-# shared helpers: the environment lives in .venv/ for both uv and the pip
-# fallback, and venv/ is the legacy name from before uv was supported
+# shared helpers for venv management
 . tools/venv.sh
 
 # exposes an `openlumara` command by symlinking run.sh into ~/.local/bin
@@ -52,10 +51,6 @@ if [ "${1:-}" = "--reinstall" ]; then
     echo "removing existing environment..."
     rm -rf .venv
 fi
-
-# a venv/ from before uv was supported is left alone; the environment
-# below is built from scratch in .venv/
-note_legacy_venv
 
 # uv manages the environment when available, plain venv + pip otherwise
 if have_uv; then
