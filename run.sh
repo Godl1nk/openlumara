@@ -21,7 +21,9 @@ note_legacy_venv
 
 # uv manages the environment when available, plain venv + pip otherwise
 if have_uv; then
-    uv_sync || exit 1
+    # build the environment on first run only: syncing on every start puts
+    # back the dependencies the app uninstalls for disabled modules
+    [ -x .venv/bin/python ] || uv_sync || exit 1
     exec uv run --frozen --no-sync main.py "$@"
 fi
 
