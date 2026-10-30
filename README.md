@@ -86,7 +86,7 @@ You can also choose to download the zip, but the update scripts won't work that 
 
 Once you have openlumara, run `run.sh` if you're on linux, `run.bat` if you're on windows! Both use [uv](https://docs.astral.sh/uv/) when it's installed and fall back to a plain `pip` install (from a `requirements.txt` generated for the bundled extras by `tools/dump_requirements.py`) when it isn't. Either way the environment lives in `.venv/`, so it stays usable if you install uv later.
 
-If you installed before uv was supported, your dependencies live in `venv/`. Running `install.sh` copies that directory to `.venv/` and fixes up the console scripts, so you keep the packages you already have (including module dependencies installed at runtime) instead of downloading everything again. The old `venv/` is left in place as a working fallback - delete it once you're happy with `.venv/`.
+If you installed before uv was supported, your dependencies live in `venv/`. That directory is left alone: the scripts build a fresh `.venv/` next to it, and you can delete `venv/` whenever you like. Anything you installed into the old environment by hand will have to be installed again.
 
 Once it's started up, open your browser and go to the url it displays. Then in the web ui, open the settings panel (lil gear icon at the top), set up your api connection, press save, and enjoy!
 

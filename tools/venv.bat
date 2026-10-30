@@ -5,20 +5,19 @@ rem The python environment lives in .venv\ for both uv and the plain pip
 rem fallback, so an environment built by either one stays usable when the
 rem other tool shows up later.
 rem
-rem venv\ is the legacy name from before uv was supported. migrate_venv
-rem copies it to .venv\ so the packages that are already installed are
-rem kept instead of being downloaded again. The old directory is left in
-rem place as a fallback.
+rem venv\ is the legacy name from before uv was supported. It is never
+rem touched: a fresh .venv\ is built next to it, and the user can delete
+rem the old directory when they no longer need it.
 rem
 rem usage: call tools\venv.bat :label
 rem
-rem   :have_uv      - succeeds when uv is on the PATH
-rem   :uv_sync      - syncs the environment with uv
-rem   :migrate_venv - copies a legacy venv\ to .venv\
-rem   :create_venv  - creates .venv\ when it is missing
-rem   :install_deps - installs the pinned requirements into .venv\
-rem   :ensure_venv  - makes sure .venv\ exists and holds the requirements
-rem   :refresh_venv - like :ensure_venv, but always reinstalls them
+rem   :have_uv          - succeeds when uv is on the PATH
+rem   :uv_sync          - syncs the environment with uv
+rem   :note_legacy_venv - mentions a leftover venv\
+rem   :create_venv      - creates .venv\ when it is missing
+rem   :install_deps     - installs the pinned requirements into .venv\
+rem   :ensure_venv      - makes sure .venv\ exists and holds the requirements
+rem   :refresh_venv     - like :ensure_venv, but always reinstalls them
 
 if "%~1"=="" goto :eof
 goto %~1
@@ -33,13 +32,11 @@ rem --inexact keeps module dependencies the app installed at runtime
 uv sync --frozen --inexact --extra webui --extra channels --extra modules
 exit /b %errorlevel%
 
-:migrate_venv
+:note_legacy_venv
 if not exist "venv" exit /b 0
 if exist ".venv" exit /b 0
-echo migrating venv\ to .venv\...
-rem the console scripts in the copy still point at the old venv\, which
-rem stays in place as a fallback
-xcopy /E /I /Q /Y "venv" ".venv" >nul || exit /b 1
+echo found a legacy venv\ - building a fresh .venv\ next to it
+echo the old venv\ is left untouched; delete it when you no longer need it
 exit /b 0
 
 :create_venv
@@ -65,8 +62,6 @@ if errorlevel 1 exit /b 1
 exit /b 0
 
 :ensure_venv
-call "%~dp0venv.bat" :migrate_venv
-if errorlevel 1 exit /b 1
 if exist ".venv\Scripts\python.exe" exit /b 0
 call "%~dp0venv.bat" :create_venv
 if errorlevel 1 exit /b 1
@@ -75,8 +70,6 @@ if errorlevel 1 exit /b 1
 exit /b 0
 
 :refresh_venv
-call "%~dp0venv.bat" :migrate_venv
-if errorlevel 1 exit /b 1
 call "%~dp0venv.bat" :create_venv
 if errorlevel 1 exit /b 1
 call "%~dp0venv.bat" :install_deps

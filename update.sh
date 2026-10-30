@@ -14,9 +14,9 @@ cd "$(dirname "$target")" || exit 1
 # fallback, and venv/ is the legacy name from before uv was supported
 . tools/venv.sh
 
-# a legacy venv/ is copied to .venv/ so the packages that are already
-# installed are kept instead of being downloaded again
-migrate_venv || exit 1
+# a venv/ from before uv was supported is left alone; the environment
+# below is built from scratch in .venv/
+note_legacy_venv
 
 echo "checking for updates..."
 if git fetch origin 2>/dev/null; then

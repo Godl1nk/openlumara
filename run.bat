@@ -7,6 +7,10 @@ cd /d "%~dp0"
 :: shared helpers: the environment lives in .venv\ for both uv and the pip
 :: fallback, and venv\ is the legacy name from before uv was supported
 
+:: a venv\ from before uv was supported is left alone; the environment
+:: below is built from scratch in .venv\
+call tools\venv.bat :note_legacy_venv
+
 :: uv manages the environment when available, plain venv + pip otherwise
 call tools\venv.bat :have_uv
 if not errorlevel 1 goto :uv

@@ -58,12 +58,12 @@ setup_command
 
 if [ "${1:-}" = "--reinstall" ]; then
     echo "removing existing environment..."
-    rm -rf .venv venv
-else
-    # a legacy venv/ is copied to .venv/ so the packages that are already
-    # installed are kept instead of being downloaded again
-    migrate_venv || exit 1
+    rm -rf .venv
 fi
+
+# a venv/ from before uv was supported is left alone; the environment
+# below is built from scratch in .venv/
+note_legacy_venv
 
 # uv manages the environment when available, plain venv + pip otherwise
 if have_uv; then
