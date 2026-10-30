@@ -60,27 +60,6 @@ core_settings_schema = {
             "default": 16768,
             "description": "Maximum number of tokens for the context window. This controls how much of your conversation your AI will remember. The higher the context, the further back it will remember, but how much context an AI supports depends on the model. Check your model's details page or modelcard for information on its supported context size."
         },
-        "max_output_tokens": {
-            "default": 8192,
-            "description": "Legacy default for the maximum number of tokens a model may generate. Provider models configure this individually."
-        },
-        "max_messages": {
-            "default": 200,
-            "description": "Message History Limit: the maximum number of recent messages kept in a conversation. Older messages are dropped once this limit is exceeded, even if the context-token limit has not been reached. This is separate from the model's context window."
-        },
-        "evict_block": {
-            "default": 32,
-            "description": "History Trim Block: when the Message History Limit is exceeded, remove messages in groups of this size. Larger blocks reduce repeated trimming and prompt-cache churn."
-        },
-        "use_developer_role": {
-            "default": False,
-            "description": "Enables the `developer` role for system prompts (see [this page](https://developers.openai.com/api/docs/guides/text#message-roles-and-instruction-following)). This helps the model distinguish between openlumara's instructions and your messages. Note: Not all models support this; unsupported models may crash if enabled.",
-        },
-        "custom_fields": {
-            "type": "object",
-            "default": {},
-            "description": "Additional custom fields to send with API requests. You can put anything in here that your chosen API supports!"
-        },
         "providers": {
             "default": [],
             "description": "Configured API model providers and endpoints.",
@@ -91,10 +70,6 @@ core_settings_schema = {
         "name": {
             "default": "",
             "description": "The name of the AI model to use."
-        },
-        "temperature": {
-            "default": 0.7,
-            "description": "Sampling temperature for the model (0.0 to 2.0)."
         },
         "use_tools": {
             "default": True,
@@ -137,25 +112,6 @@ When disabled, it will instead remove your old messages from context to make spa
             "description": "An 'agentic loop' is a chain of multiple thoughts, toolcalls, and so on, until the AI reaches a conclusion. When you make a request to the AI, such as `search the web for kitty facts and write a summary of it to a note`, it will first think, then do the web search, then think again (sometimes), then write it to a note, and then it will tell you that it's done. That's an agentic loop! So when you enable this, the AI will forget the thoughts it had in previous agentic loops, which is a huge context/token saver.",
             "depends": {"enable_thinking": True, "keep_reasoning_in_context": True},
         },
-        "reasoning_effort": {
-            "default": "none",
-            "type": "select",
-            "description": "The reasoning effort level for the model. This controls how deeply the model will think before answering, but it only works on koboldcpp and some cloud API's. Set to none to outright disable sending this with the request.",
-            "options": {
-                "none": 0,
-                "low": 1,
-                "medium": 2,
-                "high": 3,
-                "xhigh": 4,
-                "max": 5
-            },
-            "depends": "enable_thinking"
-        },
-        "custom_reasoning_effort": {
-            "default": "",
-            "description": "Custom reasoning effort value (e.g. 'minimal', '1024', '0.5'). Overrides the preset reasoning_effort level when set.",
-            "depends": "enable_thinking"
-        },
         "image_model": {
             "default": "dall-e-3",
             "description": "The default model to use for image generation."
@@ -172,11 +128,6 @@ When disabled, it will instead remove your old messages from context to make spa
         "compression_model": {
             "default": "",
             "description": "Optional fast/cheap model to use for conversation summarization & context compression. If empty, inherits the active chat model."
-        },
-        "model_profiles": {
-            "default": {},
-            "type": "object",
-            "description": "Per-model parameter overrides (e.g. temperature, max_context, reasoning_effort) automatically applied when switching models."
         },
     },
     "channels": {

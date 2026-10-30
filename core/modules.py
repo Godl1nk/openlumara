@@ -1,5 +1,6 @@
 import os
 import ast
+import re
 import core
 import inspect
 import sys
@@ -29,6 +30,11 @@ def log(category, message):
 # --------------------------------------
 # dependency auto-installer/uninstaller
 # --------------------------------------
+def _dep_name(spec):
+    """Normalize a requirements entry to its package name."""
+    return re.split(r"[<>=!~;\[\s@]", str(spec or "").strip(), maxsplit=1)[0].strip().lower().replace("_", "-")
+
+
 def _extract_deps_from_file(file_path):
     """extract dependencies list from module file without importing it"""
     try:
@@ -262,6 +268,7 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
             exclude.update(_deps_of_enabled("user_channels", "user_channels"))
         except Exception:
             pass  # proceed without exclusion if config/package lookup fails
+    exclude = {_dep_name(dep) for dep in exclude}
 
     file_path = _get_module_file_path(package, module_name)
     if not file_path:
@@ -276,16 +283,16 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
     installed = [dep for dep in deps if dep not in missing]
 
     # keep deps that other enabled modules still need
-    installed = [dep for dep in installed if dep not in exclude]
+    installed = [dep for dep in installed if _dep_name(dep) not in exclude]
 
     # keep deps from requirements.txt (dependencies that openlumara ALWAYS needs)
-    base_deps = []
+    base_deps = set()
     requirementstxt = core.get_path("requirements.txt")
     if os.path.exists(requirementstxt):
         with open(requirementstxt, 'r', encoding="utf-8") as f:
-            base_deps = [dep.strip() for dep in f.read().split("\n") if dep.strip()]
+            base_deps = {_dep_name(dep) for dep in f.read().splitlines() if dep.strip()}
 
-    installed = [dep for dep in installed if dep not in base_deps]
+    installed = [dep for dep in installed if _dep_name(dep) not in base_deps]
 
     if installed:
         try:
