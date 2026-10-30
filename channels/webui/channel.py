@@ -49,13 +49,14 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
     _ws_stream_index = -1
 
     dependencies = [
-        "fastapi",
-        "starlette>=1.0.1",
-        "itsdangerous",
-        "websockets",
-        "jinja2",
-        "uvicorn",
-        "python-multipart"
+        "fastapi==0.162.0",
+        "starlette==1.10.0",
+        "itsdangerous==2.2.0",
+        "websockets==17.3",
+        "jinja2==3.1.6",
+        "uvicorn==0.54.0",
+        "python-multipart==0.0.32",
+        "markupsafe==3.0.4"
     ]
 
     settings = {
