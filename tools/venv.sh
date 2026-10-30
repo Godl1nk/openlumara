@@ -3,18 +3,12 @@
 # The caller changes to the repository root before sourcing this file, so
 # every path below is relative to it.
 #
-# The python environment lives in .venv/ for both uv and the plain pip
-# fallback, so an environment built by either one stays usable when the
-# other tool shows up later.
-#
-# venv/ is the legacy name from before uv was supported. It is never
-# touched: a fresh .venv/ is built next to it, and the user can delete
-# the old directory when they no longer need it.
+# The python environment is in .venv/ for both uv and the plain pip fallback
 
 # minimum python version Openlumara runs on
 MIN_PY="3.12"
 
-# is $1 a python new enough to run Openlumara?
+# is $1 a python version new enough to run OpenLumara?
 py_ok() {
     command -v "$1" >/dev/null 2>&1 || return 1
     "$1" -c "import sys; sys.exit(0 if sys.version_info >= tuple(int(x) for x in '${MIN_PY}'.split('.')) else 1)" 2>/dev/null
@@ -26,10 +20,6 @@ have_uv() {
 }
 
 # sync the environment with uv
-#
-# only the core dependencies are installed: channels and modules install
-# what they need when they start, the extras in pyproject.toml are for
-# packaged builds, where the app cannot install anything at runtime
 uv_sync() {
     # honour the interpreter the caller picked, so uv and the pip fallback
     # end up using the same one
@@ -58,7 +48,6 @@ find_python() {
     return 1
 }
 
-# complain when there is no python to build an environment with
 require_python() {
     if find_python; then
         return 0
@@ -68,18 +57,6 @@ require_python() {
     echo "       hint: use the quick installer, it installs python for you:"
     echo "             curl -fsSL https://raw.githubusercontent.com/Rose22/openlumara/main/curl.sh | sh"
     return 1
-}
-
-# say something when a venv/ from before uv was supported is still lying
-# around, so the user knows where the environment went and that the old
-# directory is theirs to delete
-note_legacy_venv() {
-    if [ ! -d venv ] || [ -d .venv ]; then
-        return 0
-    fi
-
-    echo "found a legacy venv/ - building a fresh .venv/ next to it"
-    echo "the old venv/ is left untouched; delete it when you no longer need it"
 }
 
 # create the environment from scratch

@@ -1,13 +1,7 @@
 @echo off
 rem Shared helpers for run.bat and update.bat.
 rem
-rem The python environment lives in .venv\ for both uv and the plain pip
-rem fallback, so an environment built by either one stays usable when the
-rem other tool shows up later.
-rem
-rem venv\ is the legacy name from before uv was supported. It is never
-rem touched: a fresh .venv\ is built next to it, and the user can delete
-rem the old directory when they no longer need it.
+rem The python environment lives in .venv\ for both uv and the plain pip fallback
 rem
 rem usage: call tools\venv.bat :label
 rem
@@ -36,8 +30,8 @@ exit /b %errorlevel%
 :note_legacy_venv
 if not exist "venv" exit /b 0
 if exist ".venv" exit /b 0
-echo found a legacy venv\ - building a fresh .venv\ next to it
-echo the old venv\ is left untouched; delete it when you no longer need it
+echo found a legacy venv\! building a fresh .venv\ next to it
+echo the old venv folder has been preserved. delete it whenever you\'re ready.
 exit /b 0
 
 :create_venv

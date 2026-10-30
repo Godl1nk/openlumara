@@ -2,13 +2,8 @@
 # the repository root is the directory this script lives in
 cd "$(dirname "$0")" || exit 1
 
-# shared helpers: the environment lives in .venv/ for both uv and the pip
-# fallback, and venv/ is the legacy name from before uv was supported
+# shared helpers for venv management
 . tools/venv.sh
-
-# a venv/ from before uv was supported is left alone; the environment
-# below is built from scratch in .venv/
-note_legacy_venv
 
 echo "checking for updates..."
 if git fetch origin 2>/dev/null; then
@@ -33,8 +28,6 @@ echo "ensuring dependencies are up to date..."
 if have_uv; then
     uv_sync || exit 1
 else
-    # the requirements are reinstalled, so a changed requirements.txt is
-    # picked up even when the environment already existed
     ensure_venv update || exit 1
 fi
 

@@ -8,7 +8,7 @@ import asyncio
 import json_repair
 import inspect
 import importlib
-import re
+import regex as re
 
 global_instance = None
 
@@ -275,8 +275,8 @@ class Manager:
             disabled_modules = core.config.get("modules", "disabled", [])
             disabled_user_modules = core.config.get("user_modules", "disabled", [])
 
-            # every section is checked, even when nothing in it is enabled: a
-            # disabled module can still have its dependencies lying around
+            # every section is checked, so that even when nothing in it is enabled,
+            # it still cleans up loose dependencies
             removals = (
                 ("channels", disabled_channels),
                 ("user_channels", disabled_user_channels),
@@ -288,10 +288,11 @@ class Manager:
             for package_name, names in removals:
                 if not names:
                     continue
+
                 try:
                     package = importlib.import_module(package_name)
                 except Exception:
-                    # the user_* folders only exist once someone creates them
+                    # the user_* folders only exist after creation
                     continue
                 for name in names:
                     if await core.modules.uninstall_module_deps(package, name, self):

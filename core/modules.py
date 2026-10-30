@@ -1,5 +1,5 @@
 import os
-import re
+import regex as re
 import ast
 import core
 import inspect
@@ -11,6 +11,7 @@ import importlib
 import importlib.util
 import tomllib
 
+# get the correct importlib stuff
 try:
     from importlib.metadata import version, distributions, PackageNotFoundError
 except ImportError:
@@ -38,6 +39,8 @@ def _extract_deps_from_file(file_path):
         with open(file_path, 'r', encoding="utf-8") as f:
             tree = ast.parse(f.read())
 
+        # there has GOT to be a cleaner way..
+        # this is awful syntax lol
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 for item in node.body:
@@ -61,7 +64,7 @@ def _pip_prefix():
     return [sys.executable, "-m", "pip"], False
 
 def _install_deps(module_name, packages, manager):
-    """install pip packages"""
+    """install packages using uv (or pip as fallback)"""
     if not packages:
         return
 
@@ -79,7 +82,7 @@ def _install_deps(module_name, packages, manager):
         manager.log(module_name, f"dependency install failed: {core.detail_error(e)}")
 
 def _uninstall_deps(module_name, packages, manager):
-    """uninstall pip packages"""
+    """uninstall packages using uv (or pip as fallback)"""
     if not packages:
         return
 
@@ -126,7 +129,7 @@ def _get_module_file_path(package, module_name):
     return None
 
 def discover_module_names(package):
-    """list module/channel names from the filesystem without importing them (folder-only layout)"""
+    """list module/channel names from the filesystem without importing them"""
     names = []
     if not hasattr(package, '__path__'):
         return names
@@ -134,10 +137,12 @@ def discover_module_names(package):
     for sub_path in package.__path__:
         if not os.path.isdir(sub_path):
             continue
+
         try:
             entries = sorted(os.listdir(sub_path))
         except OSError:
             continue
+
         for entry_name in entries:
             if entry_name.startswith(('_', '.')):
                 continue
@@ -145,6 +150,7 @@ def discover_module_names(package):
                 continue
             if entry_name not in names:
                 names.append(entry_name)
+
     return sorted(names)
 
 def import_entry(package, module_name, reload=False):
@@ -159,10 +165,11 @@ def import_entry(package, module_name, reload=False):
     existing = sys.modules.get(full_name)
     if existing is not None:
         if getattr(existing, "__file__", None):
-            # already a properly-loaded module; reload from disk if requested
+            # already a loaded module, so reload it instead
             if reload:
                 importlib.reload(existing)
             return existing
+
         # namespace package (e.g. someone did `import channels.webui.api` first): promote it in-place
         existing.__path__ = [mod_dir]
         spec = importlib.util.spec_from_file_location(
@@ -170,12 +177,14 @@ def import_entry(package, module_name, reload=False):
         )
         existing.__spec__ = spec
         existing.__file__ = module_file
+
         try:
             spec.loader.exec_module(existing)
         except Exception:
             # don't leave a half-initialized module behind, or later calls would treat it as fully loaded
             del sys.modules[full_name]
             raise
+
         setattr(package, module_name, existing)
         return existing
 
@@ -184,6 +193,7 @@ def import_entry(package, module_name, reload=False):
     )
     module = importlib.util.module_from_spec(spec)
     sys.modules[full_name] = module
+
     try:
         spec.loader.exec_module(module)
     except Exception:
@@ -227,7 +237,7 @@ if not any(isinstance(f, _EntryFileFinder) for f in sys.meta_path):
     sys.meta_path.insert(len(sys.path_hooks), _EntryFileFinder())
 
 def _get_base_dependencies():
-    """dependencies openlumara always needs, from pyproject.toml"""
+    """dependencies openlumara's core always needs, from pyproject.toml"""
     try:
         with open(core.get_path("pyproject.toml"), "rb") as f:
             return tomllib.load(f).get("project", {}).get("dependencies", [])
