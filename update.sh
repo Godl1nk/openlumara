@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # the repository root is the directory this script lives in
 cd "$(dirname "$0")" || exit 1
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # install.sh symlinks this script into ~/.local/bin as `openlumara`, so follow
 # the link back to the repository before touching any relative path
 target="$0"
