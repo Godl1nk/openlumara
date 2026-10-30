@@ -1,4 +1,5 @@
 import os
+import re
 import ast
 import core
 import inspect
@@ -233,16 +234,16 @@ def _get_base_dependencies():
     except Exception:
         return []
 
+def _dep_name(dep):
+    """package name from a requirement string, e.g. 'python-telegram-bot>=1.0[e2e]' -> 'python-telegram-bot'"""
+    return re.split(r"[<>=!~;\[\s]", dep, maxsplit=1)[0].strip().lower().replace("_", "-")
+
 def _check_missing_deps(deps):
     """return list of dependencies that are not installed (using pip package names)"""
     missing = []
     for dep in deps:
-        # extract the base package name (e.g. 'python-telegram-bot' from 'python-telegram-bot>=1.0')
-        pkg_name = dep.split('>=')[0].split('==')[0].split('<')[0].split('>')[0].strip()
-        # strip stuff like [e2e] from the dependency
-        pkg_name = pkg_name.split('[')[0].strip()
         try:
-            version(pkg_name)
+            version(_dep_name(dep))
         except PackageNotFoundError:
             missing.append(dep)
     return missing
@@ -298,13 +299,14 @@ async def uninstall_module_deps(package, module_name, manager, exclude=None):
 
     # installed = declared deps that are present on this system
     missing = _check_missing_deps(deps)
-    installed = [dep for dep in deps if dep not in missing]
+    installed = [_dep_name(dep) for dep in deps if dep not in missing]
 
     # keep deps that other enabled modules still need
+    exclude = {_dep_name(dep) for dep in exclude}
     installed = [dep for dep in installed if dep not in exclude]
 
     # keep deps from pyproject.toml (dependencies that openlumara ALWAYS needs)
-    base_deps = _get_base_dependencies()
+    base_deps = {_dep_name(dep) for dep in _get_base_dependencies()}
 
     installed = [dep for dep in installed if dep not in base_deps]
 
