@@ -103,8 +103,9 @@ cd openlumara
 ./run.sh          # or run.bat on Windows
 ```
 
-Open the URL it prints, then set up your API connection in the settings panel (gear
-icon) and save.
+The scripts use [uv](https://docs.astral.sh/uv/) when it is installed and fall back to
+plain pip otherwise; the environment lives in `.venv/`. Open the URL it prints, then set
+up your API connection in the settings panel (gear icon) and save.
 
 ## Updating
 
@@ -112,9 +113,10 @@ icon) and save.
 ./update.sh       # or update.bat on Windows
 ```
 
-The update script pulls the current branch and keeps the virtualenv in sync. If you run
-Aegis on a server, restart it after updating; the deployment used for development runs
-it inside a `screen` session with `./venv/bin/python main.py`.
+The update script pulls the current branch and keeps the `.venv/` environment in sync
+(using uv when available, pip otherwise). If you run Aegis on a server, restart it after
+updating; the deployment used for development runs it inside a `screen` session with
+`./.venv/bin/python main.py`.
 
 Screenshots in this README are intentionally omitted — the WebUI changes often enough
 that static images go stale; the running instance is the reference.

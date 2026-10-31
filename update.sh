@@ -1,7 +1,9 @@
-#!/bin/bash
-
-# work from the repo this script lives in, even when invoked from elsewhere
+#!/bin/sh
+# the repository root is the directory this script lives in
 cd "$(dirname "$0")" || exit 1
+
+# shared helpers for venv management
+. tools/venv.sh
 
 # Configure the remote only when it's missing. Forcing the URL on every run
 # would fight a renamed repository or a mirror.
@@ -28,33 +30,11 @@ else
     echo "warning: git fetch failed. skipping update check."
 fi
 
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-if [ ! -d "venv" ]; then
-    echo "setting up virtual environment with $PYTHON_BIN..."
-    $PYTHON_BIN -m venv venv
-fi
-
 echo "ensuring dependencies are up to date..."
-source venv/bin/activate
-pip install -q --upgrade pip
-
-# Check if requirements.txt has changed before installing
-if [ -f ".requirements_hash" ] && [ -f "requirements.txt" ]; then
-    OLD_HASH=$(cat .requirements_hash)
-    NEW_HASH=$(sha256sum requirements.txt | awk '{print $1}')
-    if [ "$OLD_HASH" = "$NEW_HASH" ]; then
-        echo "requirements.txt unchanged, skipping pip install."
-    else
-        echo "requirements.txt changed, updating dependencies..."
-        pip install -r requirements.txt
-        echo "$NEW_HASH" > .requirements_hash
-    fi
+if have_uv; then
+    uv_sync || exit 1
 else
-    echo "requirements.txt changed (or first run), updating dependencies..."
-    pip install -r requirements.txt
-    if [ -f "requirements.txt" ]; then
-        sha256sum requirements.txt | awk '{print $1}' > .requirements_hash
-    fi
+    ensure_venv update || exit 1
 fi
 
 echo
