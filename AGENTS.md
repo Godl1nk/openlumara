@@ -57,8 +57,8 @@ Please write lean, human maintainable, understandable, readable code.
 The project is divided into several key directories:
 - `core/`: This is the handwritten core of OpenLumara. DO NOT TOUCH THIS UNDER ANY CIRCUMSTANCES. It is the domain of the human maintainers ONLY. Any functionality you implement MUST be implemented as a module and/or channel, rather than into the core.
 - `modules/`: These are the modules that are loaded by the OpenLumara core. They provide functionality to the AI and to the user. Anything that affects the system prompt, adds commands, or grants the AI tools and capabilities, is a module. AI-written code is accepted here, provided it is secure, human-reviewed, clean, and readable.
-- `channels/`: Various UI's and chat clients that all connect into the openlumara core. They work by 1. requesting input from the user using any kind of input you wish, 2. sending that input to the AI, 3. looping through the resulting token stream and displaying it however you wish. Read `core/channel.py` for more information.
+- `channels/`: Various UI's and chat clients that all connect into the openlumara core. They work by 1. requesting input from the user using any kind of input you wish, 2. sending that input to the AI, 3. looping through the resulting token stream and displaying it however you wish. Read `core/channel.py` for more information. AI-written code is accepted here, provided it is secure, human-reviewed, clean, and readable.
 
 ---
 
-This AGENTS.md was written by Rose22, a human
+This AGENTS.md was written by Rose22, a human girl
