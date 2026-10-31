@@ -1,0 +1,168 @@
+<template x-if="$store.ui.currentModal === 'humanizer'" x-cloak>
+    <div @keydown.escape.window="$store.ui.closeModal()"
+         @keydown.ctrl.enter.prevent="$store.humanizer.run()"
+         @keydown.meta.enter.prevent="$store.humanizer.run()">
+        <div class="modal humanizer-modal" x-data
+             x-init="$store.humanizer.maxChars = {{ module_config.get('max_input_chars', 20000) | tojson }}">
+
+            <div class="header humanizer-header">
+                <div class="humanizer-heading">
+                    <span class="humanizer-mark">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                            <path d="M15 5l4 4"/>
+                        </svg>
+                    </span>
+                    <div>
+                        <h2>Humanizer Studio</h2>
+                        <p>Same facts. A voice that sounds like yours.</p>
+                    </div>
+                    <span class="humanizer-fact-badge" title="The default prompt requires every fact, number, unit, date, name and quotation to remain unchanged.">
+                        facts preserved
+                    </span>
+                </div>
+                <button class="close" @click="$store.ui.closeModal()" aria-label="Close Humanizer Studio">&times;</button>
+            </div>
+
+            <div class="humanizer-body">
+                <section class="humanizer-pane original">
+                    <div class="humanizer-pane-head">
+                        <div class="humanizer-pane-title">
+                            <span class="humanizer-step">01</span>
+                            <span>Original</span>
+                        </div>
+                        <div class="humanizer-pane-tools">
+                            <span class="humanizer-count"
+                                  :class="{ over: $store.humanizer.overLimit }"
+                                  x-text="$store.humanizer.draftChars.toLocaleString() + ' / ' + $store.humanizer.maxChars.toLocaleString()"></span>
+                            <button type="button" class="humanizer-tool-btn"
+                                    @click="$store.humanizer.paste()"
+                                    title="Paste from clipboard">Paste</button>
+                            <button type="button" class="humanizer-tool-btn"
+                                    x-show="$store.humanizer.draft"
+                                    @click="$store.humanizer.clear()"
+                                    title="Clear both panes">Clear</button>
+                        </div>
+                    </div>
+                    <textarea class="humanizer-draft"
+                              x-model="$store.humanizer.draft"
+                              @input="$store.humanizer.error = ''"
+                              placeholder="Paste an AI-written email, essay, report or post here..."
+                              spellcheck="true"
+                              aria-label="Original draft"></textarea>
+                    <div class="humanizer-pane-foot">
+                        <span x-text="$store.humanizer.draftWords + ($store.humanizer.draftWords === 1 ? ' word' : ' words')"></span>
+                        <span>Ctrl / ⌘ + Enter to humanize</span>
+                    </div>
+                </section>
+
+                <div class="humanizer-rail">
+                    <span class="humanizer-rail-line"></span>
+                    <button type="button" class="humanizer-run-btn"
+                            :disabled="!$store.humanizer.canRun"
+                            @click="$store.humanizer.run()"
+                            :aria-label="$store.humanizer.busy ? 'Humanizing draft' : 'Humanize draft'">
+                        <template x-if="!$store.humanizer.busy">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m12 3-1.9 4.6a5 5 0 0 1-2.5 2.5L3 12l4.6 1.9a5 5 0 0 1 2.5 2.5L12 21l1.9-4.6a5 5 0 0 1 2.5-2.5L21 12l-4.6-1.9a5 5 0 0 1-2.5-2.5Z"/>
+                            </svg>
+                        </template>
+                        <template x-if="$store.humanizer.busy">
+                            <span class="humanizer-spinner"></span>
+                        </template>
+                        <span x-text="$store.humanizer.busy ? 'Working' : 'Humanize'"></span>
+                    </button>
+                    <span class="humanizer-elapsed"
+                          x-show="$store.humanizer.busy"
+                          x-text="$store.humanizer.elapsed + 's'"></span>
+                    <span class="humanizer-rail-arrow" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>
+                        </svg>
+                    </span>
+                    <span class="humanizer-rail-line"></span>
+                </div>
+
+                <section class="humanizer-pane result">
+                    <div class="humanizer-pane-head">
+                        <div class="humanizer-pane-title">
+                            <span class="humanizer-step">02</span>
+                            <span>Humanized</span>
+                        </div>
+                        <div class="humanizer-pane-tools">
+                            <span class="humanizer-count" x-show="$store.humanizer.humanized"
+                                  x-text="$store.humanizer.resultChars.toLocaleString() + ' chars'"></span>
+                        </div>
+                    </div>
+
+                    <div class="humanizer-result-wrap" aria-live="polite">
+                        <div class="humanizer-empty" x-show="!$store.humanizer.busy && !$store.humanizer.humanized && !$store.humanizer.error">
+                            <span class="humanizer-empty-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                                </svg>
+                            </span>
+                            <span class="humanizer-empty-title">Your rewrite lands here</span>
+                            <span class="humanizer-empty-copy">The model will restructure the draft, vary its rhythm, and remove AI-sounding filler while keeping the facts intact.</span>
+                        </div>
+
+                        <div class="humanizer-skeleton" x-show="$store.humanizer.busy">
+                            <span></span><span></span><span></span><span></span><span></span><span></span>
+                        </div>
+
+                        <div class="humanizer-output" x-show="!$store.humanizer.busy && $store.humanizer.humanized"
+                             x-text="$store.humanizer.humanized"></div>
+                    </div>
+
+                    <div class="humanizer-pane-foot humanizer-result-foot">
+                        <span x-text="$store.humanizer.humanized ? ($store.humanizer.resultWords + ($store.humanizer.resultWords === 1 ? ' word' : ' words')) : 'Waiting for a draft'"></span>
+                        <button type="button" class="humanizer-copy-btn"
+                                :class="{ copied: $store.humanizer.copied }"
+                                x-show="$store.humanizer.humanized"
+                                @click="$store.humanizer.copy()"
+                                :aria-label="$store.humanizer.copied ? 'Humanized text copied' : 'Copy humanized text'">
+                            <template x-if="!$store.humanizer.copied">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2"/>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                            </template>
+                            <template x-if="$store.humanizer.copied">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </template>
+                            <span x-text="$store.humanizer.copied ? 'Copied' : 'Copy result'"></span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+
+            <div class="humanizer-error" x-show="$store.humanizer.error" role="alert">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span x-text="$store.humanizer.error"></span>
+            </div>
+
+            <div class="humanizer-footer">
+                <span class="humanizer-footer-hint">
+                    <template x-if="$store.humanizer.overLimit">
+                        <span class="humanizer-limit-warning" x-text="'Draft exceeds the configured ' + $store.humanizer.maxChars.toLocaleString() + ' character limit.'"></span>
+                    </template>
+                    <template x-if="!$store.humanizer.overLimit">
+                        <span>Review the rewrite before sending it anywhere.</span>
+                    </template>
+                </span>
+                <div class="humanizer-footer-actions">
+                    <button type="button" class="humanizer-secondary-btn"
+                            x-show="$store.humanizer.humanized"
+                            @click="$store.humanizer.useResult()">
+                        Use as draft
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
