@@ -1,11 +1,25 @@
 """
-Aegis WebUI
-
 A full-featured, stable, cross-device webui with PWA support,
-meant to be the default UI with which to interface with Aegis
-
-This is as much a note to myself as to any AI's that touch this:
+meant to be the default UI with which to interface with OpenLumara
 ---
+OpenLumara WebUI
+Copyright (C) 2026  Rose22 (https://github.com/Rose22)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+---
+This is as much a note to myself as to any AI's that touch this:
+
 Anything implemented in the WebUI must always be implemented in the core,
 every channel must be inter-compatible,
 the framework must never end up in a state where you can do something in the webui
@@ -13,7 +27,6 @@ that you can't do in other channels.
 
 Everything across OpenLumara must always be doable across every channel,
 by implementing stuff into the core rather than clientside.
----
 """
 
 # openlumara core
@@ -21,11 +34,13 @@ import core
 
 # system
 import os
+import sys
 import asyncio
 import urllib.parse
 
 # security libraries
 import secrets
+import hashlib
 
 # webui stuff
 import fastapi
@@ -63,9 +78,9 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
         "network_mode": {
             "type": "select",
             "options": {
-                "local": "Allows only the device Aegis is running on to access the WebUI (sets hostname to `localhost`)",
-                "internet": "Allows any device to access the WebUI (sets hostname to `0.0.0.0`)",
-                "custom": "Use the custom hostname defined below"
+                "local": "Allows only the device OpenLumara is running on to access the WebUI (sets hostname to `localhost`)",
+                "internet": "Allows any device to access the WebUI (sets hostname to `0.0.0.0`). For safety, this can only be used with logins enabled!",
+                "custom": "Use the custom hostname defined below. For safety, this can only be used with logins enabled!"
             },
             "default": "local"
         },
@@ -76,6 +91,12 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
         "port": {
             "description": "What port to run the WebUI on. Set this to 80 to be able to access it like a normal website, and anything else to access it on that port (for example http://yourdomain.org:3000)",
             "default": 3000
+        },
+        "trusted_networks": {
+            # defaults include common local networks, and tailscale (100.64.0.0/10)
+            "default": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"],
+            "description": "Because logins are disabled, you need protection from outside intruders (think of this like a firewall). Specify a list of IP ranges that are allowed to request private data from the webui's API. Clients in these ranges get full access while those coming from outside your network are refused. Set it to just your LAN's range (such as `192.168.0.0/24`) to tighten it, or to [] to only ever allow the machine itself.",
+            "depends": {"require_login": False}
         },
         "enable_chat_header": {
             "description": "Whether to enable the header at the top of a chat. Disabling this removes access to all graphical controls, and strips the interface down to a very basic chat. You might want this for public instances!",
@@ -90,22 +111,33 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
             "default": "Aegis",
             "depends": {"enable_chat_header": True, "enable_title": True}
         },
-        "enable_model_switcher": {
-            "description": "Whether to show a model dropdown in the header, so you can quickly switch models without opening the settings. Disabled on mobile due to lack of space.",
-            "default": True,
-            "depends": "enable_chat_header",
-        },
-        "enable_streaming_state_display": {
-            "description": "Whether to show an indicator in the header that tells you what the AI is currently doing. Very useful! Disabled on mobile due to lack of space.",
-            "default": False,
-            "depends": "enable_chat_header",
+        "message_style": {
+            "description": "How messages should look",
+            "type": "select",
+            "options": {
+                "page": "Display the chat like a page, with the AI's responses taking up the full width. Looks professional.",
+                "chat": "Display the chat using chat bubbles, like a chat/texting app. More casual!"
+            },
+            "default": "page"
         },
         "enable_chain_expansion": {
             "description": "Whether the processing chain can be expanded to view the AI's thoughts and intermediate steps. When disabled, it stays locked in its collapsed state (showing only 'Processing..'/'Thinking..' labels), so you always see that the AI is busy without being able to peek inside. Very useful for public instances!",
             "default": True
         },
+        "dock_input_bar": {
+            "description": "Whether the input bar is docked to the bottom of the page (full width, no rounded corners) instead of floating as a rounded pill above it.",
+            "default": False
+        },
         "enable_context_pill": {
             "description": "Whether to show the context usage pill next to the message input.",
+            "default": True
+        },
+        "enable_model_switcher": {
+            "description": "Whether to show a model dropdown in the input bar, so you can quickly switch models without opening the settings. Disabled on mobile due to lack of space.",
+            "default": True,
+        },
+        "enable_thinking_toggle": {
+            "description": "Whether to show the thinking toggle button in the input bar, so you can quickly turn model reasoning on and off without opening the settings.",
             "default": True
         },
         "enable_file_upload": {
@@ -134,11 +166,11 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
             "default": False
         },
         "username": {
-            "default": "admin",
+            "default": "",
             "depends": "require_login"
         },
         "password": {
-            "default": "admin",
+            "default": "",
             "depends": "require_login"
         },
         "login_lifetime": {
@@ -225,16 +257,63 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
             return False
         return origin_port in (None, self.port)
 
+    @property
+    def auth_enforced(self) -> bool:
+        """Login is only enforced when require_login is on AND both the
+        username and password are set. Empty credentials disable the gate
+        entirely: a login form nobody can ever pass would only lock out
+        the operator, so an unset login is treated as no login.
+        (Defaults are empty, so a default config never has working creds.)"""
+        if not self.config.get("require_login", False):
+            return False
+        return bool(self.config.get("username")) and bool(self.config.get("password"))
+
+    # -- AI GENERATED CODE (Qwen3-Coder Next) :: (11-06-2026) harness:openlumara
+    @property
+    def credentials_fingerprint(self) -> str:
+        """SHA-256 over the configured username+password, mixed with the
+        per-install session secret. Embedded into the session at login and
+        checked on every request/ws-handshake: the moment the credentials
+        change, the fingerprint changes and all previously issued sessions
+        are dead immediately -- the 'change my password to kick them out'
+        incident response actually works now."""
+        creds = "|".join((
+            self.session_secret_value,
+            str(self.config.get("username") or ""),
+            str(self.config.get("password") or ""),
+        ))
+        return hashlib.sha256(f"webui-creds|{creds}".encode("utf-8")).hexdigest()
+
     async def _verify_credentials(self, username: str, password: str) -> bool:
-        """Verify credentials securely using timing-safe comparison."""
-        correct_username = self.config.get("username")
-        correct_password = self.config.get("password")
+        """Verify credentials securely using timing-safe comparison.
+
+        Unusable config (either expected credential empty) always fails --
+        this specifically stops compare_digest("", "") from succeeding if
+        only one of the two fields were ever filled in."""
+        correct_username = self.config.get("username") or ""
+        correct_password = self.config.get("password") or ""
+        if not correct_username or not correct_password:
+            return False
+        username = username or ""
+        password = password or ""
 
         if not secrets.compare_digest(username, correct_username):
             # Dummy comparison to prevent timing attacks
             secrets.compare_digest(password, correct_password)
             return False
         return secrets.compare_digest(password, correct_password)
+
+    async def on_system_prompt(self):
+        return """
+WebUI layout:
+- Sidebar: chat search box, tag filter button, chat list grouped by date modified, new chat button
+- Chat window:
+    - header: title | blank space | model dropdown | settings button (gear icon, opens settings dialog) | chat history export button (download icon) | clear chat button (trashcan icon)
+    - messages area, contains current chat's messages
+    - input bar: upload button | input field | send/stop button
+
+You can render HTML and SVG directly in the user's browser by writing it raw, as plain text flowing between your paragraphs - markup written this way renders live. Reserve ``` fences exclusively for source code the user should read as text.
+""".strip()
 
     async def on_ready(self):
         # ---- security stuff
@@ -289,8 +368,6 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
         # stores logs from channel.log()
         self.logs = []
 
-        self.username = self.config.get("username", "admin")
-        self.password = self.config.get("password", "admin")
         self.login_attempts = {}
 
         # initialize the websocket manager
@@ -304,6 +381,17 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
         )
 
     async def run(self):
+        if self.config.get("network_mode") == "internet" and not self.auth_enforced:
+            msg = """
+WebUI startup aborted! Setting are insecure:
+
+network mode is 'internet' but no login is configured.
+Set require_login to true with a username and password, or change network_mode back to 'local'
+Edit the config file for this, or use /config
+            """.strip()
+            self.log("webui", msg)
+            return
+
         self.log("webui", f"Starting WebUI on {self.url}")
 
         # serve the app using uvicorn
@@ -468,6 +556,30 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
                 await self.websocket_manager.broadcast({
                     "type": "turn_final",
                     "messages": messages
+                })
+
+            elif event.get("type") == "step_delta":
+                delta = payload.get("content")
+                if delta is None:
+                    continue
+
+                self.websocket_manager.apply_step_delta(delta)
+
+                await self.websocket_manager.broadcast({
+                    "type": "turn_step_delta",
+                    "delta": delta
+                })
+
+            elif event.get("type") == "final_delta":
+                delta = payload.get("content")
+                if delta is None:
+                    continue
+
+                self.websocket_manager.apply_final_delta(delta)
+
+                await self.websocket_manager.broadcast({
+                    "type": "turn_final_delta",
+                    "delta": delta
                 })
 
     def on_log(self, category, message):

@@ -1,3 +1,4 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex #}
 {% if config.get('enable_file_upload') %}
 <button id="upload" @click="$refs['file-input'].click()" title="Upload file or paste images (Ctrl+V)" aria-label="Upload file or paste images (Ctrl+V)">
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -38,17 +39,65 @@
             $el.style.height = '48px';
         }
     "
-    @focus="$autosize($el)"
+    @focus="if ($store.chat.user_input) $autosize($el)"
     @blur="$el.style.height = '48px'"
 ></textarea>
 
 {{ extension_slot("after_input") }}
 
+{% if config.get("enable_model_switcher") and config.get("enable_admin_settings") %}
+<div class="model-switcher" x-data="modelQuickSwitch()" x-show="!$store.ui.isMobile" x-cloak x-init="lazyFetch()">
+    <select class="model-select" :value="currentModel" :disabled="saving"
+            @change="setModel($event.target.value)"
+            @focus="lazyFetch()"
+            title="Switch model">
+        <template x-for="model in enabledOptions" :key="model">
+            <option :value="model" x-text="model"></option>
+        </template>
+    </select>
+    <select class="model-select effort-select" :value="currentEffort" :disabled="effortSaving"
+            @change="setEffort($event.target.value)"
+            @focus="lazyFetch()"
+            title="Reasoning effort for the active model"
+            aria-label="Reasoning effort">
+        <option value="default">Default</option>
+        <option value="none">None</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="xhigh">xhigh</option>
+        <option value="max">Max</option>
+    </select>
+    <button type="button" class="btn model-tune-btn" title="Manage API providers and models" @click="await $store.ui.openModal('settings', 'api')">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="21" x2="4" y2="14"/>
+            <line x1="4" y1="10" x2="4" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12" y2="3"/>
+            <line x1="20" y1="21" x2="20" y2="16"/>
+            <line x1="20" y1="12" x2="20" y2="3"/>
+            <line x1="1" y1="14" x2="7" y2="14"/>
+            <line x1="9" y1="8" x2="15" y2="8"/>
+            <line x1="17" y1="16" x2="23" y2="16"/>
+        </svg>
+    </button>
+</div>
+{% endif %}
+
+{% if config.get("enable_thinking_toggle") and config.get("enable_admin_settings") %}
+<div class="thinking-toggle" x-data="thinkingToggle({{ 'true' if core_config.get('model', 'enable_thinking', default=True) else 'false' }})" x-cloak>
+    <button type="button" :title="enabled ? 'Thinking on' : 'Thinking off'" :aria-pressed="enabled" :disabled="saving" @click="toggle()">
+        <span class="icon-on" x-show="enabled">{% include 'svg/brain.svg' %}</span>
+        <span class="icon-off" x-show="!enabled" x-cloak>{% include 'svg/brain_off.svg' %}</span>
+    </button>
+</div>
+{% endif %}
+
 {% if config.get('enable_context_pill') %}
 {% include 'chat/context_pill.html' %}
 {% endif %}
 
-<button id="send" aria-label="Send message"
+<button id="send" aria-label="Send message" x-show="$store.stream.state === 'idle'"
     @click="
         $event.preventDefault();
         if (!$store.chat.user_input) { return; }
@@ -57,14 +106,12 @@
         $el.style.height = '48px';
     "
     :class="{ 'mid-row': !!$store.askUser?.current }"
->Send</button>
+>{% include 'svg/send.svg' %}</button>
 
 <button id="stop" aria-label="Stop generation" x-show="$store.stream.state != 'idle'" x-cloak @click="
-await simpleSocketSend({
-    'type': 'stop'
-})
+await stopActiveStream()
 ">
-    <span class="stop-text">Stop</span>
+    {% include 'svg/stop.svg' %}
     <!--
     TODO: add typewriter back into the webui
     <span class="streaming-icon">

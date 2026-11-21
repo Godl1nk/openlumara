@@ -3,6 +3,8 @@ marked.setOptions({
     gfm: true
 });
 
+document.body.classList.toggle('no-frosted', localStorage.getItem('frostedGlassEnabled') === 'false');
+
 /*
  * initializes Alpine and registers all the necessary stuff
  */
@@ -16,6 +18,7 @@ document.addEventListener('alpine:init', async () => {
     Alpine.store('theme', THEME_STORE);
     Alpine.store('audio', AUDIO_STORE);
     Alpine.store('upload', UPLOAD_STORE);
+    Alpine.store('htmlPreview', HTML_PREVIEW_STORE);
 
     // start the browser notification system
     Alpine.store('notifications', NOTIFY_STORE);
@@ -36,6 +39,13 @@ document.addEventListener('alpine:init', async () => {
     // toggles .boxed when an element's content overflows its max-height,
     // so tool call values only get the soft background when they scroll
     Alpine.directive('box', (el, modifiers, { cleanup }) => cleanup(boxIfScrolls(el)));
+    Alpine.directive('stream-grow', Alpine.skipDuringClone((el, modifiers, { cleanup }) => cleanup(streamGrow(el))));
+
+    // watches a flow marker outside a pinned turn for the pinned-prompt feature
+    Alpine.directive('prompt-marker', (el, { expression }, { evaluateLater, cleanup }) => {
+        const run = evaluateLater(expression);
+        cleanup(promptMarker(el, (intersecting) => run(() => {}, { scope: { intersecting } })));
+    });
 
     self.notice = "Please wait, connecting to backend server..";
     await connectWebSocket();
@@ -64,12 +74,18 @@ document.addEventListener('alpine:init', async () => {
     await Alpine.store('system').loadData();
 
     // fetch current chat
-    await Alpine.store('chat').load();
+    try {
+        await Alpine.store('chat').load();
 
-    // do the initial scroll to bottom
-    requestAnimationFrame(() => {
-        Alpine.store('ui').forceScrollToBottom();
-    });
+        // do the initial scroll to bottom, masked so the top of the chat is
+        // never painted first
+        await Alpine.store('chat').anchorToBottom();
+    } finally {
+        // never leave the chat hidden, whatever happened above
+        document.getElementById('messages')?.classList.remove('anchor-hidden');
+    }
+
+    document.getElementById('user-input')?.focus();
 
     await registerKeyboardShortcuts();
 

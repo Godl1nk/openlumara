@@ -1,3 +1,4 @@
+// -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex
 let STREAM_STORE = {
     state: 'idle',
     turn: [],
@@ -58,14 +59,14 @@ let STREAM_STORE = {
         }
     },
 
-    async clear() {
+    async clear(preserveQueued = false) {
+        if (typeof AudioManager !== 'undefined') AudioManager.stopProcessingSound();
+        this.state = 'idle';
         this.turn = [];
         this.userMsg = null;
         this.processing = {};
         this.modelLoad = null;
-        this.queued = [];
-        // the last speed stays visible; a new turn replaces it once it has data
-        this._tokStart = 0;
-        this._tokChars = 0;
+        if (!preserveQueued) this.queued = [];
+        this.resetTokenRate();
     }
 }

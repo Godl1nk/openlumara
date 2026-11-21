@@ -14,6 +14,8 @@ let sendQueue = [];
 
 let streamFinalizing = false;
 
+
+
 async function connectWebSocket() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = window.apiToken || '';
@@ -96,8 +98,9 @@ async function connectWebSocket() {
             }
             notice += " [" + event.code + (event.reason ? ' - ' + event.reason : '') + "]";
             Alpine.store('ui').notice = notice;
-            stream = Alpine.store("stream")
-            stream.state = 'idle';
+            const stream = Alpine.store('stream');
+            releaseLiveTurn();
+            await stream.clear(true);
 
             await scheduleWsReconnect();
         }
@@ -115,6 +118,24 @@ async function scheduleWsReconnect() {
     setTimeout(function () {
         connectWebSocket();
     }, 1000);
+}
+
+async function stopActiveStream() {
+    const sent = await simpleSocketSend({ type: 'stop' });
+    AudioManager.stopProcessingSound();
+    Alpine.store('stream').state = 'idle';
+    return sent;
+}
+
+function releaseLiveTurn() {
+    const stream = Alpine.store('stream');
+    const chat = Alpine.store('chat');
+    const turn = stream.turn;
+
+    if (turn && turn.live === true) {
+        const idx = chat.turnHistory.indexOf(turn);
+        if (idx >= 0) chat.turnHistory.splice(idx, 1);
+    }
 }
 
 async function handleWebSocketMessage(data) {
@@ -170,17 +191,34 @@ async function handleWebSocketMessage(data) {
 
         case "turn_step":
         case "turn_final": {
-            // step-based stream
-            if (stream.turn.length <= 0) {
-                while (chat.turnHistory.length > 0 &&
-                       chat.turnHistory[chat.turnHistory.length - 1].role === 'assistant' &&
-                       chat.turnHistory[chat.turnHistory.length - 1].live !== true) {
-                    chat.turnHistory.pop();
-                }
+            // step-based stream. stream.turn is an object once a turn is
+            // in flight, so `.length` can never answer "do I own one?" -
+            // and a reconnect replay used to answer it wrong, creating a
+            // second live turn beside the one already in the window
+            const isLive = (t) => t && t.live === true;
 
-                stream.turn = {role: "assistant", live: true, steps: [], final_messages: []};
+            if (!isLive(stream.turn)) {
+                const last = chat.turnHistory[chat.turnHistory.length - 1];
+
+                if (isLive(last) && (last.steps ?? []).length > 0) {
+                    // a live turn already on screen (mid-stream reload or
+                    // replay after refresh): adopt it instead of cloning it
+                    stream.turn = last;
+                }
+                else {
+                    while (chat.turnHistory.length > 0 &&
+                           chat.turnHistory[chat.turnHistory.length - 1].role === 'assistant' &&
+                           !isLive(chat.turnHistory[chat.turnHistory.length - 1])) {
+                        chat.turnHistory.pop();
+                    }
+
+                    stream.turn = {role: "assistant", live: true, steps: [], final_messages: []};
+                    chat.turnHistory.push(stream.turn);
+                }
+            }
+            else if (!chat.turnHistory.includes(stream.turn)) {
+                // we own a live turn a chat reload dropped off the window
                 chat.turnHistory.push(stream.turn);
-                Alpine.store('ui').syncMountWindows();
             }
 
             if (data_type === "turn_step") {
@@ -238,6 +276,71 @@ async function handleWebSocketMessage(data) {
             }
 
             // scroll
+            await ui.scrollToBottom();
+            break;
+        }
+
+        case "turn_step_delta": {
+            // deltas are used for reasoning and content,
+            // but the stream frequently re-syncs by receiving the full step content so far
+            // in the turn_step event
+            // 
+            // we use deltas here so that the network isn't constantly sending
+            // huge objects that contain all step data..
+            // instead the full step data only gets sent every 128 tokens
+            // 
+            // this is required for the stream not to bog down,
+            // and it saves tremendously on network use
+            const delta = data.delta;
+            if (!delta || !stream.turn.steps) break;
+
+            const step = stream.turn.steps.find(s => s.step === delta.step);
+            if (!step) break;
+
+            for (const a of delta.append || []) {
+                if (a.field === "reasoning_content") {
+                    step.reasoning_content = (step.reasoning_content || "") + a.text;
+                } else if (a.field === "tool_response") {
+                    const tool = (step.tool_calls || []).find(t => t.id === a.id);
+                    if (tool) {
+                        const meta = tool._metadata || (tool._metadata = {});
+                        meta.response = (meta.response || "") + a.text;
+                    }
+                }
+            }
+
+            stream.processing = {};
+            stream.modelLoad = null;
+            AudioManager.stopProcessingSound();
+            AudioManager.play("token");
+            if (!responseSoundPlayed) {
+                AudioManager.play("response_start");
+                responseSoundPlayed = true;
+            }
+
+            await ui.scrollToBottom();
+            break;
+        }
+
+        case "turn_final_delta": {
+            const delta = data.delta;
+            if (!delta || !stream.turn.final_messages) break;
+
+            const finals = stream.turn.final_messages;
+            const last = finals && finals[finals.length - 1];
+            if (!last) break;
+
+            last.content = (last.content || "") + delta.text;
+
+            stream.processing = {};
+            stream.modelLoad = null;
+            AudioManager.stopProcessingSound();
+            AudioManager.play("token");
+            if (!responseSoundPlayed) {
+                AudioManager.play("response_start");
+                responseSoundPlayed = true;
+            }
+
             await ui.scrollToBottom();
             break;
         }
@@ -316,8 +419,10 @@ async function handleWebSocketMessage(data) {
             // process tokens based on their type
             switch (token_type) {
                 case "error":
+                    AudioManager.stopProcessingSound();
                     stream.modelLoad = null;
-                    // restore the user's last input
+                    releaseLiveTurn();
+                    await stream.clear(true);
                     if (!chat.user_input && chat.last_user_input) {
                         chat.user_input = chat.last_user_input;
                     }
@@ -372,16 +477,21 @@ async function handleWebSocketMessage(data) {
 
         case "sync":
             // make sure we sync chat
-            chat.turnHistory = [];
             await stream.clear();
-            await chat.reloadChat();
+            await chat.resyncWindow();
 
-            if (ui.scrollToTurnIndex) {
+            if (ui.scrollToTurnIndex !== null) {
                 await ui.scrollToTurn(ui.scrollToTurnIndex);
             } else {
                 await ui.forceScrollToBottom();
             }
 
+            break;
+
+        case "refresh_page":
+            // -- AI GENERATED CODE (Qwen3-Coder Next) :: (11-06-2026) harness:openlumara
+            // webui settings changed on the server: reload so they apply
+            window.location.reload();
             break;
 
         case "chat_switched":
@@ -447,8 +557,6 @@ async function handleWebSocketMessage(data) {
             } else {
                 chat.turnHistory.push(stream.turn);
             }
-
-            Alpine.store('ui').syncMountWindows();
 
             // then clear the user message placeholder and the current turn
             await stream.clear();

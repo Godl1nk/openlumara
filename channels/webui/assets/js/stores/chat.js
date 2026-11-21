@@ -1,28 +1,42 @@
-function mergeTurnHistory(existing, incoming) {
+/*
+ * splices a freshly fetched page of turns into the loaded window.
+ */
+function mergeTurnPage(existing, existingStart, incoming, incomingStart) {
     incoming = incoming || [];
-    if (!Array.isArray(existing) || existing.length === 0) return incoming;
+    existing = existing || [];
 
-    const merged = new Array(incoming.length);
+    if (existing.length === 0) return incoming;
 
-    for (let i = 0; i < incoming.length; i++) {
-        merged[i] = (existing[i] && existing[i].hash && existing[i].hash === incoming[i].hash)
-            ? existing[i]
-            : incoming[i];
+    const keptPrefix = existing.slice(0, Math.max(0, Math.min(existing.length, incomingStart - existingStart)));
+
+    const merged = incoming.map((turn, i) => {
+        const prev = existing[i + incomingStart - existingStart];
+        return (prev && prev.hash && prev.hash === turn.hash) ? prev : turn;
+    });
+
+    const result = keptPrefix.concat(merged);
+
+    // exactly one live turn may exist, always as the tail: a mid-stream
+    // reload used to leave a stale copy behind (often at the head of the
+    // window), rendering a duplicate agent chain inside an older message
+    const liveTails = existing.filter(t => t && t.live === true);
+    const live = liveTails.length > 0 ? liveTails[liveTails.length - 1] : null;
+
+    for (let i = result.length - 1; i >= 0; i--) {
+        if (result[i] && result[i].live === true) result.splice(i, 1);
     }
 
-    const tail = existing[existing.length - 1];
-    if (tail && tail.live === true) {
+    if (live) {
         let lastUser = -1;
-        for (let i = incoming.length - 1; i >= 0; i--) {
-            if (incoming[i].role === 'user') { lastUser = i; break; }
+        for (let i = result.length - 1; i >= 0; i--) {
+            if (result[i].role === 'user') { lastUser = i; break; }
         }
 
-        const kept = lastUser === -1 ? merged : merged.slice(0, lastUser + 1);
-        kept.push(tail);
-        return kept;
+        if (lastUser !== -1) result.length = lastUser + 1;
+        result.push(live);
     }
 
-    return merged;
+    return result;
 }
 
 function parseStoredTags() {
@@ -51,8 +65,176 @@ CHAT_STORE = {
     selectedCategory: 'general',
 
     turnHistory: [],
+    turnStart: 0,
+    totalTurns: 0,
+    hasMoreOlder: false,
+    loadingOlder: false,
+    turnPageSize: 5,
+    olderTriggerPx: 300,
+    _anchorBusy: false,
+    _olderIntersecting: false,
+    _unloadQueued: false,
+    _lastUnloadAt: 0,
+
     editingMessageIndex: null,
     editContent: '',
+
+    /*
+     * the user turn currently pinned to the top of the message view.
+     * updated from the flow markers in chat/index.html via x-prompt-marker:
+     * a turn pins itself once it scrolls out through the top edge, and
+     * unpins the moment it scrolls back into view. switching is event-driven
+     * (fires only on intersection changes), never per-frame.
+     */
+    pinnedTurnIndex: null,
+    pinnedPromptHeight: 0,
+
+    // a turn that just unpinned keeps its height reserve for the duration of
+    // the grow animation, so removing it can't make the turn snap to one
+    // line and then grow back (a collapse-then-grow jolt).
+    releasingTurnIndex: null,
+    _releaseTimer: null,
+
+    updatePromptPin(turnIndex, intersecting, marker) {
+        if (intersecting) {
+            if (this.pinnedTurnIndex !== turnIndex) return;
+
+            this.pinnedTurnIndex = null;
+            this.releasingTurnIndex = turnIndex;
+
+            clearTimeout(this._releaseTimer);
+            this._releaseTimer = setTimeout(() => {
+                if (this.releasingTurnIndex === turnIndex) this.releasingTurnIndex = null;
+            }, 350);
+            return;
+        }
+
+        if (!this.pinnedPromptsEnabled()) return;
+
+        // leaving, but which way? only pin prompts that left through the
+        // TOP edge - a marker leaving through the bottom means we scrolled
+        // up to older messages, where pinning would be wrong.
+        const container = document.getElementById('messages');
+        if (!container) return;
+
+        if (marker.getBoundingClientRect().top > container.getBoundingClientRect().top) return;
+
+        /*
+         * a prompt can only take the pin if it's NEWER than the current one.
+         * every marker reports its initial intersection on its own schedule
+         * (on load, and again when older pages get prepended), so "last
+         * callback wins" would let an older prompt steal the pin - turn
+         * index is what decides, not callback order.
+         */
+        if (this.pinnedTurnIndex !== null && turnIndex <= this.pinnedTurnIndex) return;
+
+        const turnEl = container.querySelector(`[data-turn-index="${turnIndex}"]`);
+        if (!turnEl || turnEl.querySelector('.editing')) return;
+
+        const wrapper = turnEl.querySelector(':scope > .message-wrapper.user');
+        if (!wrapper) return;
+
+        // reserve the full height BEFORE the class is applied so collapsing
+        // the bubble to a single line doesn't yank the response upward
+        this.pinnedPromptHeight = wrapper.offsetHeight;
+        this.pinnedTurnIndex = turnIndex;
+    },
+
+    pinnedPromptsEnabled() {
+        return localStorage.getItem('pinnedPromptsEnabled') !== 'false';
+    },
+
+    // grow the pinned prompt back open, then drop the pin entirely
+    clearPromptPin() {
+        if (this.pinnedTurnIndex === null) return;
+
+        const releasing = this.pinnedTurnIndex;
+        this.pinnedTurnIndex = null;
+        this.releasingTurnIndex = releasing;
+
+        clearTimeout(this._releaseTimer);
+        this._releaseTimer = setTimeout(() => {
+            if (this.releasingTurnIndex === releasing) this.releasingTurnIndex = null;
+        }, 350);
+    },
+
+    /*
+     * throttled entry point from ui.onScroll (itself throttled at 100ms),
+     * coalesced into one frame. pure measurement, so it stays correct even
+     * when no marker ever reported the position change.
+     */
+    schedulePromptPinRecompute() {
+        if (this._pinRecomputeQueued) return;
+
+        this._pinRecomputeQueued = true;
+        requestAnimationFrame(() => {
+            this._pinRecomputeQueued = false;
+            this.recomputePromptPin();
+        });
+    },
+
+    /*
+     * resolves the pin by measuring every marker at once: the pin belongs to
+     * the NEWEST user turn that sits above the top edge. needed because
+     * IntersectionObserver only reports state CHANGES: on load the chat is
+     * rendered at the top and then jumped to the bottom, during which only
+     * markers near the top fire (pinning an older prompt), while markers
+     * that were below the fold and are now above it never report anything.
+     * called after anchored loads (see anchorToBottom), not per-frame.
+     */
+    recomputePromptPin() {
+        const container = document.getElementById('messages');
+        if (!container) return;
+
+        if (!this.pinnedPromptsEnabled()) {
+            this.clearPromptPin();
+            return;
+        }
+
+        const top = container.getBoundingClientRect().top;
+
+        let activeIndex = null;
+        let activeWrapper = null;
+
+        for (const marker of container.querySelectorAll('.pin-marker')) {
+            if (marker.getBoundingClientRect().top > top) continue;
+
+            // the turn is the marker's next sibling. do NOT bind an index
+            // attribute onto the marker itself: a reactive attribute on the
+            // same element as x-prompt-marker makes Alpine re-run the
+            // directive and respawn its observer on every update.
+            const turnEl = marker.nextElementSibling;
+            if (!turnEl || !turnEl.matches('.turn') || turnEl.querySelector('.editing')) continue;
+
+            const idx = Number(turnEl.dataset.turnIndex);
+
+            const wrapper = turnEl.querySelector(':scope > .message-wrapper.user');
+            if (!wrapper) continue;
+
+            activeIndex = idx;
+            activeWrapper = wrapper;
+        }
+
+        if (activeIndex === this.pinnedTurnIndex) return;
+
+        if (this.pinnedTurnIndex !== null) {
+            const releasing = this.pinnedTurnIndex;
+            this.releasingTurnIndex = releasing;
+
+            clearTimeout(this._releaseTimer);
+            this._releaseTimer = setTimeout(() => {
+                if (this.releasingTurnIndex === releasing) this.releasingTurnIndex = null;
+            }, 350);
+        }
+
+        if (activeIndex === null) {
+            this.pinnedTurnIndex = null;
+            return;
+        }
+
+        this.pinnedPromptHeight = activeWrapper.offsetHeight;
+        this.pinnedTurnIndex = activeIndex;
+    },
 
     user_input: '',
     last_user_input: '',
@@ -114,21 +296,268 @@ CHAT_STORE = {
 
     contextBreakdown: null,
 
+    /* ----------------------
+     * turn pagination
+     * ----------------------- */
+    turnAt(absIndex) {
+        return this.turnHistory[absIndex - this.turnStart];
+    },
+
+    resetWindow() {
+        this.turnHistory = [];
+        this.turnStart = 0;
+        this.totalTurns = 0;
+        this.hasMoreOlder = false;
+        this.loadingOlder = false;
+        this.pinnedTurnIndex = null;
+        this.pinnedPromptHeight = 0;
+        this._olderIntersecting = false;
+        this._unloadQueued = false;
+        this._lastUnloadAt = 0;
+    },
+
+    windowSize() {
+        const last = this.turnHistory[this.turnHistory.length - 1];
+        const loaded = this.turnHistory.length - (last && last.live === true ? 1 : 0);
+        return Math.max(this.turnPageSize, loaded);
+    },
+
+    applyTurnPage(result, merge) {
+        const incoming = result.turn_history ?? [];
+        const page = result.turn_page ?? {};
+        const start = typeof page.start === 'number' ? page.start : Math.max(0, incoming.length - this.turnPageSize);
+        const total = typeof page.total === 'number' ? page.total : start + incoming.length;
+
+        if (merge) {
+            const keptPrefix = this.turnHistory.length > 0 && this.turnStart < start;
+            this.turnHistory = mergeTurnPage(this.turnHistory, this.turnStart, incoming, start);
+            if (!keptPrefix) this.turnStart = start;
+        } else {
+            this.turnHistory = incoming;
+            this.turnStart = start;
+        }
+
+        this.totalTurns = total;
+        this.hasMoreOlder = this.turnStart > 0;
+    },
+
+    _anchorGen: 0,
+
+    _anchorScrollTo(el, turnEl, offsetTop) {
+        if (!el || !turnEl || !turnEl.isConnected) return;
+
+        const current = turnEl.getBoundingClientRect().top - el.getBoundingClientRect().top;
+        const shift = current - offsetTop;
+
+        if (Math.abs(shift) > 0.5) {
+            el.scrollTo({ top: el.scrollTop + shift, behavior: 'instant' });
+        }
+    },
+
+    async loadOlderTurns(anchor = true) {
+        if (this.loadingOlder || !this.hasMoreOlder) return;
+
+        this.loadingOlder = true;
+
+        const el = document.getElementById('messages');
+
+        try {
+            const firstTurnEl = el?.querySelector('.turn') ?? null;
+            const offsetTop = firstTurnEl
+                ? firstTurnEl.getBoundingClientRect().top - el.getBoundingClientRect().top
+                : 0;
+
+            const result = await simpleApiFetch(
+                `/api/chat/turns?before=${this.turnStart}&limit=${this.turnPageSize}`
+            );
+            if (!result) return;
+
+            const turns = result.turns ?? [];
+            if (turns.length === 0) {
+                this.hasMoreOlder = false;
+                return;
+            }
+
+            this.turnHistory = turns.concat(this.turnHistory);
+            this.turnStart = result.start;
+            this.totalTurns = result.total;
+            this.hasMoreOlder = result.start > 0;
+
+            if (anchor && firstTurnEl) {
+                const gen = ++this._anchorGen;
+
+                await Alpine.nextTick();
+                this._anchorScrollTo(el, firstTurnEl, offsetTop);
+
+                let settleFrames = 30;
+                let lastTop = el.scrollTop;
+                this._anchorBusy = true;
+                const settle = () => {
+                    if (gen !== this._anchorGen || settleFrames-- <= 0) {
+                        this._anchorBusy = false;
+                        return;
+                    }
+
+                    if (Math.abs(el.scrollTop - lastTop) > 2) {
+                        this._anchorBusy = false;
+                        return;
+                    }
+
+                    this._anchorScrollTo(el, firstTurnEl, offsetTop);
+                    lastTop = el.scrollTop;
+                    requestAnimationFrame(settle);
+                };
+                requestAnimationFrame(settle);
+            }
+        } catch (err) {
+            console.warn('loading older turns failed:', err);
+        } finally {
+            this.loadingOlder = false;
+        }
+    },
+
+    async resyncWindow() {
+        if (this.turnHistory.length === 0) {
+            await this.reloadChat();
+            return;
+        }
+
+        const size = Math.min(this.windowSize(), 200);
+        const result = await simpleApiFetch(
+            `/api/chat/turns?before=${this.turnStart + size}&limit=${size}`
+        );
+        if (!result) return;
+
+        const turns = result.turns ?? [];
+        const keepCount = Math.max(0, Math.min(this.turnHistory.length, result.start - this.turnStart));
+
+        this.turnHistory = this.turnHistory.slice(0, keepCount).concat(turns);
+        if (keepCount === 0) this.turnStart = result.start;
+        this.totalTurns = result.total;
+        this.hasMoreOlder = this.turnStart > 0;
+    },
+
+    loadOlderTurnsFromIntersect() {
+        if (performance.now() - this._lastUnloadAt < 300) return;
+        this._olderIntersecting = true;
+        this._fillOlderWhileIntersecting();
+    },
+
+    olderTurnsLeftIntersect() {
+        this._olderIntersecting = false;
+    },
+
+    async _fillOlderWhileIntersecting() {
+        while (this._olderIntersecting && this.hasMoreOlder && !this.loadingOlder) {
+            if (performance.now() - this._lastUnloadAt < 300) return;
+            await this.loadOlderTurns();
+            await Alpine.nextTick();
+            await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+    },
+
+    scheduleUnloadCheck() {
+        if (this._unloadQueued) return;
+        this._unloadQueued = true;
+        requestAnimationFrame(() => {
+            this._unloadQueued = false;
+            this._runUnloadCheck();
+        });
+    },
+
+    _runUnloadCheck() {
+        const messages = document.getElementById('messages');
+        if (!messages || messages.classList.contains('anchor-hidden')) return;
+        if (this.loadingOlder || this._anchorBusy) return;
+        if (this.turnHistory.length <= this.turnPageSize) return;
+
+        const turnEls = [...messages.querySelectorAll('#messages > .turn-block .turn')];
+        if (turnEls.length < 2) return;
+
+        // keep a cushion above the viewport top so unloading never drags
+        // the older-turns loader back into its prefetch margin
+        const keepAbove = Math.max(this.olderTriggerPx * 2 + 200, 600);
+        const cutLine = messages.getBoundingClientRect().top - keepAbove;
+
+        let maxDrop = this.turnHistory.length - this.turnPageSize;
+        if (this.turnHistory[this.turnHistory.length - 1]?.live === true) {
+            maxDrop = Math.min(maxDrop, this.turnHistory.length - 1);
+        }
+
+        let drop = 0;
+        for (const turnEl of turnEls) {
+            if (drop >= maxDrop) break;
+
+            const idx = Number(turnEl.dataset.turnIndex);
+            if (!Number.isFinite(idx) || idx !== this.turnStart + drop) break;
+
+            if (turnEl.getBoundingClientRect().bottom >= cutLine) break;
+            drop++;
+        }
+        if (drop <= 0) return;
+
+        const keptAbs = this.turnStart + drop;
+        const keptBefore = turnEls[drop].getBoundingClientRect().top;
+
+        this._dropPrefixTurns(drop);
+        this._lastUnloadAt = performance.now();
+
+        Alpine.nextTick(() => {
+            const keptNow = messages.querySelector(`[data-turn-index="${keptAbs}"]`);
+            if (!keptNow || !keptNow.isConnected) return;
+
+            const shift = keptNow.getBoundingClientRect().top - keptBefore;
+            if (Math.abs(shift) > 2) {
+                messages.scrollTop += shift;
+            }
+
+            Alpine.store('ui')._updateShouldScroll(messages);
+        });
+    },
+
+    _dropPrefixTurns(drop) {
+        if (drop <= 0) return;
+
+        if (this.pinnedTurnIndex !== null && this.pinnedTurnIndex - this.turnStart < drop) {
+            this.clearPromptPin();
+        }
+
+        this.turnHistory = this.turnHistory.slice(drop);
+        this.turnStart += drop;
+        this.hasMoreOlder = this.turnStart > 0;
+    },
+
+    async fillViewport(maxPages = 8) {
+        const el = document.getElementById('messages');
+        if (!el) return;
+
+        let pages = 0;
+        while (this.hasMoreOlder && pages < maxPages && el.scrollHeight <= el.clientHeight + 8) {
+            await this.loadOlderTurns(false);
+            await Alpine.nextTick();
+            pages++;
+        }
+
+        if (pages > 0 && Alpine.store('ui').shouldScroll) {
+            el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+        }
+    },
+
     async load() {
         // called by Alpine.init
         await this.reloadCategories();
         this.loadInputHistory();
 
-        const result = await simpleApiFetch(`/api/chat/current`);
+        const result = await simpleApiFetch(`/api/chat/current?limit=${this.windowSize()}`);
         if (!result) { return }
+
+        document.getElementById('messages')?.classList.add('anchor-hidden');
 
         this.chat = result;
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
-        this.turnHistory = mergeTurnHistory(this.turnHistory, result.turn_history);
+        this.applyTurnPage(result, true);
         this.currentTokenUsage = result.token_usage;
-
-        Alpine.store('ui').prepareBottomWindow();
 
         await this.reloadChats();
 
@@ -139,34 +568,55 @@ CHAT_STORE = {
     /* ----------------------
      * chat manipulation
      * ----------------------- */
+    /*
+     * opens a chat at its end without ever showing the top of it first
+     */
+    async anchorToBottom() {
+        const ui = Alpine.store('ui');
+        const el = document.getElementById('messages');
+
+        if (!el) {
+            await ui.forceScrollToBottom();
+            return;
+        }
+
+        el.classList.add('anchor-hidden');
+        try {
+            await Alpine.nextTick();
+            await ui.forceScrollToBottom();
+            await this.fillViewport();
+
+            // markers that started below the fold never report their jump to
+            // above the top edge (IO only fires on state changes, and their
+            // state stayed 'not intersecting'), so resolve the pin by hand
+            // once the anchored scroll has landed
+            requestAnimationFrame(() => this.recomputePromptPin());
+        } finally {
+            el.classList.remove('anchor-hidden');
+        }
+    },
+
     async loadChat(chatId) {
         if (this.selectedChat === chatId) { return; }
 
         // don't allow chat switching if a stream is ongoing
         if (Alpine.store("stream").state != 'idle') { return; }
 
-        const result = await simpleApiFetch(`/api/chat/load/${chatId}`);
+        const result = await simpleApiFetch(`/api/chat/load/${chatId}?limit=${this.turnPageSize}`);
         if (!result) { return; }
 
-        const ui = Alpine.store('ui');
-
-        this.turnHistory = [];
-        ui.resetTurnMounts();
-        await Alpine.nextTick();
-
+        this.resetWindow();
         this.chat = result;
         this.selectedChat = chatId;
         this.selectedCategory = result.category;
-        this.turnHistory = result.turn_history;
+        this.applyTurnPage(result, false);
         this.currentTokenUsage = result.token_usage;
 
-        // bottom-up: mount the tail of the chat before scrolling to it
-        ui.prepareBottomWindow();
+        await this.anchorToBottom();
 
         await this.ensureChatVisible(chatId);
 
-        // make sure it always shows the bottom of the chat
-        await ui.forceScrollToBottom();
+        document.getElementById('user-input')?.focus();
     },
 
     /* ----------------------
@@ -250,19 +700,50 @@ CHAT_STORE = {
         return localDayKey(new Date());
     },
 
+    /* ----------------------
+     * time tabs (sidebar): Today / Week / Older.
+     * ----------------------- */
+    timeTab: localStorage.getItem('sidebarTimeTab') || 'today',
+
+    setTimeTab(tab) {
+        if (this.timeTab === tab) { return; }
+        this.timeTab = tab;
+        localStorage.setItem('sidebarTimeTab', tab);
+    },
+
+    groupTab(key) {
+        if (!key || key === 'undated') { return 'older'; }
+        if (key === this.todayKey()) { return 'today'; }
+        if (key.startsWith('last-week-')) { return 'week'; }
+        return key.split('-').length >= 3 ? 'week' : 'older';
+    },
+
+    // the x-for source in sidebar.html (search results bypass the tabs)
+    visibleGroups() {
+        if (this.searching) { return this.displayGroups(); }
+        return this.dayGroups.filter(g => this.groupTab(g.key) === this.timeTab);
+    },
+
     isGroupCollapsed(group) {
         // search results are always shown fully - hiding matches behind
         // a collapsed header would be maddening
         if (this.searching) { return false; }
         if (group.key in this.collapsedDays) { return Boolean(this.collapsedDays[group.key]); }
-        return group.key !== this.todayKey();
+        // month groups on the Older tab start collapsed; day groups on
+        // Today/Week stay expanded (their headers are hidden anyway)
+        return this.groupTab(group.key) === 'older';
     },
 
     toggleDayGroup(group) {
         const collapse = !this.isGroupCollapsed(group);
         this.collapsedDays[group.key] = collapse;
 
-        if (!collapse) {
+        if (collapse) {
+            group.chats = [];
+            group.offset = 0;
+            group.loaded = false;
+            group.hasMore = group.count > 0;
+        } else {
             Alpine.nextTick(() => this.ensureDayChatsFilled(group));
         }
     },
@@ -339,15 +820,15 @@ CHAT_STORE = {
             loaded: false
         }));
 
+        const onTab = g => !this.isGroupCollapsed(g) && this.groupTab(g.key) === this.timeTab;
+
         await Promise.all(
-            this.dayGroups.filter(g => !this.isGroupCollapsed(g))
-                .map(g => this.loadDayChats(g))
+            this.dayGroups.filter(onTab).map(g => this.loadDayChats(g))
         );
 
         await Alpine.nextTick();
         await Promise.all(
-            this.dayGroups.filter(g => !this.isGroupCollapsed(g))
-                .map(g => this.ensureDayChatsFilled(g))
+            this.dayGroups.filter(onTab).map(g => this.ensureDayChatsFilled(g))
         );
     },
 
@@ -361,12 +842,17 @@ CHAT_STORE = {
         const gen = this.dayFetchGen;
         const before = group.chats.length;
 
-        const result = await simpleApiFetch(
-            `/api/chats/day?day=${group.key}&offset=${group.offset}` +
-            `&limit=${this.chatLimit}&tz_offset=${this.tzOffset()}${this.catParam()}${this.tagParam()}`
-        );
-
-        group.loading = false;
+        let result = null;
+        try {
+            result = await simpleApiFetch(
+                `/api/chats/day?day=${group.key}&offset=${group.offset}` +
+                `&limit=${this.chatLimit}&tz_offset=${this.tzOffset()}${this.catParam()}${this.tagParam()}`
+            );
+        } catch (err) {
+            result = null;
+        } finally {
+            group.loading = false;
+        }
 
         // stale (list reloaded mid-flight) or failed: mark exhausted so
         // loop callers can't spin; a reload rebuilds the group anyway.
@@ -438,6 +924,7 @@ CHAT_STORE = {
         for (const group of this.dayGroups) {
             if (group.chats.some(c => c.id === chatId)) {
                 this.collapsedDays[group.key] = false;
+                this.setTimeTab(this.groupTab(group.key));
                 return true;
             }
 
@@ -451,6 +938,7 @@ CHAT_STORE = {
                 const progressed = await this.loadDayChats(group);
                 if (group.chats.some(c => c.id === chatId)) {
                     this.collapsedDays[group.key] = false;
+                    this.setTimeTab(this.groupTab(group.key));
                     return true;
                 }
                 if (!progressed) { break; }
@@ -460,10 +948,14 @@ CHAT_STORE = {
         return false;
     },
 
-    async newChat(category = null) {
-        await simpleApiPost('/api/chat/new', { category: category ?? this.selectedCategory });
+    async newChat(category = null, title = null, tags = []) {
+        const body = { category: category ?? this.selectedCategory };
+        if (title) { body.title = title; }
+        if (tags && tags.length > 0) { body.tags = tags; }
 
-        result = await simpleApiFetch('/api/chat/current');
+        await simpleApiPost('/api/chat/new', body);
+
+        result = await simpleApiFetch(`/api/chat/current?limit=${this.turnPageSize}`);
         if (!result) { return; }
 
         this.chat = result;
@@ -471,7 +963,7 @@ CHAT_STORE = {
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
         this.currentTokenUsage = result.token_usage;
-        this.turnHistory = result.turn_history;
+        this.applyTurnPage(result, false);
 
         // the new chat may live in a category the dropdown doesn't list yet
         await this.reloadCategories();
@@ -480,6 +972,8 @@ CHAT_STORE = {
 
         await this.reloadChats();
         await this.reloadChat();
+
+        document.getElementById('user-input')?.focus();
     },
 
     async renameChat(chat_id, newTitle) {
@@ -537,7 +1031,7 @@ CHAT_STORE = {
             return;
         }
 
-        const result = await simpleApiFetch(`/api/chat/current`);
+        const result = await simpleApiFetch(`/api/chat/current?limit=${this.windowSize()}`);
         if (!result) { return }
 
         const prevCategory = this.selectedCategory;
@@ -546,12 +1040,7 @@ CHAT_STORE = {
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
 
-        // reuse the existing turn objects for every turn that didn't actually
-        // change, so alpine doesn't re-render (and re-parse the markdown of)
-        // the entire conversation on every single reload
-        this.turnHistory = mergeTurnHistory(this.turnHistory, result.turn_history);
-
-        Alpine.store('ui').syncMountWindows();
+        this.applyTurnPage(result, true);
 
         if (result.category !== prevCategory) {
             await this.reloadCategories();
@@ -650,10 +1139,17 @@ CHAT_STORE = {
      * message actions
      * ----------------------- */
     async copyMessage(turnIndex) {
-      const turn = this.turnHistory[turnIndex];
+      const turn = this.turnAt(turnIndex);
       const msg = turn?.messages?.[turn.messages?.length - 1]; // last message in the turn
       if (!msg) return;
-      navigator.clipboard.writeText(msg.content)
+
+      // if the message had multimedia in it, extract only the text bit
+      const filenames = msg._metadata?.filenames || [];
+      const text = Array.isArray(msg.content)
+        ? msg.content.filter((b, i) => b?.type === 'text' && b.text && !filenames[i]).map(b => b.text).join('\n\n')
+        : msg.content;
+
+      navigator.clipboard.writeText(text)
         .then(() => {
             return true;
         })
@@ -663,7 +1159,7 @@ CHAT_STORE = {
     },
 
     async deleteMessage(turnIndex) {
-        const turn = this.turnHistory[turnIndex];
+        const turn = this.turnAt(turnIndex);
         if (!turn) return;
         await simpleSocketSend({
             "type": "message_delete",
@@ -672,7 +1168,7 @@ CHAT_STORE = {
     },
 
     async regenerateMessage(turnIndex) {
-        const turn = this.turnHistory[turnIndex];
+        const turn = this.turnAt(turnIndex);
         if (!turn) return;
 
         Alpine.store('stream').userMsg = null;
@@ -685,7 +1181,7 @@ CHAT_STORE = {
     },
 
     async startEdit(turnIndex) {
-        const turn = this.turnHistory[turnIndex];
+        const turn = this.turnAt(turnIndex);
         const msg = turn?.messages?.[turn.messages?.length - 1]; // last message in the turn
         if (!msg) { return; }
         

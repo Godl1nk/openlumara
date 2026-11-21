@@ -60,6 +60,8 @@ class Channel:
         self.turncollector = core.turns.TurnCollector(self)
         self.tool_loader = core.tool_loader.ToolLoader(self)
         self.tool_loader.register_meta_tools()
+        self.force_disable_tools = False
+        self.override_tools = None
 
         # used to track whether to preserve reasoning
         # for only the current "agentic turn"
@@ -103,6 +105,10 @@ class Channel:
         called when the entire framework has fully initialized
         (when the message "[CORE] Startup complete" shows up)
         """
+        pass
+
+    async def on_system_prompt(self):
+        """called when building the system prompt. return a string from this to set a channel-specific system prompt"""
         pass
 
     async def _shutdown(self):
@@ -235,7 +241,8 @@ class Channel:
         that display the streamed tokens directly to the user,
         so that the user doesn't have to wait for a request to finish
         """
-        pass
+        async for token in stream:
+            pass
 
     async def push(self, message, defer=True, add_to_context=True):
         """push a message to the push queue, which will instantly display it in all channels"""
@@ -671,9 +678,10 @@ class Channel:
     async def _send_finish_preprocess(self):
         """Connect to the API and build the context window (can block on a model swap)."""
         # reconnect if needed
-        result = await self.manager.API.attempt_connect()
-        if result is not True:
-            return {"type": "error", "content": str(result)}
+        try:
+            await self.manager.API.attempt_connect()
+        except core.api.APIError as e:
+            return {"type": "error", "content": str(e)}
 
         # build the context window
         context = await self.context.get(system_prompt=True, end_prompt=True)
@@ -746,6 +754,7 @@ class Channel:
                     files=None,
                     commands_authorized=commands_authorized,
                     add_to_context=add_to_context,
+                    tools=self.override_tools,
                     **kwargs
                 )
             return result
@@ -769,12 +778,12 @@ class Channel:
                 return {"role": "assistant", "content": processed["content"]}
 
         # request the AI response and add it to context
-        response = await self.manager.API.send(processed["context"], **kwargs)
-
+        try:
+            response = await self.manager.API.send(processed["context"], use_tools=(not self.force_disable_tools), tools=self.override_tools, **kwargs)
         # handle any errors
-        if isinstance(response, core.api.APIError):
-            self.log("api", response)
-            return {"role": "assistant", "content": str(response)}
+        except core.api.APIError as e:
+            self.log("api", e)
+            return {"role": "assistant", "content": str(e)}
 
         # make a copy of the response message and edit it
         assistant_message = dict(response)
@@ -812,7 +821,7 @@ class Channel:
         self._chain_idle.clear()
         self.sending_message = True
         try:
-            async for token in self._send_stream_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs):
+            async for token in self._send_stream_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, use_tools=(not self.force_disable_tools), tools=self.override_tools, **kwargs):
                 yield token
 
             while self.queued_message is not None:
@@ -1231,6 +1240,24 @@ class Channel:
                     async for out in emit_step_text(step):
                         yield out
 
+            elif event_type == "step_delta":
+                delta = event.get("content")
+                st = step_state.get((delta or {}).get("step") or 0)
+                if st is not None:
+                    async for out in emit_step_text(st["step_obj"]):
+                        yield out
+
+            elif event_type == "final_delta":
+                delta = event.get("content") or {}
+                sn = delta.get("step") or 0
+                final_text[sn] = final_text.get(sn, "") + (delta.get("text") or "")
+                st = step_state.get(sn)
+                step_obj = (st or {}).get("step_obj")
+                if step_obj is None:
+                    step_obj = {"step": sn, "content": "", "reasoning_content": ""}
+                async for out in emit_step_text(step_obj):
+                    yield out
+
             elif event_type == "final":
                 # re-render every step whose live final text changed
                 touched = set(final_text)
@@ -1256,7 +1283,8 @@ class Channel:
         groups incoming tokens into step events using the
         TurnCollector defined in core/turns.py
 
-        yields {"type": "token"}, {"type": "step"}, and {"type": "final"} objects
+        yields {"type": "token"}, {"type": "step"}, {"type": "step_delta"},
+        {"type": "final"} and {"type": "final_delta"} objects
         see TurnCollector.group_stream for the full description!
 
         this used to be exclusive to the webUI, but i've ported it over to the core, so that it

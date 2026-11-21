@@ -9,7 +9,7 @@ class AutoBackup(core.module.Module):
     Automatically backs up the Aegis data folder at a set interval
     """
 
-    category = "system"
+    category = "core"
 
     # -------------------------
     #   CONFIGURATION

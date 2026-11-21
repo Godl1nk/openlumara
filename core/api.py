@@ -9,8 +9,8 @@ import time
 import urllib.parse
 import ulid
 
-class APIError:
-    """Simple class that holds an error message, used for passing on to channels"""
+class APIError(Exception):
+    """Holds an error message, used for passing on to channels as a value, and raisable as an exception"""
     def __init__(self, message: str = None, exc = None):
         self.message = message
         
@@ -197,8 +197,9 @@ class APIClient():
 
         api_config = core.config.get("api", {})
 
-        if api_config.get("url") == "http://API_URL_HERE/v1" or not api_config.get("url"):
-            return APIError("The API connection has not been set up yet! Please set up your API connection by either using the WebUI, the /config command, or editing the config file")
+        if api_config.get("url") == "http://API_URL_HERE/v1":
+            raise APIError("The API connection has not been set up yet! Please set up your API connection by either using the WebUI, the /config command, or editing the config file")
+
         # close any session left over from a previous failed connect attempt
         await self._close_session()
 
@@ -248,18 +249,18 @@ class APIClient():
 
             if connection_error is not None:
                 await self._close_session()
-                return connection_error
+                raise connection_error
 
         except aiohttp.ClientError as e:
             await self._close_session()
-            return APIError("Failed to connect to the API", e)
+            raise APIError("Failed to connect to the API", e) from e
 
         except Exception as e:
             await self._close_session()
             import traceback
             if core.debug:
                 traceback.print_exc()
-            return APIError(None, e)
+            raise APIError(None, e) from e
 
         self.connected = True
 
@@ -272,7 +273,6 @@ class APIClient():
         return True
     
     async def attempt_connect(self):
-        """connect if disconnected, else just return True"""
         if not self.connected:
             return await self.connect()
         
@@ -912,10 +912,10 @@ class APIClient():
 
             return APIError("Tried to send a blank request for some reason! This should NEVER happen. Notify the developer.")
 
-        connected = await self.attempt_connect()
-        if connected is not True:
-            # thats an error
-            return connected
+        try:
+            await self.attempt_connect()
+        except APIError as e:
+            return e
 
         if not core.config.get("model", {}).get("use_tools"):
             # allow switching tools off globally
@@ -1008,6 +1008,9 @@ class APIClient():
         if stream:
             # request token usage from the API
             req["stream_options"] = {"include_usage": True}
+
+        #import rich
+        #rich.print(req)
 
         if core.debug:
             message_summary = []
@@ -1128,31 +1131,30 @@ class APIClient():
         return response
 
     async def send(self, context: list, system_prompt=True, use_tools=True, tools=None, use_thinking=True, **kwargs):
-        """send a message to the LLM. returns a dict or APIError"""
+        """send a message to the LLM."""
 
         self.cancel_request = False
 
         # attempt auto-reconnect once
-        connected = await self.attempt_connect()
-        if connected is not True:
-            # thats an error!
-            return connected
+        await self.attempt_connect()
 
         # use default tools if not specified. allow overrides
         if not tools:
             tools = self.manager.tools
 
-        response = await self._request(context, tools=(tools if use_tools else None), use_thinking=use_thinking, **kwargs)
+        try:
+            response = await self._request(context, tools=(tools if use_tools else None), use_thinking=use_thinking, **kwargs)
+        except Exception as e:
+            raise APIError("While sending request to AI", e) from e
 
-        # return errors if applicable
         if isinstance(response, APIError):
-            return response
+            raise response
 
         try:
             result = await self._recv(response)
             return result
         except Exception as e:
-            return APIError("While processing response from AI", e)
+            raise APIError("While processing response from AI", e) from e
 
     async def send_stream(self, context: list, use_tools=True, tools=None, use_thinking=True, **kwargs):
         """send a message to the LLM. is an iterable async generator"""
@@ -1160,10 +1162,10 @@ class APIClient():
         self.cancel_request = False
 
         # attempt auto-reconnect once
-        connected = await self.attempt_connect()
-        if connected is not True:
-            # that's an error
-            yield {"type": "error", "content": str(connected)}
+        try:
+            await self.attempt_connect()
+        except APIError as e:
+            yield {"type": "error", "content": str(e)}
             return
 
         # use default tools if not specified. allow overrides
@@ -1290,10 +1292,12 @@ class APIClient():
             return False
 
         # wait for the cancellation to complete
-        while self.cancel_request:
+        waited = 0.0
+        while self.cancel_request and waited < 2.0:
             await asyncio.sleep(0.05)
+            waited += 0.05
 
-        return True
+        return not self.cancel_request
 
     async def _recv(self, response, use_tools=True):
         """takes a response dict and extracts the message from it, handling tool calls if needed"""
@@ -1545,9 +1549,7 @@ class APIClient():
 
     async def list_models(self):
         if not self.connected:
-            result = await self.attempt_connect()
-            if result is not True:
-                return result
+            await self.attempt_connect()
 
         try:
             # get alphabetically sorted model list

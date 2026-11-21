@@ -10,6 +10,9 @@ import core
 import channels.webui.utils as utils
 
 class WebSocketManager:
+    # prevent the stream from stalling forever
+    SEND_TIMEOUT = 10
+
     def __init__(self, channel):
         self.channel = channel
         self.active_connections = []
@@ -26,6 +29,29 @@ class WebSocketManager:
     def record_final_snapshot(self, messages: list):
         """track the newest final-bubble snapshot"""
         self.turn_final = messages
+
+    def apply_step_delta(self, delta: dict):
+        """fold a streaming append into the stored step snapshot, so a
+        mid-stream reconnect replay stays current between checkpoints"""
+        step = self.turn_steps.get(delta.get("step"))
+        if step is None:
+            return
+
+        for append in delta.get("append", []):
+            if append.get("field") == "reasoning_content":
+                step["reasoning_content"] = (step.get("reasoning_content") or "") + append["text"]
+            elif append.get("field") == "tool_response":
+                for tool in step.get("tool_calls", []):
+                    if tool.get("id") == append.get("id"):
+                        meta = tool.setdefault("_metadata", {})
+                        meta["response"] = (meta.get("response") or "") + append["text"]
+                        break
+
+    def apply_final_delta(self, delta: dict):
+        if not self.turn_final:
+            return
+        last = self.turn_final[-1]
+        last["content"] = (last.get("content") or "") + delta["text"]
 
     async def push_context_update(self, connection=None):
         """push the token usage and the full context breakdown
@@ -109,12 +135,18 @@ class WebSocketManager:
         for connection in self.active_connections:
             try:
                 if connection.client_state == starlette.websockets.WebSocketState.CONNECTED:
-                    await connection.send_json(message)
+                    await asyncio.wait_for(
+                        connection.send_json(message), timeout=self.SEND_TIMEOUT
+                    )
             except Exception:
                 disconnected.append(connection)
 
         for conn in disconnected:
             self.disconnect(conn)
+            try:
+                await asyncio.wait_for(conn.close(), timeout=2)
+            except Exception:
+                pass
 
     async def _stream_task(self, message: str, index, files: list = None):
         self.channel._ws_stream_index = index

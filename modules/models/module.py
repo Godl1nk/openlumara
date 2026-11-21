@@ -1,3 +1,4 @@
+# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex
 import core
 
 class Models(core.module.Module):
@@ -13,14 +14,21 @@ class Models(core.module.Module):
         "insert_available_models_into_system_prompt": {
             "description": "Whether to make the AI aware of what models are available for it to switch to. Allows you to simply ask the AI to switch to whatever model you want (example: `switch to Qwen3.5-9B`) and it'll just do it ",
             "default": False
+        },
+        "allow_ai_to_switch": {
+            "description": "Whether to allow the AI to switch its model",
+            "default": True
         }
     }
 
     async def on_ready(self):
         self._models_cache = None
 
-        if self.config.get("insert_available_models_into_system_prompt"):
+        if self.config.get("insert_available_models_into_system_prompt") or not self.config.get("allow_ai_to_switch"):
             self.disabled_tools.append("get_available")
+
+        if not self.config.get("allow_ai_to_switch"):
+            self.disabled_tools.append("switch")
 
     async def on_system_prompt(self):
         output = ""
@@ -29,30 +37,20 @@ class Models(core.module.Module):
             current_model = self.manager.API.get_model()
             output += f"Current model: {current_model}"
 
-        current_model = self.manager.API.get_model()
-        
         if self.config.get("insert_available_models_into_system_prompt"):
-            if not self._models_cache:
-                models = await self.manager.API.list_models()
-                if not models or isinstance(models, core.api.APIError):
-                    return output if output else None
-                self._models_cache = models
-
-            if len(self._models_cache) > 1:
-                output += f"\n\nModels you can switch to using the models_switch() toolcall: "
+            await self._load_models()
+            if self._models_cache and len(self._models_cache) > 1:
+                output += "\n\nModels you can switch to using the models_switch() toolcall: "
                 output += ", ".join(self._models_cache)
-        else:
-            self.header = "current model"
-            output = current_model
 
         return output
 
     async def _load_models(self):
         if not self._models_cache:
-            models = await self.manager.API.list_models()
-            if not models or isinstance(models, core.api.APIError):
-                return None
-            self._models_cache = models
+            try:
+                self._models_cache = await self.manager.API.list_models()
+            except core.api.APIError:
+                return
 
     @core.module.tool
     async def get_available(self):

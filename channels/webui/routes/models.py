@@ -1,3 +1,4 @@
+# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex
 """Model selection and multi-provider management routes"""
 
 import fastapi
@@ -10,9 +11,10 @@ def register(app, channel):
     @app.get("/api/models")
     async def models_get():
         """Returns available models plus current chat/image selection metadata"""
-        result = await channel.manager.API.list_models()
-        if isinstance(result, core.api.APIError):
-            return utils.api_result(str(result), success=False)
+        try:
+            result = await channel.manager.API.list_models()
+        except core.api.APIError as error:
+            return utils.api_result(str(error), success=False)
 
         return utils.api_result({
             "models": result,
@@ -34,9 +36,10 @@ def register(app, channel):
 
         if not channel.manager.API.set_model(name):
             return utils.api_result("An image model cannot be used as the default chat model", success=False)
-        connected = await channel.manager.API.connect(silent=True)
-        if isinstance(connected, core.api.APIError):
-            return utils.api_result(str(connected), success=False)
+        try:
+            await channel.manager.API.connect(silent=True)
+        except core.api.APIError as error:
+            return utils.api_result(str(error), success=False)
 
         await channel.websocket_manager.push_context_update()
         return utils.api_result({
@@ -131,7 +134,7 @@ def register(app, channel):
             api_format=data.get("api_format", "auto"),
             is_image_provider=bool(data.get("is_image_provider", False)),
         )
-        await channel.manager.API.connect(silent=True)
+        # Provider creation persists independently of the active chat endpoint.
         return utils.api_result(provider, success=True)
 
     @app.post("/api/provider/update")

@@ -1,8 +1,8 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex #}
 <!-- chat header -->
 {% if config.get('enable_chat_header') %}
     {% include 'chat/header.html' %}
 {% endif %}
-
 {{ extension_slot("below_header") }}
 
 <template x-if="$store.ui.notice">
@@ -10,7 +10,7 @@
 </template>
 
 <!-- the main message view -->
-<div id="messages" x-ref="messages" x-cloak
+<div id="messages" class="{{ 'chat-bubbles' if config.get('message_style') == 'chat' }}" x-ref="messages" x-cloak
     @scroll.throttle.100ms="$store.ui.onScroll()"
 >
     <!--
@@ -38,16 +38,37 @@
 
     {{ extension_slot("above_chat_history") }}
 
-    <!-- historical turns -->
-    <template x-for="(turn, turnIndex) in $store.chat.turnHistory" :key="turnIndex">
-        <div class="fullwidth turn" :data-turn-index="turnIndex">
+    <!--
+        only a window of the chat is loaded (see $store.chat.turnStart).
+    -->
+    <div class="older-turns" x-show="$store.chat.hasMoreOlder" x-cloak
+         x-intersect:enter.parent.margin.300px.0px.0px.0px="$store.chat.loadOlderTurnsFromIntersect()"
+         x-intersect:leave.parent="$store.chat.olderTurnsLeftIntersect()"
+         @click="$store.chat.loadOlderTurns()">
+        <span class="older-spinner" x-show="$store.chat.loadingOlder"></span>
+        <span x-text="$store.chat.loadingOlder ? 'Loading older messages..' : 'Older messages'"></span>
+    </div>
 
-            <template x-if="!$store.ui.isTurnMounted(turnIndex)">
-                <div class="turn-lazy" :style="`min-height: ${$store.ui.turnPlaceholderHeight(turn)}px`"></div>
+    <!-- historical turns -->
+    <template x-for="(turn, idx) in $store.chat.turnHistory" :key="$store.chat.turnStart + idx">
+        <div class="turn-block" x-data="{ get turnIndex() { return $store.chat.turnStart + idx } }">
+            <!--
+                flow marker for the pinned-prompt feature. it must live
+                outside the turn itself: while pinned, the turn is sticky, so
+                an observer on it always sees it as visible and the pin
+                toggles in a loop. this 1px marker stays in normal flow, so
+                its intersection tracks the turn's real position.
+            -->
+            <template x-if="turn.role === 'user'">
+                <div class="pin-marker" x-prompt-marker="$store.chat.updatePromptPin(turnIndex, intersecting, $el)"></div>
             </template>
 
-            <template x-if="$store.ui.isTurnMounted(turnIndex)">
-                <div>
+            <div class="fullwidth turn" :data-turn-index="turnIndex"
+                 x-intersect:leave="$store.chat.scheduleUnloadCheck()"
+                 x-intersect:enter="$store.chat.scheduleUnloadCheck()"
+                 :class="{ 'prompt-pinned': $store.chat.pinnedTurnIndex === turnIndex }"
+                 :style="($store.chat.pinnedTurnIndex === turnIndex || $store.chat.releasingTurnIndex === turnIndex) ? 'min-height: ' + $store.chat.pinnedPromptHeight + 'px' : ''">
+
             <!-- user turn (always one message) -->
             <template x-if="turn.role === 'user'">
                 <div class="message-wrapper user" x-data="{ get message() { return turn.messages[0] } }">
@@ -62,32 +83,25 @@
 
             <template x-if="turn.live === true">
                 <div class="message-wrapper assistant">
-                    <div class="message assistant">
-                        <!-- streaming chain wrapper -->
-                        <template x-if="(turn.steps ?? []).length > 0">
-                            <!-- "Processing.." header -->
-                            <div class="agent-chain" :class="{ 'is-streaming': processing }" x-data="{
-                                     // initial collapse state follows the Appearance
-                                     // setting (read fresh at mount, so it applies
-                                     // starting from the next turn)
-                                     // reasoning display disabled: locked collapsed
-                                     {% if config.get('enable_chain_expansion') %}
-                                     collapsed: turnHasImageResult(turn) ? false : localStorage.getItem('collapseChainDefault') === 'true',
-                                     {% else %}
-                                     collapsed: turnHasImageResult(turn) ? false : true,
-                                     {% endif %}
-                                     get processing() { return $store.stream.state !== 'idle' },
-                                     get lastLabel() {
-                                         const finals = turn.final_messages ?? [];
-                                         const steps = turn.steps ?? [];
-                                         const lastItem = finals[finals.length - 1] ?? steps[steps.length - 1];
-                                         const label = lastItem?.label ?? '';
-                                         // show 'Thinking..' when still thinking, 'Thoughts' when done
-                                         return $store.stream.state === 'idle' ? label.replace('Thinking..', 'Thoughts') : label;
-                                     }
-                                 }">
-                                <!-- reasoning display disabled: locked collapsed, no
-                                     chevron and clicking does nothing -->
+                    <div class="message assistant"
+                         x-data="{
+                             {% if config.get('enable_chain_expansion') %}
+                             collapsed: !turnHasImageResult(turn) && localStorage.getItem('collapseChainDefault') === 'true',
+                             {% else %}
+                             collapsed: true,
+                             {% endif %}
+                             get processing() { return $store.stream.state !== 'idle' },
+                             get hasChain() { return (turn.steps ?? []).length > 0 },
+                             get lastLabel() {
+                                 const finals = turn.final_messages ?? [];
+                                 const steps = turn.steps ?? [];
+                                 const lastItem = finals[finals.length - 1] ?? steps[steps.length - 1];
+                                 const label = lastItem?.label ?? '';
+                                 return $store.stream.state === 'idle' ? label.replace('Thinking..', 'Thoughts') : label;
+                             }
+                         }">
+                        <template x-if="hasChain">
+                            <div class="agent-chain" x-stream-grow :class="{ 'is-streaming': processing }">
                                 {% if not config.get('enable_chain_expansion') %}
                                 <div class="agent-chain-header locked">
                                 {% else %}
@@ -98,7 +112,7 @@
                                     <span class="activity" x-show="collapsed && lastLabel" x-text="'(' + lastLabel + ')'"></span>
                                 </div>
                                 <template x-if="!collapsed">
-                                    <div class="agent-chain-body">
+                                    <div class="agent-chain-body" x-auto-scroll>
                                         <template x-for="(step, stepIndex) in turn.steps" :key="stepIndex">
                                             <div class="chain-station">
                                                 <div class="chain-rail"><div class="chain-dot"></div></div>
@@ -117,12 +131,23 @@
                                                 </div>
                                             </div>
                                         </template>
+                                        <!-- the provisional answer streams as the chain's last
+                                             station so it grows inside the grow-only space
+                                             instead of under it. it breaks free the moment
+                                             the stream finalizes. -->
+                                        <template x-for="(message, fIndex) in (processing ? (turn.final_messages ?? []) : [])" :key="'live-final-'+fIndex">
+                                            <div class="chain-final">
+                                                {% include 'chat/turns/assistant_stream.html' %}
+                                            </div>
+                                        </template>
                                     </div>
                                 </template>
                             </div>
                         </template>
 
-                        <template x-for="(message, messageIndex) in (turn.final_messages ?? [])" :key="'final-'+messageIndex">
+                        <!-- standalone answer bubble: shown whenever the answer is NOT
+                             inside the open chain (finalized, chain collapsed, or no chain) -->
+                        <template x-for="(message, messageIndex) in (!processing || !hasChain || collapsed ? (turn.final_messages ?? []) : [])" :key="'final-'+messageIndex">
                             {% include 'chat/turns/assistant_stream.html' %}
                         </template>
                     </div>
@@ -196,16 +221,14 @@
                         <template x-for="(message, messageIndex) in turn.final_messages ?? []" :key="'final-'+messageIndex">
                             {% include 'chat/turns/assistant_history.html' %}
                         </template>
+                    </div>
 
-                        <div x-data="{ get targetIndex() { return turn.last_message_index } }" class="fullwidth">
-                            {% include 'chat/message_buttons.html' %}
-                        </div>
+                    <div x-data="{ get targetIndex() { return turn.last_message_index } }" class="fullwidth">
+                        {% include 'chat/message_buttons.html' %}
                     </div>
                 </div>
             </template>
-                </div>
-            </template>
-            <!-- /lazy-mount wrappers -->
+            </div>
         </div>
     </template>
 
@@ -237,7 +260,7 @@
 {% endif %}
 
 <!-- input field -->
-<div id="input">
+<div id="input" {% if config.get('dock_input_bar') %}class="docked"{% endif %}>
     <!-- steering queue: messages sent while the AI is busy -->
     <template x-if="$store.stream.state !== 'idle' && $store.stream.queued.length > 0">
         <div class="steering-queue">

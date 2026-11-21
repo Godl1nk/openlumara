@@ -32,6 +32,11 @@
     <head>
         <title>{{ config.get('title') }}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <!-- wraps window.fetch() to attach the X-OpenLumara header to
+             same-origin /api requests. X-OpenLumara protects the API endpoints from being hit by simple GET requests using malicious injected markdown.
+ 			 must load before every other script. -->
+        <script src="{{ url_for('assets', path='js/services/fetch_gate.js') }}"></script>
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
@@ -94,7 +99,7 @@
             const wasMobile = $store.ui.isMobile;
 
             $store.ui.windowWidth = window.innerWidth;
-            $store.ui.isMobile = window.innerWidth <= 768;
+            $store.ui.isMobile = window.isMobileViewport();
 
             if (wasMobile !== $store.ui.isMobile) {
                 $store.ui.showSidebar = !$store.ui.isMobile;
@@ -105,20 +110,30 @@
             <section id="main-wrapper">
                 {% if config.get("enable_sidebar") %}
                     <section id="sidebar"
-                        :class="{ 'collapsed': $store.ui.sidebarCollapsed && !$store.ui.isMobile }"
+                        :class="{ 'collapsed': $store.ui.sidebarCollapsed && !$store.ui.isMobile, 'resizing': $store.ui.sidebarResizing }"
+                        :style="(!$store.ui.sidebarCollapsed && !$store.ui.isMobile)
+                            ? `flex-basis: ${$store.ui.sidebarWidth}px; width: ${$store.ui.sidebarWidth}px; max-width: ${$store.ui.sidebarWidth}px`
+                            : ''"
                         x-show="$store.ui.showSidebar"
-                        x-transition:enter="transition ease-out duration-200"
-                        x-transition:enter-start="-translate-x-full"
-                        x-transition:leave="transition ease-in duration-150"
-                        x-transition:leave-end="-translate-x-full"
+                        x-transition:enter="sidebar-slide-in"
+                        x-transition:enter-start="sidebar-slide-start"
+                        x-transition:leave="sidebar-slide-out"
+                        x-transition:leave-end="sidebar-slide-end"
                     >
                         {% include 'sidebar.html' %}
                     </section>
+                    <div class="sidebar-resizer"
+                        x-show="!$store.ui.isMobile && !$store.ui.sidebarCollapsed"
+                        x-cloak
+                        @pointerdown="$store.ui.startSidebarResize($event)"
+                        @dblclick="$store.ui.resetSidebarWidth()"></div>
                 {% endif %}
 
                 <section id="chat-window">
                     {% include 'chat/index.html' %}
                 </section>
+
+                {% include 'chat/html_preview.html' %}
             </section>
 
             <section id="modals">

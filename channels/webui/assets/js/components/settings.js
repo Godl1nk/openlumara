@@ -80,10 +80,10 @@ function settingsModal() {
         },
         
         // --- Viewport ---
-        mobile: window.innerWidth <= 768,
+        mobile: window.isMobileViewport(),
 
         // Theme state (synced with Alpine store)
-        themeFamily: localStorage.getItem('themeFamily') || 'monochrome',
+        themeFamily: localStorage.getItem('themeFamily') || 'pro-oled',
         themeMode: localStorage.getItem('themeMode') || 'dark',
 
         // Font settings
@@ -97,6 +97,12 @@ function settingsModal() {
         tokenFadeEnabled: localStorage.getItem('tokenFadeEnabled') !== 'false',
         // start the live processing chain collapsed (localStorage; default off)
         collapseChainDefault: localStorage.getItem('collapseChainDefault') === 'true',
+        // keep the last user prompt pinned to the top while its response is
+        // in view (localStorage; default on)
+        pinnedPromptsEnabled: localStorage.getItem('pinnedPromptsEnabled') !== 'false',
+        // blur + translucent tint on the pinned prompt and floating input bar
+        // (localStorage; default on)
+        frostedGlassEnabled: localStorage.getItem('frostedGlassEnabled') !== 'false',
         // 'Step display mode' dropdown: default | thinking | steps.
         stepDisplayMode: localStorage.getItem('stepDisplayMode') || 'default',
         tokenFadeMs: localStorage.getItem('tokenFadeMs') || '750',
@@ -133,7 +139,7 @@ function settingsModal() {
 
         // called from @resize.window.debounce on the modal root
         checkMobile() {
-            const newMobile = window.innerWidth <= 768;
+            const newMobile = window.isMobileViewport();
             if (newMobile !== this.mobile) {
                 this.mobile = newMobile;
             }
@@ -153,9 +159,9 @@ function settingsModal() {
 
         async saveAndClose() {
             await Alpine.store('settings').saveSettings();
-            // a failed save keeps the modal (and the prompt) open; the
-            // store error banner shows what went wrong
-            if (Alpine.store('settings').error) return;
+
+            const store = Alpine.store('settings');
+            if (store.error || store.saveError) return;
             await Alpine.store('ui').closeModal();
         },
 
@@ -240,7 +246,13 @@ function settingsModal() {
                         currentValue = currentValue[key]?.value;
                     }
                     
-                    if (currentValue !== expectedValue) return false;
+                    // -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-11-07) harness:openlumara status:reviewed
+                    // an array expected value means "any of these values" (e.g. {"mode": ["Pure", "Full System Prompt"]})
+                    if (Array.isArray(expectedValue)) {
+                        if (!expectedValue.includes(currentValue)) return false;
+                    } else if (currentValue !== expectedValue) {
+                        return false;
+                    }
                 }
                 return true;
             }
@@ -362,6 +374,20 @@ function settingsModal() {
         handleCollapseChainToggle() {
             this.collapseChainDefault = !this.collapseChainDefault;
             localStorage.setItem('collapseChainDefault', this.collapseChainDefault);
+        },
+
+        handleFrostedGlassToggle() {
+            this.frostedGlassEnabled = !this.frostedGlassEnabled;
+            localStorage.setItem('frostedGlassEnabled', this.frostedGlassEnabled);
+            document.body.classList.toggle('no-frosted', !this.frostedGlassEnabled);
+        },
+
+        handlePinnedPromptsToggle() {
+            this.pinnedPromptsEnabled = !this.pinnedPromptsEnabled;
+            localStorage.setItem('pinnedPromptsEnabled', this.pinnedPromptsEnabled);
+
+            if (this.pinnedPromptsEnabled) Alpine.store('chat').recomputePromptPin();
+            else Alpine.store('chat').clearPromptPin();
         },
 
         // 'Step display mode' dropdown (default | thinking | steps)

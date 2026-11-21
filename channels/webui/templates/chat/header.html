@@ -1,3 +1,4 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex #}
 <header>
     <div class="left">
         <button class="menu-btn" title="Toggle sidebar" @click="$store.ui.toggleSidebar()" x-show="$store.ui.isMobile" x-cloak>
@@ -16,15 +17,6 @@
         <!-- extension slot: modules fill this via a right() macro in <module>/chat/header.html -->
         {{ extension_slot("right") }}
 
-        {% if config.get("enable_streaming_state_display") %}
-            <span x-text="$store.stream.state.replace('_', ' ')" class="stream-state" x-show="!$store.ui.isMobile" x-cloak></span>
-        {% endif %}
-
-        <!-- TODO
-        <button class="btn" id="search-btn" title="Search messages (Ctrl+F)">
-            {% include 'svg/search.svg' %}
-        </button>
-        -->
         <!-- generation speed: always present, shows the last measured value -->
         <span id="tok-rate"
               x-cloak
@@ -37,56 +29,17 @@
             <span class="tok-rate-unit">tok/s</span>
         </span>
 
-        {% if config.get("enable_model_switcher") and config.get("enable_admin_settings") %}
-        <!-- -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-10-01) status:reviewed
-             quick model switcher: same cached model list and model.name
-             setting as the settings modal, just one click away in the header.
-             hidden on mobile due to lack of space (like the stream state). -->
-        <div class="model-switcher" x-data="modelQuickSwitch()" x-show="!$store.ui.isMobile" x-cloak x-init="lazyFetch()">
-            <select class="model-select" :value="currentModel" :disabled="saving"
-                    @change="setModel($event.target.value)"
-                    @focus="lazyFetch()"
-                    title="Switch default chat model">
-                <template x-for="model in enabledOptions" :key="model">
-                    <option :value="model" x-text="model"></option>
-                </template>
-            </select>
-            <select class="model-select effort-select" :value="currentEffort" :disabled="effortSaving"
-                    @change="setEffort($event.target.value)"
-                    @focus="lazyFetch()"
-                    title="Reasoning effort for the active model"
-                    aria-label="Reasoning effort">
-                <option value="default">Default</option>
-                <option value="none">None</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="xhigh">xhigh</option>
-                <option value="max">Max</option>
-            </select>
-            <button type="button" class="btn model-tune-btn" title="Manage API providers and models" @click="await $store.ui.openModal('settings', 'api')">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="4" y1="21" x2="4" y2="14"/>
-                    <line x1="4" y1="10" x2="4" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="12"/>
-                    <line x1="12" y1="8" x2="12" y2="3"/>
-                    <line x1="20" y1="21" x2="20" y2="16"/>
-                    <line x1="20" y1="12" x2="20" y2="3"/>
-                    <line x1="1" y1="14" x2="7" y2="14"/>
-                    <line x1="9" y1="8" x2="15" y2="8"/>
-                    <line x1="17" y1="16" x2="23" y2="16"/>
-                </svg>
-            </button>
-        </div>
-        {% endif %}
-        {% if config.get("enable_admin_settings") %}
-        <button class="btn" id="settings-btn" title="Settings (Ctrl+S)" @click="await $store.ui.openModal('settings')">
-            {% include 'svg/gear.svg' %}
+
+        <!-- TODO
+        <button class="btn" id="search-btn" title="Search messages (Ctrl+F)">
+            {% include 'svg/search.svg' %}
         </button>
-        {% endif %}
+        -->
+        <!-- TODO
         <button class="btn" title="Export chat" @click="$store.chat.export()">
             {% include 'svg/download.svg' %}
         </button>
+        -->
         <!-- TODO
         <button class="btn shortcuts-btn" title="Keyboard shortcuts (?)" x-show="!$store.ui.isMobile" x-cloak>
             {% include 'svg/keyboard.svg' %}
@@ -101,6 +54,7 @@
             {% include 'svg/folder.svg' %}
         </button>
         -->
+        <!--
         <button class="btn" title="Clear chat" @click="
             if (!confirm('Are you sure you want to clear this chat?')) { return }
 
@@ -111,5 +65,6 @@
         ">
             {% include 'svg/trash.svg' %}
         </button>
+        -->
     </div>
 </header>

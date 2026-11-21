@@ -1,6 +1,9 @@
-const _turnHeights = new WeakMap();
-
 const _interruptBound = new WeakSet();
+
+// phone UI up to 768px, plus tablet portrait up to 1024px
+window.isMobileViewport = () =>
+    window.innerWidth <= 768 ||
+    (window.matchMedia('(orientation: portrait)').matches && window.innerWidth <= 1024);
 
 // pure JS lerp pump knobs; see directives/autoscroll.js for the full story
 window.AUTOSCROLL_DAMP ??= 0.1;
@@ -76,7 +79,6 @@ UI_STORE = {
     _pumpScrollToBottom(el) {
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             this._stopPump();
-            // instant: global scroll-behavior:smooth would animate this jump
             el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
             return;
         }
@@ -101,127 +103,6 @@ UI_STORE = {
         }
     },
 
-    captureTurnHeight(turn, el) {
-        _turnHeights.set(turn, el.offsetHeight);
-    },
-
-    turnPlaceholderHeight(turn) {
-        const cached = _turnHeights.get(turn);
-        if (cached) return cached;
-
-        const chars = (turn.messages || []).reduce(
-            (n, m) => n + (m && typeof m.content === 'string' ? m.content.length : 200), 0
-        ) + (turn.steps || []).reduce(
-            (n, s) => n + (s && s.reasoning_content ? s.reasoning_content.length : 0)
-                + (s && s.content ? s.content.length : 0), 0
-        ) + (turn.final_messages || []).reduce(
-            (n, m) => n + (m && m.content ? m.content.length : 100), 0
-        );
-        return Math.min(400, Math.max(40, Math.round(chars / 6)));
-    },
-
-    turnMounted: {},
-    mountMargin: 800,      // px: mount turns approaching the viewport
-    unmountMargin: 2500,   // px: recycle mounted dom that drifted far outside
-    _mountRaf: null,
-
-    isTurnMounted(turnIndex) {
-        if (this.turnMounted[turnIndex]) return true;
-        const turn = Alpine.store('chat').turnHistory?.[turnIndex];
-        return Boolean(turn && turn.live === true);
-    },
-
-    resetTurnMounts() {
-        this.turnMounted = {};
-    },
-
-    prepareBottomWindow() {
-        const container = document.getElementById('messages');
-        const turns = Alpine.store('chat').turnHistory;
-        if (!container || !turns || turns.length === 0) return;
-
-        const budget = Math.max(container.clientHeight * 2, 600);
-        let total = 0;
-        for (let i = turns.length - 1; i >= 0; i--) {
-            this.turnMounted[i] = true;
-            total += this.turnPlaceholderHeight(turns[i]);
-            if (total >= budget) break;
-        }
-    },
-
-    /*
-     * called after every turnHistory mutation: prune mount entries for
-     * turns that no longer exist, keep the newest turns mounted (a fresh
-     * message must never flash in as a placeholder), schedule a pass.
-     */
-    syncMountWindows() {
-        const turns = Alpine.store('chat').turnHistory;
-        const n = (turns || []).length;
-
-        for (const k of Object.keys(this.turnMounted)) {
-            if (Number(k) >= n) delete this.turnMounted[k];
-        }
-        for (let i = Math.max(0, n - 2); i < n; i++) this.turnMounted[i] = true;
-
-        this.updateMounts();
-    },
-
-    updateMounts() {
-        if (this._mountRaf !== null) return;
-        this._mountRaf = requestAnimationFrame(() => {
-            this._mountRaf = null;
-            this._mountPass();
-        });
-    },
-
-    _mountPass() {
-        const container = document.getElementById('messages');
-        if (!container) return;
-        const turns = Alpine.store('chat').turnHistory;
-        if (!turns || turns.length === 0) return;
-
-        const cRect = container.getBoundingClientRect();
-        const mountTop = cRect.top - this.mountMargin;
-        const mountBottom = cRect.bottom + this.mountMargin;
-        const farTop = cRect.top - this.unmountMargin;
-        const farBottom = cRect.bottom + this.unmountMargin;
-
-        const mounts = [];
-
-        container.querySelectorAll('[data-turn-index]').forEach(el => {
-            const i = Number(el.dataset.turnIndex);
-            const turn = turns[i];
-            if (!turn) return;
-
-            const r = el.getBoundingClientRect();
-            if (this.turnMounted[i]) {
-                if (r.bottom < farTop || r.top > farBottom) {
-                    this.captureTurnHeight(turn, el);
-                    delete this.turnMounted[i];
-                }
-            } else if (r.bottom > mountTop && r.top < mountBottom) {
-                mounts.push({ i, above: r.bottom <= cRect.top, h: el.offsetHeight });
-            }
-        });
-
-        if (mounts.length === 0) return;
-
-        (async () => {
-            for (const m of mounts) this.turnMounted[m.i] = true;
-
-            await Alpine.nextTick();
-
-            let shift = 0;
-            for (const m of mounts) {
-                const el = container.querySelector(`[data-turn-index="${m.i}"]`);
-                if (el && m.above) shift += el.offsetHeight - m.h;
-            }
-            if (shift) container.scrollTo({ top: container.scrollTop + shift, behavior: 'instant' });
-
-            this.updateMounts();
-        })();
-    },
-
     windowWidth: window.innerWidth,
     isMobile: false,
 
@@ -229,12 +110,74 @@ UI_STORE = {
 
     sidebarCollapsed: false,
 
+    sidebarWidth: parseInt(localStorage.getItem('sidebarWidth')) || 288,
+    sidebarResizing: false,
+
+    startSidebarResize(e) {
+        if (this._sidebarDrag) {
+            e.preventDefault();
+            return;
+        }
+
+        e.preventDefault();
+        this.sidebarResizing = true;
+
+        const startX = e.clientX;
+        const startWidth = this.sidebarWidth;
+        const pointerId = e.pointerId;
+        const target = e.currentTarget || e.target;
+
+        try {
+            target.setPointerCapture(pointerId);
+        } catch (err) {}
+
+        const onMove = (ev) => {
+            if (ev.pointerId !== undefined && ev.pointerId !== pointerId) return;
+            this.sidebarWidth = Math.min(560, Math.max(220, startWidth + ev.clientX - startX));
+        };
+
+        let ended = false;
+        const onEnd = (ev) => {
+            if (ev && ev.pointerId !== undefined && ev.pointerId !== pointerId) return;
+            if (ended) return;
+
+            ended = true;
+            this.sidebarResizing = false;
+            this._sidebarDrag = null;
+            localStorage.setItem('sidebarWidth', String(this.sidebarWidth));
+
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onEnd);
+            window.removeEventListener('pointercancel', onEnd);
+            window.removeEventListener('blur', onEnd);
+            if (target) target.removeEventListener('lostpointercapture', onEnd);
+
+            try {
+                if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+            } catch (err) {}
+        };
+
+        this._sidebarDrag = { pointerId, cleanup: onEnd };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onEnd);
+        window.addEventListener('pointercancel', onEnd);
+        window.addEventListener('blur', onEnd);
+        if (target) target.addEventListener('lostpointercapture', onEnd);
+    },
+
+    resetSidebarWidth() {
+        if (this._sidebarDrag) this._sidebarDrag.cleanup();
+        this.sidebarWidth = 288;
+        localStorage.setItem('sidebarWidth', '288');
+    },
+
     expandReasoning: true,
 
     async init() {
         // check if this is a phone
         this.windowWidth = window.innerWidth;
-        this.isMobile = window.innerWidth <= 768;
+        this.isMobile = window.isMobileViewport();
 
         // hide sidebar on mobile (in favor of a hamburger button)
         this.showSidebar = !this.isMobile;
@@ -244,11 +187,11 @@ UI_STORE = {
 
         this.expandReasoning = localStorage.getItem("expandReasoning") !== 'false';
 
-        // a resize moves the mount window: re-evaluate lazily-mounted turns
-        window.addEventListener('resize', () => this.updateMounts());
+
     },
 
     async toggleSidebar() {
+        if (this._sidebarDrag) this._sidebarDrag.cleanup();
         this.showSidebar = !this.showSidebar;
     },
 
@@ -292,19 +235,22 @@ UI_STORE = {
         const el = document.getElementById(containerId);
         if (!el) return;
 
-        this.updateMounts();
-
         if (this._suppressScroll) return;
 
         this._updateShouldScroll(el);
+
+        Alpine.store('chat').schedulePromptPinRecompute();
     },
 
     async _jumpToBottom(el) {
         this._stopPump();
 
+        // land on the bottom immediately, then keep chasing it for as long
+        // as the content above keeps growing (markdown/code finishing render)
+        el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+
         let lastHeight = -1;
         for (let i = 0; i < 24; i++) {
-            this.updateMounts();
             await Alpine.nextTick();
             el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
             await new Promise(resolve => requestAnimationFrame(resolve));
@@ -315,6 +261,15 @@ UI_STORE = {
         }
     },
 
+    // while the live chain is capped it scrolls itself (x-auto-scroll);
+    // pumping the outer window at the same time makes the two scrollers
+    // fight, so the outer follow stands down until the chain breaks free
+    _chainOwnsScroll() {
+        const body = document.querySelector('.agent-chain.is-streaming .agent-chain-body');
+        if (!body) return false;
+        return body.scrollHeight > body.clientHeight + 1;
+    },
+
     async scrollToBottom(containerId = 'messages', instant = false) {
         if (!this.shouldScroll) return;
 
@@ -323,6 +278,11 @@ UI_STORE = {
 
         if (instant) {
             await this._jumpToBottom(el);
+            return;
+        }
+
+        if (this._chainOwnsScroll()) {
+            this._stopPump();
             return;
         }
 
@@ -352,7 +312,6 @@ UI_STORE = {
 
         let lastTop = -1;
         for (let i = 0; i < 24; i++) {
-            this.updateMounts();
             await Alpine.nextTick();
 
             const el = document.querySelector(`[data-turn-index="${turnIndex}"]`);
@@ -361,8 +320,6 @@ UI_STORE = {
             const containerRect = container.getBoundingClientRect();
             const elementRect = el.getBoundingClientRect();
             const offset = elementRect.top - containerRect.top - (containerRect.height / 2) + (elementRect.height / 2);
-            // instant jump: smooth would sweep the lazy-mount zone through
-            // every turn between here and the target
             container.scrollTo({ top: container.scrollTop + offset, behavior: 'instant' });
 
             await new Promise(resolve => requestAnimationFrame(resolve));
