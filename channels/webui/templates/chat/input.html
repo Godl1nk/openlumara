@@ -46,11 +46,14 @@
 {{ extension_slot("after_input") }}
 
 {% if config.get("enable_model_switcher") and config.get("enable_admin_settings") %}
+{# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-21 21:34 +08:00 harness:Codex #}
 <div class="model-switcher" x-data="modelQuickSwitch()" x-show="!$store.ui.isMobile" x-cloak x-init="$store.modelManager.loadModelOptions()">
     <select class="model-select" :value="$store.modelManager.selectedKey()" :disabled="$store.modelManager.selecting"
             @change="$store.modelManager.selectModel($event.target.value)"
-            @focus="$store.modelManager.loadModelOptions()"
             title="Switch model">
+        <template x-if="$store.modelManager.modelOptions().length === 0">
+            <option disabled selected x-text="$store.modelManager.loading ? 'Loading models…' : $store.modelManager.optionsError ? 'Could not load models' : 'No models available'"></option>
+        </template>
         <template x-for="option in $store.modelManager.modelOptions()" :key="option.key">
             <option :value="option.key" x-text="option.label" :disabled="option.disabled"
                     :selected="option.key === $store.modelManager.selectedKey()"></option>
@@ -58,7 +61,6 @@
     </select>
     <select class="model-select effort-select" :value="currentEffort" :disabled="effortSaving || $store.modelManager.loading"
             @change="setEffort($event.target.value)"
-            @focus="$store.modelManager.loadModelOptions()"
             title="Reasoning effort for the active model"
             aria-label="Reasoning effort">
         <option value="default">Default</option>

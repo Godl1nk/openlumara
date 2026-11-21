@@ -47,6 +47,7 @@ const MODEL_MANAGER_STORE = {
     disabledModels: [],
     selecting: false,
     loading: false,
+    optionsError: false,
 
     async fetchProviders() {
         this.loading = true;
@@ -61,15 +62,18 @@ const MODEL_MANAGER_STORE = {
                 this.imageProviderId = res.image_provider_id || "";
                 this.disabledModels = res.disabled_models || [];
             }
+            return Boolean(res);
         } catch (e) {
-            // Ignore background network/auth errors silently
+            return false;
         } finally {
             this.loading = false;
         }
     },
     async loadModelOptions() {
-        await this.fetchProviders();
-        if (!this.hasCatalog) await Alpine.store("settings")?.fetchModels();
+        const loaded = await this.fetchProviders();
+        const settings = Alpine.store("settings");
+        if (loaded && !this.hasCatalog) await settings.fetchModels();
+        this.optionsError = !loaded || (!this.hasCatalog && Boolean(settings.modelsLoadError));
     },
 
     selectedKey(image = false) {
@@ -89,8 +93,9 @@ const MODEL_MANAGER_STORE = {
 
     modelOptions(image = false) {
         const options = [];
+        // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-21 21:34 +08:00 harness:Codex
         const add = (name, providerId = "", label = name) => {
-            options.push({ name, providerId, label, key: JSON.stringify([providerId, name]) });
+            options.push({ name, providerId, label, key: JSON.stringify([providerId, name]), disabled: false });
         };
         if (this.hasCatalog) {
             const providers = this.providers.filter(provider => provider.enabled);
