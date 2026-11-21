@@ -5,6 +5,10 @@ import inspect
 import json
 import asyncio
 import copy
+from contextvars import ContextVar
+
+# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 21:16:00 +08:00 harness:Codex
+current_tool_channel = ContextVar("current_tool_channel", default=None)
 
 class ModuleConfig:
     def __init__(self, module_obj, settings_structure: dict, module_config):
@@ -64,6 +68,14 @@ class Module:
 
     # list of python dependencies that need to be installed for the module to work
     dependencies = []
+
+    @property
+    def channel(self):
+        return current_tool_channel.get() or self._channel
+
+    @channel.setter
+    def channel(self, value):
+        self._channel = value
 
     def __init__(self, manager, is_user_module=False, channel=None):
         self.manager = manager

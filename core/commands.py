@@ -30,6 +30,16 @@ def _convert_type(value: str):
     # Default to string
     return value
 
+# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:27:15 +08:00 harness:Codex
+def _module_command(name, modules):
+    for registered_class, method in core.module._command_registry.get(name, ()):
+        for module_name, instance in modules.items():
+            if name == "shell" and module_name == "host_shell" and "shell" in modules:
+                continue
+            if isinstance(instance, registered_class):
+                return module_name, method.__get__(instance, registered_class)
+    return None, None
+
 def get_commands(modules_dict: dict = None):
     """
     Return all available commands as a list of dicts (key=command, value=description)
@@ -50,29 +60,17 @@ def get_commands(modules_dict: dict = None):
         else:
             commands["core"][f"{cmd_prefix}{cmd_name}"] = desc
 
-    if modules_dict:
-        for module_name, instance in modules_dict.items():
-            module_cmds = {}
-
-            # Scan the global registry for commands belonging to this instance's class
-            for cmd_name, handlers in core.module._command_registry.items():
-                for registered_cls, method in handlers:
-                    if isinstance(instance, registered_cls):
-                        desc = method._command_description
-
-                        # Handle dictionary help for subcommands
-                        if isinstance(desc, dict):
-                            for subcmd, subdesc in desc.items():
-                                full_cmd = f"{cmd_name} {subcmd}".strip()
-                                module_cmds[f"{cmd_prefix}{full_cmd}"] = subdesc
-                        else:
-                            module_cmds[f"{cmd_prefix}{cmd_name}"] = desc
-
-            # If this module has any commands, add them to the output
-            if module_cmds and module_name:
-                if module_name not in commands:
-                    commands[module_name] = {}
-                commands[module_name].update(module_cmds)
+    for name in core.module._command_registry:
+        owner, method = _module_command(name, modules_dict or {})
+        if method is None:
+            continue
+        entries = commands.setdefault(owner, {})
+        desc = method._command_description
+        if isinstance(desc, dict):
+            for subcmd, subdesc in desc.items():
+                entries[f"{cmd_prefix}{name} {subcmd}".rstrip()] = subdesc
+        else:
+            entries[f"{cmd_prefix}{name}"] = desc
 
     return commands
 
@@ -154,13 +152,14 @@ class Commands:
         self.channel = channel
 
     def _check_if_temporary(self, cmd: str):
+        _, method = _module_command(cmd, self.channel.manager.modules)
         # set ghost flag on temporary commands so that they emit as ghost messages (invisible to the AI)
         if (
             # manually marked as ghost
             cmd in self.GHOST
             or
             # marked as ghost within the decorator (@core.module.command(name, send_to_ai=False)
-            core.module.command_is_temporary(cmd)
+            getattr(method, "_is_temporary", False)
             or
             # just make them all ghosted if tool usage is turned off
             not core.config.get("model").get("use_tools")
@@ -237,20 +236,13 @@ class Commands:
                 self.channel.log_error(f"error executing {cmd_lookup}", e)
                 return f"error: {e}"
 
-        # fall through to module commands
-        if self.channel.manager.modules:
-            # See if this command exists in the command registry
-            if cmd_lookup in core.module._command_registry:
-                for registered_cls, method in core.module._command_registry[cmd_lookup]:
-                    # Find the instance of this class in the loaded modules
-                    for module_inst in self.channel.manager.modules.values():
-                        if isinstance(module_inst, registered_cls):
-                            # Bind the method to the instance and call it
-                            bound_method = method.__get__(module_inst, registered_cls)
-                            try:
-                                return await bound_method(args)
-                            except Exception as e:
-                                self.channel.log_error("error while executing command", e)
+        _, method = _module_command(cmd_lookup, self.channel.manager.modules)
+        if method is not None:
+            try:
+                return await method(args)
+            except Exception as error:
+                self.channel.log_error("error while executing command", error)
+                return f"error: {error}"
 
         return "no such command! check /help"
 

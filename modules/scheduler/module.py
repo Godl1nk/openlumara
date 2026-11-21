@@ -282,12 +282,14 @@ class Scheduler(core.module.Module):
             self.log("scheduler", f"error executing job {job_id}: channel has no valid context")
             return
 
-        # Filter out scheduler tools to prevent circular scheduling
-        tools = [
-            t for t in self.manager.tools
-            if not t.get("function", {}).get("name", "").startswith("scheduler_")
-        ]
+        # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:18:00 +08:00 harness:Codex
+        loader = job_channel.tool_loader
+        allowed = {name for name, entry in loader.catalog.items() if entry["module"] != self.name}
+        with core.tool_loader.limit_tools(allowed | loader.meta_tool_names):
+            await self._run_on_channel(job, job_channel)
 
+    async def _run_on_channel(self, job, job_channel):
+        job_id = job.get("id")
         action = job.get("action")
         instr_str = f"""
 [AUTOMATED SYSTEM INSTRUCTION]
@@ -327,11 +329,9 @@ Use tools if needed. For simple reminders, do not use tools.
                         base_messages = await job_channel.context.get(end_prompt=False)
                         final_messages = list(base_messages) + [instruction_message]
 
-                response = await self.manager.API.send(
-                    final_messages,
-                    use_tools=True,
-                    tools=tools
-                )
+                options = {}
+                fixed_tools = job_channel._apply_request_tool_policy(options)
+                response = await self.manager.API.send(final_messages, **options)
 
                 if response:
                     break  # Success
@@ -349,7 +349,7 @@ Use tools if needed. For simple reminders, do not use tools.
 
         if tool_calls and job_channel:
             tool_content_list = []
-            async for token in job_channel.tc_manager.process(response, push=True):
+            async for token in job_channel.tc_manager.process(response, push=True, tools=fixed_tools):
                 if token.get("type") == "content":
                     tool_content_list.append(token.get("content", ""))
             tool_content = "".join(tool_content_list)

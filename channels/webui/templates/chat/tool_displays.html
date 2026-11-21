@@ -1,3 +1,4 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex #}
 {{ extension_slot("tool_views") }}
 
 <!-- -- AI GENERATED CODE (Qwen3.8 Flash Next) :: (2026-10-22) harness:openlumara status:reviewed
@@ -73,7 +74,7 @@
         </div>
 
         <figure class="image-done" x-show="!running && result && result.url">
-            <img :src="result?.url" :alt="result?.prompt || result?.filename || 'image'"
+            <img x-image-tool-file="result?.url" :alt="result?.prompt || result?.filename || 'image'"
                  loading="lazy" decoding="async">
             <figcaption x-show="result?.prompt" x-text="result?.prompt"></figcaption>
         </figure>

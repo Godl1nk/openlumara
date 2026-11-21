@@ -12,12 +12,12 @@ def register(app, channel):
     async def models_get():
         """Returns available models plus current chat/image selection metadata"""
         try:
-            result = await channel.manager.API.list_models()
+            choices = await channel.manager.API.model_choices()
         except core.api.APIError as error:
             return utils.api_result(str(error), success=False)
 
         return utils.api_result({
-            "models": result,
+            "models": list(dict.fromkeys(choice["id"] for choice in choices if choice["enabled"] and not choice["is_image"])),
             "current": channel.manager.API.get_model(),
             "image_model": channel.manager.API.get_image_model(),
             "image_edit_model": channel.manager.API.get_image_edit_model_setting(),
@@ -28,24 +28,31 @@ def register(app, channel):
 
     @app.post("/api/model/set")
     async def model_set(request: fastapi.Request):
-        """Switches the active chat model"""
+        """Saves the active chat model and reports any connection error separately."""
         data = await request.json()
         name = (data.get("name") or "").strip()
         if not name:
             return utils.api_result("Model name cannot be empty", success=False)
 
-        if not channel.manager.API.set_model(name):
-            return utils.api_result("An image model cannot be used as the default chat model", success=False)
+        api = channel.manager.API
+        if not api.set_model(name, data.get("provider_id")):
+            return utils.api_result("Choose an enabled chat model and its provider.", success=False)
+
+        # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:49:18 +08:00 harness:Codex
+        connection_error = None
         try:
-            await channel.manager.API.connect(silent=True)
+            await api.connect(silent=True)
         except core.api.APIError as error:
-            return utils.api_result(str(error), success=False)
+            connection_error = str(error)
 
         await channel.websocket_manager.push_context_update()
+        active_model = api.get_model()
         return utils.api_result({
-            "name": name,
-            "max_context": channel.manager.API.get_max_context(name)
-        }, success=True)
+            "name": active_model,
+            "provider_id": api.selected_provider_id(),
+            "max_context": api.get_max_context(active_model),
+            "connection_error": connection_error
+        })
 
     @app.post("/api/model/image/set")
     async def model_image_set(request: fastapi.Request):
@@ -55,9 +62,10 @@ def register(app, channel):
         if not name:
             return utils.api_result("Image model name cannot be empty", success=False)
 
-        if not channel.manager.API.set_image_model(name):
-            return utils.api_result("The default chat model cannot also be the default image model", success=False)
-        return utils.api_result({"image_model": name}, success=True)
+        if not channel.manager.API.set_image_model(name, data.get("provider_id")):
+            return utils.api_result("Choose an enabled image model and its provider.", success=False)
+        return utils.api_result({"image_model": channel.manager.API.get_image_model(),
+                                 "provider_id": channel.manager.API.selected_provider_id(image=True)}, success=True)
 
     @app.post("/api/model/image/edit/set")
     async def model_image_edit_set(request: fastapi.Request):
@@ -94,6 +102,8 @@ def register(app, channel):
 
         disabled = bool(data.get("disabled", False))
         updated = channel.manager.API.set_model_disabled(name, disabled)
+        if updated is None:
+            return utils.api_result("Unknown provider or model.", success=False)
         return utils.api_result({
             "name": name,
             "disabled": disabled,
@@ -106,6 +116,10 @@ def register(app, channel):
         return utils.api_result({
             "providers": channel.manager.API.get_providers(),
             "current_model": channel.manager.API.get_model(),
+            "provider_id": channel.manager.API.selected_provider_id(),
+            "image_provider_id": channel.manager.API.selected_provider_id(image=True),
+            "disabled_models": channel.manager.API.get_disabled_models(),
+            "enable_thinking": core.config.get("model", "enable_thinking", default=True),
             "image_model": channel.manager.API.get_image_model(),
             "image_edit_model": channel.manager.API.get_image_edit_model_setting()
         }, success=True)
@@ -178,12 +192,9 @@ def register(app, channel):
         settings = data.get("settings", {})
         if not pid or not mid:
             return utils.api_result("Missing provider_id or model_id", success=False)
-        if settings.get("is_image") and mid == channel.manager.API.get_model():
+        if settings.get("is_image") and channel.manager.API.is_selected_model(mid, pid):
             return utils.api_result("The default chat model cannot also be image-capable", success=False)
-        if settings.get("is_image") is False and mid in {
-            channel.manager.API.get_image_model(),
-            channel.manager.API.get_image_edit_model_setting(),
-        }:
+        if settings.get("is_image") is False and channel.manager.API.is_selected_model(mid, pid, image=True):
             return utils.api_result("A default image model must remain image-capable", success=False)
 
         for key in ("max_output_tokens", "max_messages", "evict_block"):

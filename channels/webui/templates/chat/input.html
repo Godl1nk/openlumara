@@ -46,18 +46,19 @@
 {{ extension_slot("after_input") }}
 
 {% if config.get("enable_model_switcher") and config.get("enable_admin_settings") %}
-<div class="model-switcher" x-data="modelQuickSwitch()" x-show="!$store.ui.isMobile" x-cloak x-init="lazyFetch()">
-    <select class="model-select" :value="currentModel" :disabled="saving"
-            @change="setModel($event.target.value)"
-            @focus="lazyFetch()"
+<div class="model-switcher" x-data="modelQuickSwitch()" x-show="!$store.ui.isMobile" x-cloak x-init="$store.modelManager.loadModelOptions()">
+    <select class="model-select" :value="$store.modelManager.selectedKey()" :disabled="$store.modelManager.selecting"
+            @change="$store.modelManager.selectModel($event.target.value)"
+            @focus="$store.modelManager.loadModelOptions()"
             title="Switch model">
-        <template x-for="model in enabledOptions" :key="model">
-            <option :value="model" x-text="model"></option>
+        <template x-for="option in $store.modelManager.modelOptions()" :key="option.key">
+            <option :value="option.key" x-text="option.label" :disabled="option.disabled"
+                    :selected="option.key === $store.modelManager.selectedKey()"></option>
         </template>
     </select>
-    <select class="model-select effort-select" :value="currentEffort" :disabled="effortSaving"
+    <select class="model-select effort-select" :value="currentEffort" :disabled="effortSaving || $store.modelManager.loading"
             @change="setEffort($event.target.value)"
-            @focus="lazyFetch()"
+            @focus="$store.modelManager.loadModelOptions()"
             title="Reasoning effort for the active model"
             aria-label="Reasoning effort">
         <option value="default">Default</option>
@@ -86,7 +87,7 @@
 
 {% if config.get("enable_thinking_toggle") and config.get("enable_admin_settings") %}
 <div class="thinking-toggle" x-data="thinkingToggle({{ 'true' if core_config.get('model', 'enable_thinking', default=True) else 'false' }})" x-cloak>
-    <button type="button" :title="enabled ? 'Thinking on' : 'Thinking off'" :aria-pressed="enabled" :disabled="saving" @click="toggle()">
+    <button type="button" :title="enabled ? 'Thinking on' : 'Thinking off'" :aria-pressed="enabled" :disabled="saving || $store.modelManager.loading" @click="toggle()">
         <span class="icon-on" x-show="enabled">{% include 'svg/brain.svg' %}</span>
         <span class="icon-off" x-show="!enabled" x-cloak>{% include 'svg/brain_off.svg' %}</span>
     </button>

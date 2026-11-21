@@ -1,3 +1,4 @@
+# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:19:00 +08:00 harness:Codex
 import os
 import io
 import time
@@ -21,6 +22,9 @@ class ImageTools(core.module.Module):
     """
 
     category = "utilities"
+    edit_tools = {"add_text", "resize", "crop", "rotate", "flip", "apply_filter", "convert_format"}
+    media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                   ".webp": "image/webp", ".bmp": "image/bmp", ".gif": "image/gif"}
 
     settings = {
         "enabled": {
@@ -28,10 +32,20 @@ class ImageTools(core.module.Module):
             "default": True,
             "description": "Enable or disable image generation and editing."
         },
+        "generation": {
+            "type": "select",
+            "default": "auto",
+            "description": "Choose when Image Tools exposes its generator. Editing stays available.",
+            "options": {
+                "auto": "Use upstream Stable Diffusion when enabled",
+                "image_tools": "Keep the Image Tools generator available",
+                "disabled": "Editing only"
+            }
+        },
         "ask_before_generate": {
             "type": "boolean",
             "default": False,
-            "description": "Pause image requests and pick the model in chat each time."
+            "description": "Ask for confirmation before AI image generation or editing."
         },
         "approval_timeout": {
             "type": "number",
@@ -105,6 +119,20 @@ class ImageTools(core.module.Module):
         """Ensure the output directory exists."""
         out_dir = self._get_output_dir()
         os.makedirs(out_dir, exist_ok=True)
+        disabled = set()
+        if self.config.get("enabled") is False:
+            disabled.update(self.edit_tools)
+        if disabled or self._generation_disabled():
+            disabled.add("generate")
+        if "models" in core.config.get("modules", "enabled", default=[]):
+            disabled.add("set_image_model")
+        self.disabled_tools[:] = sorted(disabled)
+
+    def _generation_disabled(self):
+        generation = self.config.get("generation", default="auto")
+        return generation == "disabled" or (
+            generation == "auto" and "stable_diffusion" in core.config.get("modules", "enabled", default=[])
+        )
 
     def _get_output_dir(self) -> str:
         configured = self.config.get("output_directory") or "data/images"
@@ -122,33 +150,35 @@ class ImageTools(core.module.Module):
         The model pastes this into its reply, so it has to be a URL: a bare
         filesystem path renders as a broken image in the chat.
         """
-        url = self._view_url(dest)
         payload = {
             "action": action,
             "source": src,
             "output": dest,
-            "url": url,
-            "markdown": f"![{alt or action}]({url})",
         }
+        if Path(dest).resolve().parent == Path(self._get_output_dir()).resolve():
+            url = self._view_url(dest)
+            payload.update(url=url, markdown=f"![{alt or action}]({url})")
         payload.update(extra)
         return self.result(payload, success=True)
 
     def _get_image_model(self) -> str:
         """Resolve active image model from module config, global core config, or fallback."""
+        if core.config.get("model", "image_provider_id"):
+            return self.manager.API.get_image_model()
         return self.config.get("model") or core.config.get("model", "image_model") or self.config.get("openai_model") or "dall-e-3"
 
-    def _provider_for_endpoint(self, endpoint: str):
-        """Resolve a configured provider by name/id for the image endpoint setting."""
+    def _provider_for_endpoint(self, endpoint: str, providers=None):
+        """Resolve provider ID or an unambiguous legacy display name."""
         endpoint = str(endpoint or "").strip()
         if not endpoint or endpoint.lower() == "auto":
             return None
-        try:
-            for p in self.manager.API.get_providers():
-                if p.get("id") == endpoint or p.get("name") == endpoint:
-                    return p
-        except Exception:
-            pass
-        return None
+        if providers is None:
+            providers = self.manager.API.get_providers()
+        for provider in providers:
+            if provider["id"] == endpoint:
+                return provider if provider.get("enabled", True) else None
+        matches = [provider for provider in providers if provider.get("enabled", True) and provider.get("name") == endpoint]
+        return matches[0] if len(matches) == 1 else None
 
     _APPROVAL_WORDS = {
         "proceed", "yes", "y", "yep", "yeah", "ok", "okay", "sure",
@@ -177,8 +207,10 @@ class ImageTools(core.module.Module):
             return True
         return any(phrase in text for phrase in self._APPROVAL_PHRASES)
 
-    async def _approval_error(self, action: str, detail: str = ""):
-        """Return an error string when approval is required but missing; None if approved."""
+    async def authorize_image_action(self, action: str, detail: str = ""):
+        """Return a refusal reason or None before an AI image operation."""
+        if self.config.get("enabled") is False:
+            return "AI image generation and editing are disabled in Image Tools."
         if not self.config.get("ask_before_generate"):
             return None
 
@@ -195,8 +227,8 @@ class ImageTools(core.module.Module):
             default_choice="Cancel",
         )
         content = (ack or {}).get("content") or {}
-        if ack.get("status") != "success":
-            return content.get("error") or "Image action was not approved."
+        if (ack or {}).get("status") != "success" or not isinstance(content, dict):
+            return "Image action was not approved."
 
         if not self._answer_is_approval(content.get("answer")):
             return "Image action cancelled by user."
@@ -233,7 +265,7 @@ class ImageTools(core.module.Module):
             negative_prompt: Optional negative prompt (used when backend is Stable Diffusion / Forge).
             filename: Optional custom base filename (without path).
         """
-        if self.config.get("enabled") is False:
+        if self._generation_disabled():
             return self.result("Image generation is currently disabled in settings.", success=False)
 
         if not prompt or not str(prompt).strip():
@@ -242,7 +274,7 @@ class ImageTools(core.module.Module):
         effective_model = self._get_image_model()
         configured_endpoint = self.config.get("endpoint") or "auto"
 
-        approval_error = await self._approval_error(
+        approval_error = await self.authorize_image_action(
             "🎨 Image generation requested:",
             f"- Prompt: '{prompt}'\n- Model: {effective_model}\n- Endpoint: {configured_endpoint}\n\nProceed with generation?"
         )
@@ -285,7 +317,7 @@ class ImageTools(core.module.Module):
                 self._generate_mock(prompt, (width, height), target_path)
 
             rel_path = os.path.relpath(target_path, core.get_path()).replace(os.sep, "/")
-            inline_url = f"/api/ext/image_tools/view?file={os.path.basename(target_path)}"
+            inline_url = self._view_url(target_path)
             result_data = {
                 "status": "generated",
                 "path": target_path,
@@ -344,34 +376,34 @@ class ImageTools(core.module.Module):
 
     async def _generate_openai(self, prompt: str, size: str, style: str, target_path: str, model: str = None):
         """Calls OpenAI DALL-E / compatible image generation endpoint."""
-        prov_url, prov_key = None, None
-
         # explicit endpoint setting wins over model-based provider discovery
         endpoint_name = str(self.config.get("endpoint") or "auto").strip()
         provider = self._provider_for_endpoint(endpoint_name)
         if endpoint_name.lower() != "auto" and not provider:
-            raise RuntimeError(f"Configured image endpoint '{endpoint_name}' was not found")
+            raise RuntimeError(f"Image endpoint '{endpoint_name}' is unavailable or ambiguous. Choose a provider in Image Tools settings.")
         if not provider and hasattr(self.manager.API, "get_image_model_provider"):
-            p, _ = self.manager.API.get_image_model_provider()
-            if p:
-                provider = p
+            provider, _ = self.manager.API.get_image_model_provider()
         if provider:
-            prov_url = provider.get("url")
-            prov_key = provider.get("key")
-        elif endpoint_name.lower() == "auto":
-            # single-endpoint setups (e.g. llama-swap) serve images from the
-            # same base URL as chat, so fall back to the active API endpoint
-            prov_url = core.config.get("api", "url")
-            prov_key = core.config.get("api", "key")
-
-        api_key = prov_key or self.config.get("openai_api_key") or core.config.get("api", "key", default="")
-        api_url = (prov_url or self.config.get("openai_api_url") or "https://api.openai.com/v1").rstrip("/")
+            api_url = provider.get("url")
+            if not api_url:
+                raise RuntimeError("Selected image provider has no endpoint URL.")
+            api_key = provider.get("key")
+        else:
+            api_url = core.config.get("api", "url")
+            module_url = self.config.get("openai_api_url") or "https://api.openai.com/v1"
+            if not api_url or api_url == "http://API_URL_HERE/v1":
+                api_url, api_key = module_url, self.config.get("openai_api_key")
+            else:
+                api_key = core.config.get("api", "key")
+                if not api_key and api_url.rstrip("/") == module_url.rstrip("/"):
+                    api_key = self.config.get("openai_api_key")
         model = model or self._get_image_model()
-        endpoint = f"{api_url}/images/generations"
+        endpoint = f"{api_url.rstrip('/')}/images/generations"
         headers = {
-            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         payload = {
             "model": model,
             "prompt": prompt,
@@ -447,7 +479,7 @@ class ImageTools(core.module.Module):
     @core.module.tool
     async def set_image_model(self, model_name: str):
         """
-        Sets the designated image model to use for image generation and editing.
+        Sets the image generation model.
 
         Args:
             model_name: The name or ID of the image model (e.g. dall-e-3, dall-e-2, flux-schnell).
@@ -455,9 +487,8 @@ class ImageTools(core.module.Module):
         clean_name = str(model_name).strip()
         if not clean_name:
             return self.result("Model name cannot be empty.", success=False)
-        if hasattr(self.manager.API, "set_image_model"):
-            if not self.manager.API.set_image_model(clean_name):
-                return self.result("The default chat model cannot also be the default image model.", success=False)
+        if not self.manager.API.set_image_model(clean_name):
+            return self.result("Choose an enabled image model and its provider.", success=False)
         return self.result(f"Image model has been set to '{clean_name}'.", success=True)
 
     # AI Tools - Local Image Manipulation (Pillow)
@@ -479,7 +510,7 @@ class ImageTools(core.module.Module):
         if not os.path.isfile(src):
             return self.result(f"File not found: {image_path}", success=False)
 
-        approval_error = await self._approval_error("Image edit requested:", f"add_text on {image_path}")
+        approval_error = await self.authorize_image_action("Image edit requested:", f"add_text on {image_path}")
         if approval_error:
             return self.result(approval_error, success=False)
 
@@ -528,7 +559,7 @@ class ImageTools(core.module.Module):
         width = max(1, int(width))
         height = max(1, int(height))
 
-        approval_error = await self._approval_error("Image edit requested:", f"resize to {width}x{height}")
+        approval_error = await self.authorize_image_action("Image edit requested:", f"resize to {width}x{height}")
         if approval_error:
             return self.result(approval_error, success=False)
 
@@ -564,7 +595,7 @@ class ImageTools(core.module.Module):
         if right <= left or bottom <= top:
             return self.result("Invalid crop coordinates: right must be > left, and bottom must be > top.", success=False)
 
-        approval_error = await self._approval_error("Image edit requested:", f"crop {image_path}")
+        approval_error = await self.authorize_image_action("Image edit requested:", f"crop {image_path}")
         if approval_error:
             return self.result(approval_error, success=False)
 
@@ -603,7 +634,7 @@ class ImageTools(core.module.Module):
         if not os.path.isfile(src):
             return self.result(f"File not found: {image_path}", success=False)
 
-        approval_error = await self._approval_error("Image edit requested:", f"rotate by {angle} degrees")
+        approval_error = await self.authorize_image_action("Image edit requested:", f"rotate by {angle} degrees")
         if approval_error:
             return self.result(approval_error, success=False)
 
@@ -636,7 +667,7 @@ class ImageTools(core.module.Module):
 
         mode_clean = mode.lower().strip()
 
-        approval_error = await self._approval_error("Image edit requested:", f"flip {mode_clean}")
+        approval_error = await self.authorize_image_action("Image edit requested:", f"flip {mode_clean}")
         if approval_error:
             return self.result(approval_error, success=False)
 
@@ -671,7 +702,7 @@ class ImageTools(core.module.Module):
 
         f_name = filter_type.lower().strip()
 
-        approval_error = await self._approval_error("Image edit requested:", f"apply {f_name} filter")
+        approval_error = await self.authorize_image_action("Image edit requested:", f"apply {f_name} filter")
         if approval_error:
             return self.result(approval_error, success=False)
 
@@ -730,7 +761,7 @@ class ImageTools(core.module.Module):
         if fmt == "jpg":
             fmt = "jpeg"
 
-        approval_error = await self._approval_error("Image edit requested:", f"convert to {fmt}")
+        approval_error = await self.authorize_image_action("Image edit requested:", f"convert to {fmt}")
         if approval_error:
             return self.result(approval_error, success=False)
 
@@ -796,10 +827,9 @@ class ImageTools(core.module.Module):
         if not os.path.isdir(out_dir):
             return self.result([], success=True)
 
-        valid_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
         files = []
         for entry in os.scandir(out_dir):
-            if entry.is_file() and os.path.splitext(entry.name)[1].lower() in valid_exts:
+            if entry.is_file() and os.path.splitext(entry.name)[1].lower() in self.media_types:
                 files.append((entry.stat().st_mtime, entry.path, entry.name))
 
         files.sort(reverse=True, key=lambda x: x[0])
@@ -871,14 +901,7 @@ class ImageTools(core.module.Module):
         if not os.path.isfile(full_path):
             raise fastapi.HTTPException(status_code=404, detail="Image not found")
         ext = os.path.splitext(clean_name)[1].lower()
-        media_types = {
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".webp": "image/webp",
-            ".gif": "image/gif"
-        }
-        mt = media_types.get(ext, "application/octet-stream")
+        mt = self.media_types.get(ext, "application/octet-stream")
         return fastapi.responses.FileResponse(full_path, media_type=mt)
 
     @webui.route("delete", method="POST", admin_only=True)
@@ -908,10 +931,13 @@ class ImageTools(core.module.Module):
                     "models": [m["id"] if isinstance(m, dict) else str(m) for m in p.get("models", [])]
                 })
 
+        endpoint = self.config.get("endpoint") or "auto"
+        provider = self._provider_for_endpoint(endpoint, providers)
         return {
             "enabled": self.config.get("enabled") is not False,
+            "generator_available": not self._generation_disabled(),
             "ask_before_generate": bool(self.config.get("ask_before_generate")),
-            "endpoint": self.config.get("endpoint") or "auto",
+            "endpoint": provider["id"] if provider else endpoint,
             "model": self._get_image_model(),
             "quality": self.config.get("quality") or "high",
             "providers": providers
@@ -921,13 +947,15 @@ class ImageTools(core.module.Module):
     async def _route_save_settings(self, body=None, query=None):
         """Saves image generation settings."""
         body = body or {}
-        if body.get("model") and hasattr(self.manager.API, "set_image_model"):
-            if not self.manager.API.set_image_model(body["model"]):
-                return self.result("The default chat model cannot also be the default image model.", success=False)
-        for key in ("enabled", "ask_before_generate", "endpoint", "model", "quality"):
+        enabled_changed = "enabled" in body and body["enabled"] != self.config.get("enabled")
+        if "model" in body and not self.manager.API.set_image_model(body["model"]):
+            return self.result("Choose an enabled image model and its provider.", success=False)
+        for key in ("enabled", "ask_before_generate", "endpoint", "quality"):
             if key in body:
                 self.config.set(key, body[key])
         core.config.config.save()
+        if enabled_changed:
+            await self.manager.reload_module(self.name)
         return self.result({"saved": True}, success=True)
 
 

@@ -615,11 +615,6 @@
     border-color: var(--accent);
 }
 
-.model-item-row.active_edit:not(.active_image) {
-    border-color: color-mix(in srgb, var(--accent) 65%, var(--border-color));
-    border-style: dashed;
-}
-
 .model-item-row.disabled {
     opacity: 0.5;
 }
@@ -694,12 +689,6 @@
     background: var(--accent-glow, rgba(255, 255, 255, 0.1));
     color: var(--accent);
     border: 1px solid var(--accent);
-}
-
-.model-role-badge.edit {
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px dashed var(--accent);
 }
 
 /* Controls on Right: Context, Temperature, Thinking, Image Capability */
@@ -930,9 +919,10 @@
     line-height: 1.45;
 }
 
+/* -- AI GENERATED CODE (GPT-6) :: 2026-11-21 21:11:03 +08:00 harness:Codex */
 .model-defaults-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
 }
 
@@ -973,12 +963,6 @@
     background: var(--accent-glow, rgba(255, 255, 255, 0.1));
     color: var(--accent);
     border: 1px solid var(--accent);
-}
-
-.default-model-badge.edit {
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px dashed var(--accent);
 }
 
 .modal select.default-model-select {

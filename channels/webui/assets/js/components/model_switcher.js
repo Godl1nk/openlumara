@@ -1,3 +1,4 @@
+// -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex
 /*
  * Multi-Provider API & Model Management Component
  * Controls the header quick switcher and the API settings page.
@@ -20,22 +21,32 @@ function syncContextPill(maxContext) {
     }
 }
 
+function providerLabel(provider, providers) {
+    const duplicate = providers.some(other => other.id !== provider.id && other.name === provider.name);
+    return duplicate ? (provider.name || "Provider") + " · " + provider.id : provider.name || provider.id;
+}
+
 function syncManagedModelSetting(key, value) {
     const store = Alpine.store("settings");
-    const field = store?.categories?.model?.settings?.[key];
-    const original = store?.originalCategories?.model?.settings?.[key];
-    if (field) field.value = value;
-    if (original) original.value = value;
+    for (const tree of [store?.categories, store?.originalCategories]) {
+        const field = tree?.model?.settings?.[key];
+        if (field) field.value = value;
+        const imageModel = tree?.modules?.settings?.image_tools?.value?.model;
+        if (key === "image_model" && imageModel) imageModel.value = value;
+    }
 }
 
 
 const MODEL_MANAGER_STORE = {
     providers: [],
     currentChatModel: "",
+    globalThinking: null,
     imageModel: "dall-e-3",
-    imageEditModel: "",
+    currentProviderId: "",
+    imageProviderId: "",
+    disabledModels: [],
+    selecting: false,
     loading: false,
-    _pollTimer: null,
 
     async fetchProviders() {
         this.loading = true;
@@ -44,8 +55,11 @@ const MODEL_MANAGER_STORE = {
             if (res) {
                 this.providers = Array.isArray(res.providers) ? res.providers : [];
                 this.currentChatModel = res.current_model || this.currentChatModel || "";
+                this.globalThinking = res.enable_thinking ?? null;
                 this.imageModel = res.image_model || this.imageModel || "dall-e-3";
-                this.imageEditModel = res.image_edit_model || "";
+                this.currentProviderId = res.provider_id || "";
+                this.imageProviderId = res.image_provider_id || "";
+                this.disabledModels = res.disabled_models || [];
             }
         } catch (e) {
             // Ignore background network/auth errors silently
@@ -53,40 +67,100 @@ const MODEL_MANAGER_STORE = {
             this.loading = false;
         }
     },
+    async loadModelOptions() {
+        await this.fetchProviders();
+        if (!this.hasCatalog) await Alpine.store("settings")?.fetchModels();
+    },
 
-    get enabledModelsList() {
-        const models = [];
-        for (const prov of this.providers) {
-            if (!prov.enabled) continue;
-            for (const m of (prov.models || [])) {
-                if (m.enabled && !m.is_image) {
-                    models.push(m.id);
+    selectedKey(image = false) {
+        return JSON.stringify(image ? [this.imageProviderId, this.imageModel] : [this.currentProviderId, this.currentChatModel]);
+    },
+
+    get activeModelRef() {
+        const prov = this.providers.find(provider => provider.enabled && provider.id === this.currentProviderId);
+        const model = prov?.models.find(entry => entry.enabled && entry.id === this.currentChatModel);
+        return model ? { prov, model } : null;
+    },
+
+    get hasCatalog() {
+        return this.providers.some(provider => provider.models?.length) ||
+            (this.providers.length > 0 && this.providers.every(provider => !provider.enabled));
+    },
+
+    modelOptions(image = false) {
+        const options = [];
+        const add = (name, providerId = "", label = name) => {
+            options.push({ name, providerId, label, key: JSON.stringify([providerId, name]) });
+        };
+        if (this.hasCatalog) {
+            const providers = this.providers.filter(provider => provider.enabled);
+            for (const provider of providers) {
+                const label = providers.length > 1 ? providerLabel(provider, providers) : "";
+                for (const model of provider.models) {
+                    if (model.enabled && Boolean(model.is_image) === image) {
+                        add(model.id, provider.id, label ? model.id + " (" + label + ")" : model.id);
+                    }
                 }
             }
+        } else if (!image) {
+            const disabled = new Set(this.disabledModels.map(name => name.toLowerCase()));
+            for (const name of Alpine.store("settings")?.cachedModels || []) {
+                if (!disabled.has(name.toLowerCase())) add(name);
+            }
         }
-        return models;
+        const current = image ? this.imageModel : this.currentChatModel;
+        const key = this.selectedKey(image);
+        if (current && !options.some(option => option.key === key)) {
+            options.unshift({ name: current, key, label: current + " (current)", disabled: true });
+        }
+        return options;
+    },
+
+    async selectModel(key, image = false) {
+        if (this.selecting || key === this.selectedKey(image)) return;
+        const option = this.modelOptions(image).find(item => item.key === key);
+        if (!option || option.disabled) return;
+        this.selecting = true;
+        try {
+            const result = await simpleApiPost(image ? "/api/model/image/set" : "/api/model/set", {
+                name: option.name, provider_id: option.providerId
+            });
+            if (image) {
+                this.imageModel = result.image_model;
+                this.imageProviderId = result.provider_id || "";
+                syncManagedModelSetting("image_model", this.imageModel);
+                syncManagedModelSetting("image_provider_id", this.imageProviderId);
+            } else {
+                this.currentChatModel = result.name;
+                this.currentProviderId = result.provider_id || "";
+                syncManagedModelSetting("name", result.name);
+                syncManagedModelSetting("provider_id", this.currentProviderId);
+                syncContextPill(result.max_context);
+                if (result.connection_error) alert("Model saved. Connection failed: " + result.connection_error);
+            }
+        } catch (error) {
+            alert("Failed to select model: " + error);
+        } finally {
+            this.selecting = false;
+        }
+    },
+
+    async saveThinkingEffort(ref, effort) {
+        const result = await simpleApiPost("/api/provider/model/update", {
+            provider_id: ref.prov.id,
+            model_id: ref.model.id,
+            settings: { thinking_effort: effort }
+        });
+        Object.assign(ref.model, result.model);
     }
 };
 
 function modelQuickSwitch() {
     return {
-        saving: false,
         effortSaving: false,
 
-        get currentModel() {
-            const store = Alpine.store("modelManager");
-            return store?.currentChatModel || Alpine.store("settings")?.categories?.model?.settings?.name?.value || "";
-        },
-
         get activeModelRef() {
-            const current = this.currentModel;
-            const store = Alpine.store("modelManager");
-            for (const prov of (store?.providers || [])) {
-                for (const m of (prov.models || [])) {
-                    if (m.id === current) return { prov, model: m };
-                }
-            }
-            return null;
+            return Alpine.store("modelManager")?.activeModelRef;
         },
 
         get currentEffort() {
@@ -109,12 +183,7 @@ function modelQuickSwitch() {
             try {
                 const ref = this.activeModelRef;
                 if (ref) {
-                    ref.model.thinking_effort = value;
-                    await simpleApiPost("/api/provider/model/update", {
-                        provider_id: ref.prov.id,
-                        model_id: ref.model.id,
-                        settings: { thinking_effort: value }
-                    });
+                    await Alpine.store("modelManager").saveThinkingEffort(ref, value);
                 } else {
                     // no provider entry (legacy single-endpoint setup): fall
                     // back to the global reasoning effort
@@ -130,51 +199,6 @@ function modelQuickSwitch() {
                 alert("Failed to set reasoning effort: " + err);
             } finally {
                 this.effortSaving = false;
-            }
-        },
-
-        get enabledOptions() {
-            const store = Alpine.store("modelManager");
-            let list = store?.enabledModelsList || [];
-            if (list.length === 0) {
-                const cached = Alpine.store("settings")?.cachedModels;
-                list = Array.isArray(cached) ? cached : [];
-            }
-            const current = this.currentModel;
-            if (current && !list.includes(current)) {
-                list = [current, ...list];
-            }
-            return list;
-        },
-
-        lazyFetch() {
-            const store = Alpine.store("modelManager");
-            if (!store) return;
-            store.fetchProviders().then(() => {
-                // legacy/seeded providers have no model list until refreshed;
-                // fall back to the endpoint model list so the dropdown isn't empty
-                if (!store.enabledModelsList.length) {
-                    Alpine.store("settings")?.fetchModels?.();
-                }
-            });
-        },
-
-        async setModel(name) {
-            if (!name || name === this.currentModel || this.saving) return;
-            this.saving = true;
-            try {
-                const res = await simpleApiPost("/api/model/set", { name });
-                const store = Alpine.store("modelManager");
-                if (store) store.currentChatModel = name;
-                syncManagedModelSetting("name", name);
-
-                if (res && res.max_context) {
-                    syncContextPill(res.max_context);
-                }
-            } catch (err) {
-                alert("Failed to switch model: " + err);
-            } finally {
-                this.saving = false;
             }
         }
     };
@@ -196,10 +220,7 @@ function providerManagerComponent() {
         advancedModels: {},
 
         init() {
-            const store = Alpine.store("modelManager");
-            if (store) {
-                store.fetchProviders();
-            }
+            return Alpine.store("modelManager").loadModelOptions();
         },
 
         get providers() {
@@ -218,8 +239,9 @@ function providerManagerComponent() {
             return Alpine.store("modelManager")?.imageModel || "";
         },
 
-        get imageEditModel() {
-            return Alpine.store("modelManager")?.imageEditModel || "";
+        isSelected(prov, model, image = false) {
+            const manager = Alpine.store("modelManager");
+            return manager.selectedKey(image) === JSON.stringify([prov.id, model.id]);
         },
 
         _modelKey(prov, model) {
@@ -322,103 +344,6 @@ function providerManagerComponent() {
                 model.custom_fields = previous;
                 if (input) input.value = this.modelCustomFieldsText(model);
                 alert("Failed to update custom request fields: " + e);
-            }
-        },
-
-        _defaultModelOptions(imageCapable, includeCurrent = true) {
-            const options = [];
-            const seen = new Set();
-            for (const prov of this.providers) {
-                if (prov.enabled === false) continue;
-                for (const model of (prov.models || [])) {
-                    if (!model.enabled || Boolean(model.is_image) !== imageCapable) continue;
-                    if (seen.has(model.id)) continue;
-                    seen.add(model.id);
-                    options.push({ id: model.id, label: model.id });
-                }
-            }
-            const current = imageCapable ? this.imageModel : this.currentChatModel;
-            if (includeCurrent && current && !seen.has(current)) {
-                options.unshift({ id: current, label: current + " (current, unavailable)" });
-            }
-            return options;
-        },
-
-        get chatModelOptions() {
-            return this._defaultModelOptions(false);
-        },
-
-        get imageModelOptions() {
-            return this._defaultModelOptions(true);
-        },
-
-        get imageEditModelOptions() {
-            const options = this._defaultModelOptions(true, false);
-            const current = this.imageEditModel;
-            if (current && !options.some(option => option.id === current)) {
-                options.unshift({ id: current, label: current + " (current, unavailable)" });
-            }
-            return options;
-        },
-
-        findManagedModel(modelId) {
-            for (const prov of this.providers) {
-                for (const model of (prov.models || [])) {
-                    if (model.id === modelId) return model;
-                }
-            }
-            return null;
-        },
-
-        async setDefaultChat(modelId) {
-            const model = this.findManagedModel(modelId);
-            if (!model) {
-                alert("That model is no longer available. Refresh the provider and try again.");
-                await Alpine.store("modelManager").fetchProviders();
-                return;
-            }
-            if (model.id !== this.currentChatModel) {
-                await this.setAsActiveChat(model);
-            }
-        },
-
-        async setDefaultImageByName(modelId) {
-            const model = this.findManagedModel(modelId);
-            if (!model) {
-                alert("That model is no longer available. Refresh the provider and try again.");
-                await Alpine.store("modelManager").fetchProviders();
-                return;
-            }
-            await this.setAsDefaultImage(model);
-        },
-
-        async setDefaultImageEdit(modelId) {
-            if (!modelId) {
-                try {
-                    await simpleApiPost("/api/model/image/edit/set", { name: "" });
-                    Alpine.store("modelManager").imageEditModel = "";
-                    syncManagedModelSetting("image_edit_model", "");
-                } catch (e) {
-                    alert("Failed to use the generation model for image editing: " + e);
-                }
-                return;
-            }
-            const model = this.findManagedModel(modelId);
-            if (!model) {
-                alert("That model is no longer available. Refresh the provider and try again.");
-                await Alpine.store("modelManager").fetchProviders();
-                return;
-            }
-            if (!model.is_image || model.id === this.currentChatModel) {
-                alert("Choose a marked, non-chat image model for image editing.");
-                return;
-            }
-            try {
-                await simpleApiPost("/api/model/image/edit/set", { name: model.id });
-                Alpine.store("modelManager").imageEditModel = model.id;
-                syncManagedModelSetting("image_edit_model", model.id);
-            } catch (e) {
-                alert("Failed to set the image editing model: " + e);
             }
         },
 
@@ -605,30 +530,12 @@ function providerManagerComponent() {
             }
         },
 
-        async setAsActiveChat(model) {
-            if (model.is_image) {
-                alert("An image model cannot also be the default chat model.");
-                return;
-            }
-            try {
-                const res = await simpleApiPost("/api/model/set", { name: model.id });
-                Alpine.store("modelManager").currentChatModel = model.id;
-                syncManagedModelSetting("name", model.id);
-
-                if (res && res.max_context) {
-                    syncContextPill(res.max_context);
-                }
-            } catch (e) {
-                alert("Failed to switch chat model: " + e);
-            }
-        },
-
         async toggleAsImageModel(prov, model) {
-            if (model.is_image && (model.id === this.imageModel || model.id === this.imageEditModel)) {
+            if (model.is_image && this.isSelected(prov, model, true)) {
                 alert("Choose a different default image model before removing image capability.");
                 return;
             }
-            if (!model.is_image && model.id === this.currentChatModel) {
+            if (!model.is_image && this.isSelected(prov, model)) {
                 alert("Choose a different default chat model first. A model cannot be used for both chat and images.");
                 return;
             }
@@ -646,21 +553,6 @@ function providerManagerComponent() {
             }
         },
 
-        async setAsDefaultImage(model) {
-            if (!model.is_image || model.id === this.imageModel) return;
-            if (model.id === this.currentChatModel) {
-                alert("An image model cannot also be the default chat model.");
-                return;
-            }
-            try {
-                await simpleApiPost("/api/model/image/set", { name: model.id });
-                Alpine.store("modelManager").imageModel = model.id;
-                syncManagedModelSetting("image_model", model.id);
-            } catch (e) {
-                alert("Failed to set default image model: " + e);
-            }
-        },
-
         async updateModelContext(prov, model, val) {
             model.context_length = val;
             try {
@@ -671,7 +563,7 @@ function providerManagerComponent() {
                 });
                 // the response carries the active model's context; only apply it
                 // when the edited model is the one currently in use
-                if (res && res.max_context && model.id === this.currentChatModel) {
+                if (res && res.max_context && this.isSelected(prov, model)) {
                     syncContextPill(res.max_context);
                 }
             } catch (e) {
@@ -695,16 +587,9 @@ function providerManagerComponent() {
         },
 
         async updateModelThinking(prov, model, val) {
-            const previous = model.thinking_effort;
-            model.thinking_effort = val;
             try {
-                await simpleApiPost("/api/provider/model/update", {
-                    provider_id: prov.id,
-                    model_id: model.id,
-                    settings: { thinking_effort: val }
-                });
+                await Alpine.store("modelManager").saveThinkingEffort({ prov, model }, val);
             } catch (e) {
-                model.thinking_effort = previous;
                 alert("Failed to update thinking effort: " + e);
             }
         }
@@ -728,6 +613,7 @@ function imageGenSettingsComponent() {
                 const res = await simpleApiFetch("/api/ext/image_tools/settings");
                 if (res) {
                     this.settings.enabled = res.enabled !== false;
+                    this.settings.generator_available = res.generator_available !== false;
                     this.settings.ask_before_generate = Boolean(res.ask_before_generate);
                     this.settings.endpoint = res.endpoint || "auto";
                     this.settings.quality = res.quality || "high";

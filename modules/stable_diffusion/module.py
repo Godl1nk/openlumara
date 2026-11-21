@@ -563,6 +563,12 @@ class StableDiffusion(core.module.Module):
                 self.config.get("resolution")), success=False)
 
         width, height = parsed
+        # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:19:00 +08:00 harness:Codex
+        image_tools = self.manager.modules.get("image_tools")
+        if image_tools is not None:
+            refusal = await image_tools.authorize_image_action("Generate image with Stable Diffusion?", prompt)
+            if refusal:
+                return self.result(refusal, success=False)
         steps = self.config.get("steps")
         cfg_scale = self.config.get("cfg_scale")
         sampler = self.config.get("sampler")

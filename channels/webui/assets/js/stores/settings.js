@@ -1,3 +1,4 @@
+// -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex
 SETTINGS_STORE = {
     // --- API State ---
     apiStatus: false,
@@ -145,9 +146,12 @@ SETTINGS_STORE = {
         console.log("saving settings to server..");
 
         try {
+            const imageFields = this.categories.modules?.settings?.image_tools?.value || {};
+            const original = this.originalCategories.modules?.settings?.image_tools?.value || {};
             const result = await simpleApiPost('/api/settings/save', {
                 categories: JSON.parse(JSON.stringify(this.categories)),
-                changed_modules: Array.from(this.changedModuleSettings)
+                changed_modules: Array.from(this.changedModuleSettings),
+                changed_image_fields: Object.keys(imageFields).filter(key => imageFields[key].value !== original[key]?.value)
             });
 
             // restart server if enabled modules/channels changed
@@ -173,6 +177,9 @@ SETTINGS_STORE = {
             }
 
             this.originalCategories = JSON.parse(JSON.stringify(this.categories));
+            const modelManager = Alpine.store('modelManager');
+            const thinking = this.categories?.model?.settings?.enable_thinking?.value;
+            if (modelManager && typeof thinking === 'boolean') modelManager.globalThinking = thinking;
 
             // re-fetch system prompt
             this.systemPrompt = await simpleApiFetch("/api/chat/prompt");

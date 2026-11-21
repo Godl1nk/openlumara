@@ -1,3 +1,4 @@
+// -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex
 // create a temporary div that gets used to syntax highlight
 const _tempHighlightDiv = document.createElement('div');
 
@@ -68,6 +69,16 @@ function renderMarkdown(text, live = false) {
     html = DOMPurify.sanitize(html);
 
     _tempHighlightDiv.innerHTML = html;
+
+    if (html.includes(IMAGE_TOOL_VIEW_PATH)) {
+        for (const img of _tempHighlightDiv.querySelectorAll('img[src*="/api/ext/image_tools/view"]')) {
+            const url = img.getAttribute('src');
+            if (!isImageToolView(url)) continue;
+            img.removeAttribute('src');
+            img.loading = 'lazy';
+            img.dataset.imageToolView = url;
+        }
+    }
 
     // syntax highlighting
     // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-15) status:reviewed

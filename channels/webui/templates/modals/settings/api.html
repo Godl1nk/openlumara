@@ -1,3 +1,4 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex #}
 <!-- API & Model Providers Settings Section -->
 <template x-if="activeCategory === 'api' && !activeModule && !activeChannel">
     <div class="settings-section api-settings-page" x-data="providerManagerComponent()">
@@ -13,7 +14,6 @@
                 <div class="api-page-role-badges">
                     <span class="model-mgr-active-chat-badge" x-show="currentChatModel" x-text="'Default chat: ' + currentChatModel"></span>
                     <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Image gen: ' + imageModel"></span>
-                    <span class="model-mgr-active-image-badge" x-show="imageModel" x-text="'Image edit: ' + (imageEditModel || 'same as generation')"></span>
                 </div>
             </div>
             <p class="section-desc">Manage endpoints, chat and image models, and model behavior in one place. Changes to providers and model selection apply immediately.</p>
@@ -196,7 +196,7 @@
 
                             <template x-for="m in filteredModels(prov)" :key="prov.id + '-' + m.id">
                                 <div class="model-entry">
-                                <div class="model-item-row" :class="{ disabled: !m.enabled, active_chat: m.id === currentChatModel, active_image: m.id === imageModel, active_edit: !!imageEditModel && m.id === imageEditModel }">
+                                <div class="model-item-row" :class="{ disabled: !m.enabled, active_chat: isSelected(prov, m), active_image: isSelected(prov, m, true) }">
                                     <!-- Checkbox + Model Name -->
                                     <div class="model-item-left">
                                         <button
@@ -209,17 +209,13 @@
                                             <svg x-show="m.enabled" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                                         </button>
                                         <span class="model-name-text" x-text="m.id"></span>
-                                        <span class="model-role-badge chat" x-show="m.id === currentChatModel">
+                                        <span class="model-role-badge chat" x-show="isSelected(prov, m)">
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
                                             <span>Default chat</span>
                                         </span>
-                                        <span class="model-role-badge image" x-show="m.id === imageModel">
+                                        <span class="model-role-badge image" x-show="isSelected(prov, m, true)">
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
                                             <span>Default gen</span>
-                                        </span>
-                                        <span class="model-role-badge edit" x-show="!!imageEditModel && m.id === imageEditModel">
-                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                                            <span>Default edit</span>
                                         </span>
                                     </div>
 
@@ -315,7 +311,7 @@
                                             class="model-image-icon-btn"
                                             :class="{ active: m.is_image }"
                                             @click="toggleAsImageModel(prov, m)"
-                                            :title="(m.id === currentChatModel && !m.is_image) ? 'Choose a different default chat model before marking this model image-capable' : (m.id === imageModel && m.is_image ? 'Choose a different default image model before removing image capability' : (m.is_image ? 'Remove image capability' : 'Mark as image-capable'))"
+                                            :title="(isSelected(prov, m) && !m.is_image) ? 'Choose a different default chat model before marking this model image-capable' : (isSelected(prov, m, true) && m.is_image ? 'Choose a different default image model before removing image capability' : (m.is_image ? 'Remove image capability' : 'Mark as image-capable'))"
                                             :aria-label="m.is_image ? 'Remove image capability' : 'Mark as image-capable'"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -406,7 +402,7 @@
                 </span>
                 <div>
                     <div class="model-defaults-title">Default Models</div>
-                    <p class="model-defaults-desc">Choose the chat model, the image generation model, and optionally a separate model for image editing.</p>
+                    <p class="model-defaults-desc">Choose the chat and image generation models.</p>
                 </div>
             </div>
 
@@ -419,14 +415,14 @@
                     <select
                         id="default-chat-model"
                         class="default-model-select"
-                        :value="currentChatModel"
-                        @change="setDefaultChat($event.target.value)"
+                        :value="$store.modelManager.selectedKey()" :disabled="$store.modelManager.selecting"
+                        @change="$store.modelManager.selectModel($event.target.value)"
                     >
-                        <template x-if="chatModelOptions.length === 0">
+                        <template x-if="$store.modelManager.modelOptions().length === 0">
                             <option value="" disabled>No chat model available</option>
                         </template>
-                        <template x-for="option in chatModelOptions" :key="'default-chat-' + option.id">
-                            <option :value="option.id" x-text="option.label" :selected="option.id === currentChatModel"></option>
+                        <template x-for="option in $store.modelManager.modelOptions()" :key="option.key">
+                            <option :value="option.key" x-text="option.label" :disabled="option.disabled" :selected="option.key === $store.modelManager.selectedKey()"></option>
                         </template>
                     </select>
                     <span class="default-model-hint">Image-capable models are excluded from chat.</span>
@@ -440,37 +436,19 @@
                     <select
                         id="default-image-model"
                         class="default-model-select"
-                        :value="imageModel"
-                        @change="setDefaultImageByName($event.target.value)"
+                        :value="$store.modelManager.selectedKey(true)" :disabled="$store.modelManager.selecting"
+                        @change="$store.modelManager.selectModel($event.target.value, true)"
                     >
-                        <template x-if="imageModelOptions.length === 0">
+                        <template x-if="$store.modelManager.modelOptions(true).length === 0">
                             <option value="" disabled>No image-capable model available</option>
                         </template>
-                        <template x-for="option in imageModelOptions" :key="'default-image-' + option.id">
-                            <option :value="option.id" x-text="option.label" :selected="option.id === imageModel"></option>
+                        <template x-for="option in $store.modelManager.modelOptions(true)" :key="option.key">
+                            <option :value="option.key" x-text="option.label" :disabled="option.disabled" :selected="option.key === $store.modelManager.selectedKey(true)"></option>
                         </template>
                     </select>
                     <span class="default-model-hint">Only marked image-capable models are listed.</span>
                 </div>
 
-                <div class="default-model-field">
-                    <label class="default-model-label" for="default-image-edit-model">
-                        <span class="default-model-badge edit">Edit</span>
-                        <span>Image editing model</span>
-                    </label>
-                    <select
-                        id="default-image-edit-model"
-                        class="default-model-select"
-                        :value="imageEditModel"
-                        @change="setDefaultImageEdit($event.target.value)"
-                    >
-                        <option value="" x-text="imageModel ? 'Same as generation (' + imageModel + ')' : 'Same as generation'"></option>
-                        <template x-for="option in imageEditModelOptions" :key="'default-edit-' + option.id">
-                            <option :value="option.id" x-text="option.label" :selected="option.id === imageEditModel"></option>
-                        </template>
-                    </select>
-                    <span class="default-model-hint">Local resize/crop/filter edits do not use a model.</span>
-                </div>
             </div>
         </div>
 
@@ -488,21 +466,22 @@
                             <polyline points="21 15 16 10 5 21"/>
                         </svg>
                     </span>
-                    <span class="image-gen-title">Image Generation</span>
+                    <span class="image-gen-title">Image Tools</span>
                 </div>
-                <label class="toggle-switch" title="Enable or disable image generation">
+                <label class="toggle-switch" title="Enable AI image generation and editing">
                     <input type="checkbox" x-model="settings.enabled" @change="save()">
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            <div class="image-gen-subtext">Configure generation behavior. The default image model is selected in Default Models above.</div>
+            <div class="image-gen-subtext" x-show="settings.generator_available !== false">Configure generation behavior. The default image model is selected in Default Models above.</div>
+            <div class="image-gen-subtext" x-show="settings.generator_available === false">Choose the generator in Modules → Image Tools.</div>
             <div class="provider-error-msg" x-show="error" x-text="error"></div>
 
             <!-- Ask Before Generate / Edit Row with Toggle -->
             <div class="image-gen-toggle-row">
                 <div class="image-gen-toggle-text">
                     <strong>Ask before generate / edit</strong>
-                    <span>Pause image requests and pick the model in chat each time.</span>
+                    <span>Confirm before the AI generates or edits an image, including Stable Diffusion.</span>
                 </div>
                 <label class="toggle-switch" title="Pause and ask before generating">
                     <input type="checkbox" x-model="settings.ask_before_generate" @change="save()">
@@ -511,14 +490,17 @@
             </div>
 
             <!-- Fields: Endpoint, Quality -->
-            <div class="image-gen-fields">
+            <div class="image-gen-fields" x-show="settings.generator_available !== false">
                 <!-- Endpoint -->
                 <div class="image-gen-field-row">
-                    <label class="field-label" for="image-gen-endpoint-select">Endpoint</label>
+                    <label class="field-label" for="image-gen-endpoint-select">Endpoint override</label>
                     <select id="image-gen-endpoint-select" class="image-gen-select" x-model="settings.endpoint" @change="save()">
                         <option value="auto">Auto-detect</option>
+                        <template x-if="settings.endpoint !== 'auto' && !providers.some(p => p.id === settings.endpoint)">
+                            <option :value="settings.endpoint" x-text="settings.endpoint + ' (unavailable)'" disabled selected></option>
+                        </template>
                         <template x-for="p in providers" :key="'img-prov-' + p.id">
-                            <option :value="p.name" x-text="p.name" :selected="settings.endpoint === p.name"></option>
+                            <option :value="p.id" x-text="providerLabel(p, providers)" :selected="settings.endpoint === p.id" :disabled="!p.enabled"></option>
                         </template>
                     </select>
                 </div>

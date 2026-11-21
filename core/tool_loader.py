@@ -3,8 +3,27 @@ import inspect
 import json_repair
 import regex as re
 import weakref
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 META_TOOL_NAMES = {"tools_load", "tools_call"}
+
+# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:18:00 +08:00 harness:Codex
+_allowed_names = ContextVar("allowed_tool_names", default=None)
+
+@contextmanager
+def limit_tools(names):
+    """Nested and background jobs inherit the caller's tool permissions."""
+    if names is None:
+        yield
+        return
+    parent = _allowed_names.get()
+    allowed = frozenset(names)
+    token = _allowed_names.set(allowed if parent is None else parent & allowed)
+    try:
+        yield
+    finally:
+        _allowed_names.reset(token)
 
 _TYPE_MAP = {str: "string", int: "integer", bool: "boolean", list: "array", dict: "object"}
 _ARG_SECTION = "Args:"
@@ -226,17 +245,18 @@ class ToolLoader:
     def meta_tool_names(self):
         return META_TOOL_NAMES
 
-    def _enabled_module_names(self):
+    def _enabled_module_names(self, allowed=None):
         """Names of all currently enabled (loaded) modules that have tools"""
-        modules_with_tools = {entry["module"] for entry in self.catalog.values()}
+        modules_with_tools = {entry["module"] for name, entry in self.catalog.items()
+                              if allowed is None or name in allowed}
         return sorted(
             name for name in self.channel.manager.modules
             if name in modules_with_tools
         )
 
-    def _build_meta_def(self):
+    def _build_meta_def(self, allowed=None):
         """Build the tools_load meta tool definition."""
-        modules = ", ".join(self._enabled_module_names()) or "(none currently enabled)"
+        modules = ", ".join(self._enabled_module_names(allowed)) or "(none currently enabled)"
         return {
             "type": "function",
             "function": {
@@ -348,6 +368,14 @@ class ToolLoader:
             return self.tools_call
         return None
 
+    def tools_for_request(self, fixed=None):
+        tools = self.active_tools if fixed is None else fixed
+        allowed = _allowed_names.get()
+        if allowed is None:
+            return tools
+        return [self._build_meta_def(allowed) if tool["function"]["name"] == "tools_load" else tool
+                for tool in tools if tool["function"]["name"] in allowed]
+
     # ------------------------------------------------------------------
     # Meta tool implementation
     # ------------------------------------------------------------------
@@ -369,6 +397,7 @@ class ToolLoader:
         tools = []
         unknown = []
         disabled = []
+        allowed = _allowed_names.get()
         for module_name in module_names:
             name = str(module_name).lower().strip()
             module = self.channel.manager.modules.get(name)
@@ -376,7 +405,7 @@ class ToolLoader:
                 unknown.append(name)
                 continue
             for tool_name, entry in sorted(self.catalog.items()):
-                if entry["module"] != name:
+                if entry["module"] != name or (allowed is not None and tool_name not in allowed):
                     continue
                 if entry["method"] in module.disabled_tools:
                     disabled.append(tool_name)
@@ -395,7 +424,7 @@ class ToolLoader:
                     "content": (
                         f"No enabled module named '{unknown[0]}'"
                         + (f" (also unknown: {', '.join(unknown[1:])})" if len(unknown) > 1 else "")
-                        + f". Enabled modules: {', '.join(self._enabled_module_names())}."
+                        + f". Enabled modules: {', '.join(self._enabled_module_names(allowed))}."
                     ),
                 }
             return {
@@ -410,7 +439,7 @@ class ToolLoader:
         }
         if unknown:
             result["not_found"] = unknown
-            result["enabled_modules"] = self._enabled_module_names()
+            result["enabled_modules"] = self._enabled_module_names(allowed)
         if disabled:
             result["disabled"] = disabled
         return result
@@ -529,6 +558,9 @@ class ToolLoader:
             return {"status": "error", "content": "params must be an object"}
 
         name = str(name).strip()
+        allowed = _allowed_names.get()
+        if allowed is not None and name not in allowed:
+            return {"status": "error", "content": "Tool unavailable for this request."}
         if name in META_TOOL_NAMES:
             return {"status": "error", "content": f"'{name}' is a meta tool; call it directly."}
 
@@ -540,7 +572,7 @@ class ToolLoader:
                 "status": "error",
                 "content": (
                     f"No tool named '{name}'. Call tools_load with a module name to get its "
-                    f"tools' schemas. Enabled modules: {', '.join(self._enabled_module_names())}."
+                    f"tools' schemas. Enabled modules: {', '.join(self._enabled_module_names(allowed))}."
                 ),
             }
 

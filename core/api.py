@@ -54,6 +54,7 @@ class APIClient():
         self.is_streaming = False
 
         self._messages = []
+        self._legacy_model_cache = None
 
         self.cancel_request = False
 
@@ -175,6 +176,10 @@ class APIClient():
         # Resolve active endpoint from active model or configured providers
         target_model = core.config.get("model", "name")
         prov, _ = self.find_provider_for_model(target_model)
+        if not prov and core.config.get("model", "provider_id"):
+            raise APIError("Selected chat model or provider is unavailable. Choose an enabled model.")
+        if prov and not prov.get("url"):
+            raise APIError("Selected provider has no endpoint URL.")
         if not prov:
             # only fall back to another provider when the API is still unconfigured,
             # so a manually configured api.url is never clobbered
@@ -428,12 +433,14 @@ class APIClient():
     def get_model(self):
         return core.config.get("model", "name")
 
-    def set_model(self, name: str):
-        p, m = self.find_provider_for_model(name)
-        if m and m.get("is_image"):
+    # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:22:00 +08:00 harness:Codex
+    def set_model(self, name: str, provider_id=None):
+        selection = self.resolve_model_selection(name, provider_id)
+        if selection is None:
             return False
-
+        name, p = selection
         core.config.config["model"]["name"] = name
+        core.config.config["model"]["provider_id"] = p["id"] if p else ""
 
         # Sync api.url and api.key with the provider hosting this model
         if p and p.get("url"):
@@ -527,39 +534,44 @@ class APIClient():
         core.config.config.save()
         return True
 
-    def set_image_model(self, name: str):
-        clean_name = str(name).strip()
-        if clean_name.casefold() == str(self.get_model()).strip().casefold():
+    def set_image_model(self, name: str, provider_id=None):
+        selection = self.resolve_model_selection(name, provider_id, image=True)
+        if selection is None:
             return False
-        if "model" not in core.config.config:
-            core.config.config["model"] = {}
+        clean_name, provider = selection
+        core.config.config.setdefault("model", {})
         core.config.config["model"]["image_model"] = clean_name
+        core.config.config["model"]["image_provider_id"] = provider["id"] if provider else ""
+        # Image Tools can be disabled when the default is selected.
+        module_settings = core.config.config.setdefault("modules", {}).setdefault("settings", {})
+        module_settings.setdefault("image_tools", {})["model"] = clean_name
         core.config.config.save()
-
-        # keep modules that resolve their own image model in sync with the
-        # global setting, so the model manager and the settings card agree
-        image_module = (getattr(self.manager, "modules", None) or {}).get("image_tools")
-        if image_module is not None and getattr(image_module, "config", None) is not None:
-            try:
-                image_module.config.set("model", str(name).strip())
-            except Exception:
-                pass
         return True
 
     def get_disabled_models(self) -> list:
         return list(core.config.get("model", "disabled_models", default=[]))
 
     def set_model_disabled(self, name: str, disabled: bool):
+        name_clean, provider_id = self._split_model_selector(name)
+        if provider_id:
+            matches = self._model_matches(name_clean, provider_id)
+            if not matches:
+                return None
+            self.update_model_settings(provider_id, matches[0][1]["id"], {"enabled": not disabled})
+            return self.get_disabled_models()
         if "model" not in core.config.config:
             core.config.config["model"] = {}
         disabled_list = list(core.config.get("model", "disabled_models", default=[]))
-        name_clean = str(name).strip()
-        if disabled and name_clean not in disabled_list:
+        disabled_list = [item for item in disabled_list if item.casefold() != name_clean.casefold()]
+        providers = self.get_providers()
+        for provider in providers:
+            for model in provider["models"]:
+                if model["id"].casefold() == name_clean.casefold():
+                    model["enabled"] = not disabled
+        if disabled:
             disabled_list.append(name_clean)
-        elif not disabled and name_clean in disabled_list:
-            disabled_list.remove(name_clean)
         core.config.config["model"]["disabled_models"] = disabled_list
-        core.config.config.save()
+        self.save_providers(providers)
         return disabled_list
 
     def set_reasoning_effort(self, effort: str = None, custom: str = None):
@@ -603,7 +615,21 @@ class APIClient():
             core.config.config["api"]["providers"] = [default_p]
             core.config.config.save()
             providers = [default_p]
-        return list(providers or [])
+        disabled = {name.casefold() for name in self.get_disabled_models()}
+        model_config = core.config.config.get("model") or {}
+        normalized = []
+        for provider in providers or []:
+            models = []
+            for entry in provider.get("models", []):
+                model = dict(entry) if isinstance(entry, dict) else {"id": str(entry)}
+                if not model.get("id"):
+                    continue
+                model["enabled"] = model.get("enabled", True) and model["id"].casefold() not in disabled
+                if model["id"] == model_config.get("image_model") and model_config.get("image_provider_id") in (None, "", provider["id"]):
+                    model.setdefault("is_image", True)
+                models.append(model)
+            normalized.append({**provider, "enabled": provider.get("enabled", True), "models": models})
+        return normalized
 
     def save_providers(self, providers: list):
         if "api" not in core.config.config:
@@ -612,26 +638,68 @@ class APIClient():
         core.config.config.save()
         return True
 
-    def find_provider_for_model(self, model_name: str):
-        """Finds the provider and model configuration for a given model ID."""
-        if not model_name:
+    def _model_matches(self, name, provider_id=None):
+        name = str(name or "").strip().casefold()
+        return [(provider, model) for provider in self.get_providers()
+                if not provider_id or provider["id"] == provider_id
+                for model in provider["models"] if model["id"].casefold() == name]
+
+    def find_provider_for_model(self, model_name: str, provider_id=None):
+        if provider_id is None and model_name == self.get_model():
+            provider_id = core.config.get("model", "provider_id")
+        matches = [(provider, model) for provider, model in self._model_matches(model_name, provider_id)
+                   if provider["enabled"] and model["enabled"]]
+        if not matches:
             return None, None
-        name_clean = str(model_name).strip().lower()
-        for p in self.get_providers():
-            if not p.get("enabled", True):
-                continue
-            for m in p.get("models", []):
-                m_id = m.get("id") if isinstance(m, dict) else str(m)
-                if m_id and str(m_id).strip().lower() == name_clean:
-                    return p, (m if isinstance(m, dict) else {"id": m_id})
-        return None, None
+        # Older configs identify the selected server only by its endpoint.
+        url = core.config.get("api", "url")
+        return next((pair for pair in matches if pair[0].get("url") == url), matches[0])
+
+    def selected_provider_id(self, image=False):
+        key = "image_provider_id" if image else "provider_id"
+        pinned = core.config.get("model", key)
+        if pinned:
+            return pinned
+        name = self.get_image_model() if image else self.get_model()
+        provider, _ = self.find_provider_for_model(name, "")
+        return provider["id"] if provider else ""
+
+    def is_selected_model(self, name, provider_id, image=False):
+        current = self.get_image_model() if image else self.get_model()
+        return name == current and (not provider_id or provider_id == self.selected_provider_id(image))
+
+    # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 21:10:18 +08:00 harness:Codex
+    def _split_model_selector(self, name, provider_id=None):
+        name = str(name or "").strip()
+        if not provider_id and "::" in name and not self._model_matches(name):
+            provider_id, name = name.split("::", 1)
+        return name, provider_id
+
+    def resolve_model_selection(self, name, provider_id=None, image=False):
+        name, provider_id = self._split_model_selector(name, provider_id)
+        if not name or name.casefold() in {item.casefold() for item in self.get_disabled_models()}:
+            return None
+        matches = self._model_matches(name, provider_id)
+        if not matches and not provider_id:
+            other = self.get_model() if image else self.get_image_model()
+            return None if name.casefold() == str(other).casefold() else (name, None)
+        eligible = [(provider, model) for provider, model in matches if provider["enabled"] and model["enabled"]
+                    and not self.is_selected_model(model["id"], provider["id"], image=not image)]
+        choices = [(model["id"], provider) for provider, model in eligible if bool(model.get("is_image")) == image]
+        if image and not choices:
+            # Older catalogs have model names without capability flags.
+            choices = [(model["id"], provider) for provider, model in eligible if "is_image" not in model]
+        return choices[0] if len(choices) == 1 else None
 
     def get_image_model_provider(self):
         """Finds the designated image model and its provider."""
         img_model = self.get_image_model()
-        p, m = self.find_provider_for_model(img_model)
+        pinned = core.config.get("model", "image_provider_id")
+        p, m = self.find_provider_for_model(img_model, pinned or "")
         if p:
             return p, img_model
+        if pinned:
+            raise APIError("Selected image model or provider is unavailable.")
         for prov in self.get_providers():
             if prov.get("enabled", True) and prov.get("is_image_provider"):
                 return prov, img_model
@@ -710,8 +778,7 @@ class APIClient():
             core.config.config["api"] = {}
         if core.config.get("api", "url") in ("http://API_URL_HERE/v1", "", None):
             core.config.config["api"]["url"] = url_clean
-            if key:
-                core.config.config["api"]["key"] = str(key).strip()
+            core.config.config["api"]["key"] = str(key or "").strip()
             core.config.config.save()
 
         await self.refresh_provider_models(pid)
@@ -800,30 +867,26 @@ class APIClient():
             if p["id"] == provider_id:
                 for m in p.get("models", []):
                     if m.get("id") == model_id:
-                        if settings.get("is_image") and model_id == self.get_model():
+                        if settings.get("is_image") and self.is_selected_model(model_id, provider_id):
                             return None
-                        if settings.get("is_image") is False and model_id in {
-                            self.get_image_model(),
-                            self.get_image_edit_model_setting(),
-                        }:
+                        if settings.get("is_image") is False and self.is_selected_model(model_id, provider_id, image=True):
                             return None
+                        if settings.get("thinking_effort") == "none" and m.get("thinking_effort") != "none":
+                            m["previous_thinking_effort"] = m.get("thinking_effort") or "default"
                         for k, v in settings.items():
                             if k != "id":
                                 m[k] = v
 
                         # Sync active model parameters immediately
-                        active_model = core.config.get("model", "name")
-                        if model_id == active_model:
-                            if "context_length" in settings:
-                                eff_ctx = self.get_max_context(model_id)
-                                if "api" not in core.config.config:
-                                    core.config.config["api"] = {}
-                                core.config.config["api"]["max_context"] = eff_ctx
-
                         if "enabled" in settings:
-                            self.set_model_disabled(model_id, not settings["enabled"])
-
+                            disabled = self.get_disabled_models()
+                            core.config.config["model"]["disabled_models"] = [
+                                name for name in disabled if name.casefold() != model_id.casefold()
+                            ]
                         self.save_providers(providers)
+                        if "context_length" in settings and self.is_selected_model(model_id, provider_id):
+                            core.config.config["api"]["max_context"] = self.get_max_context(model_id)
+                            core.config.config.save()
                         return m
         return None
 
@@ -923,8 +986,12 @@ class APIClient():
 
         target_model = kwargs.get("model") or core.config.get("model", "name")
         provider, model_entry = self.find_provider_for_model(target_model)
+        if target_model == self.get_model() and core.config.get("model", "provider_id") and not provider:
+            return APIError("Selected chat model or provider is unavailable. Choose an enabled model.")
         api_url = provider.get("url") if provider else None
-        api_key = provider.get("key") if provider else None
+        if provider and not api_url:
+            return APIError("Selected provider has no endpoint URL.")
+        api_key = (provider.get("key") or "") if provider else None
 
         req = {
             "model": target_model,
@@ -937,9 +1004,6 @@ class APIClient():
             },
             "return_progress": True
         }
-
-        if tools:
-            req["tools"] = tools
 
         # add kwargs to the request
         for key, value in kwargs.items():
@@ -1000,10 +1064,19 @@ class APIClient():
                     pass
 
         # allow inserting custom request fields (per-model, legacy fallback)
-        custom_fields = self.get_model_option("custom_fields", default={}, model_name=target_model)
+        custom_fields = model_entry.get("custom_fields") if model_entry else core.config.get("api", "custom_fields", default={})
         if isinstance(custom_fields, dict):
             for key, value in custom_fields.items():
-                req[key] = value
+                if key == "chat_template_kwargs" and isinstance(value, dict):
+                    req[key] = {**value, **req[key]}
+                elif key == "reasoning_effort":
+                    if req["chat_template_kwargs"]["enable_thinking"]:
+                        req.setdefault(key, value)
+                elif key not in ("tools", "model", "chat_template_kwargs"):
+                    req[key] = value
+
+        if tools:
+            req["tools"] = tools
 
         if stream:
             # request token usage from the API
@@ -1139,7 +1212,7 @@ class APIClient():
         await self.attempt_connect()
 
         # use default tools if not specified. allow overrides
-        if not tools:
+        if tools is None:
             tools = self.manager.tools
 
         try:
@@ -1151,7 +1224,7 @@ class APIClient():
             raise response
 
         try:
-            result = await self._recv(response)
+            result = await self._recv(response, use_tools=use_tools and bool(tools))
             return result
         except Exception as e:
             raise APIError("While processing response from AI", e) from e
@@ -1169,7 +1242,7 @@ class APIClient():
             return
 
         # use default tools if not specified. allow overrides
-        if not tools:
+        if tools is None:
             tools = self.manager.tools
 
         # against a llama.cpp router, the request below blocks while a model
@@ -1222,7 +1295,7 @@ class APIClient():
             for attempt in (0, 1):
                 saw_output = False
 
-                async for token in self._recv_stream(response):
+                async for token in self._recv_stream(response, use_tools=use_tools and bool(tools)):
                     if self.cancel_request:
                         # cancel the entire stream
                         raise asyncio.CancelledError("Request cancelled")
@@ -1546,6 +1619,26 @@ class APIClient():
             # this means the inference server (such as llamacpp) failed to report an error
             # for user friendliness, we just display a message that explains what happened
             raise Exception("The API returned a blank response. This likely means an error happened on the API end, but that API failed to report the error. Check your AI server's logs if you're using local AI, or if not, contact your cloud AI service. Also, try turning off `Use Developer Role` in the api settings, as some models don't support it.")
+
+    async def model_choices(self, cached=False):
+        """Provider catalog, with endpoint discovery only for legacy configurations."""
+        providers = self.get_providers()
+        if any(provider["models"] for provider in providers) or (providers and not any(p["enabled"] for p in providers)):
+            choices = [{"id": model["id"], "provider_id": provider["id"], "enabled": model["enabled"],
+                        "is_image": bool(model.get("is_image"))}
+                       for provider in providers if provider["enabled"] for model in provider["models"]]
+        else:
+            endpoint = (core.config.get("api", "url"), core.config.get("api", "key"))
+            if not cached or not self._legacy_model_cache or self._legacy_model_cache[0] != endpoint:
+                names = await self.list_models()
+                self._legacy_model_cache = (endpoint, names) if names else None
+            else:
+                names = self._legacy_model_cache[1]
+            disabled = {name.casefold() for name in self.get_disabled_models()}
+            image_model = self.get_image_model()
+            choices = [{"id": name, "provider_id": "", "enabled": name.casefold() not in disabled,
+                        "is_image": name == image_model} for name in names]
+        return choices
 
     async def list_models(self):
         if not self.connected:

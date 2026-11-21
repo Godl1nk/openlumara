@@ -146,10 +146,14 @@ class Humanizer(core.module.Module):
         except Exception:
             provider = None
 
+        # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:29:26 +08:00 harness:Codex
+        if not provider and model == self._active_model() and core.config.get("model", "provider_id"):
+            raise ValueError("Selected chat provider or model is unavailable.")
+
         # a model listed in a configured provider always uses that provider;
         # the URL/key settings are only a fallback for uncatalogued models
-        if provider and provider.get("url"):
-            base_url = str(provider["url"]).strip().rstrip("/")
+        if provider:
+            base_url = str(provider.get("url") or "").strip().rstrip("/")
             api_key = str(provider.get("key") or "").strip()
         else:
             base_url = str(self.config.get("base_url", default="") or "").strip().rstrip("/")

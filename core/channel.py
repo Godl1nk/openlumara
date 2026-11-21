@@ -754,7 +754,6 @@ class Channel:
                     files=None,
                     commands_authorized=commands_authorized,
                     add_to_context=add_to_context,
-                    tools=self.override_tools,
                     **kwargs
                 )
             return result
@@ -763,6 +762,22 @@ class Channel:
             self.sending_message = False
             if self.queued_message is not None:
                 await self.drain_queued_message()
+
+    # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:18:00 +08:00 harness:Codex
+    def _apply_request_tool_policy(self, options):
+        fixed = options.get("tools")
+        if self.force_disable_tools or not options.get("use_tools", True) or not core.config.get("model", "use_tools"):
+            fixed = []
+        elif self.override_tools is not None:
+            if fixed is None:
+                fixed = self.override_tools
+            else:
+                allowed = {tool["function"]["name"] for tool in self.override_tools}
+                fixed = [tool for tool in fixed if tool["function"]["name"] in allowed]
+        if fixed is not None:
+            fixed = [tool for tool in fixed if tool["function"]["name"] not in self.tool_loader.meta_tool_names]
+        options["tools"] = self.tool_loader.tools_for_request(fixed)
+        return fixed
 
     async def _send_inner(self, message: str, files: list = None, commands_authorized=False, add_to_context=True, **kwargs):
         # preprocessing (API connection logic, command processing, user message module hooks, etc)
@@ -778,8 +793,9 @@ class Channel:
                 return {"role": "assistant", "content": processed["content"]}
 
         # request the AI response and add it to context
+        fixed_tools = self._apply_request_tool_policy(kwargs)
         try:
-            response = await self.manager.API.send(processed["context"], use_tools=(not self.force_disable_tools), tools=self.override_tools, **kwargs)
+            response = await self.manager.API.send(processed["context"], **kwargs)
         # handle any errors
         except core.api.APIError as e:
             self.log("api", e)
@@ -796,7 +812,7 @@ class Channel:
 
             async for sub_token in self.tc_manager.process(
                 assistant_message,
-                push=True
+                push=True, tools=fixed_tools
             ):
                 if sub_token.get("type") == "final":
                     final_message = sub_token.get("content")
@@ -821,7 +837,7 @@ class Channel:
         self._chain_idle.clear()
         self.sending_message = True
         try:
-            async for token in self._send_stream_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, use_tools=(not self.force_disable_tools), tools=self.override_tools, **kwargs):
+            async for token in self._send_stream_inner(message, files=files, commands_authorized=commands_authorized, add_to_context=add_to_context, **kwargs):
                 yield token
 
             while self.queued_message is not None:
@@ -906,6 +922,7 @@ class Channel:
         fetched_token_usage = False
 
         # and stream the response to the caller of this method
+        fixed_tools = self._apply_request_tool_policy(kwargs)
         try:
             stream = self.manager.API.send_stream(processed.get("context"), **kwargs)
         except Exception as e:
@@ -944,7 +961,7 @@ class Channel:
 
                     # the AI has decided to call a tool, so now we start the recursive toolcall loop (aka agentic loop)
                     # AI calls tool -> gets response -> decides whether it needs to call more tools -> does so if needed -> gets response -> rinse and repeat
-                    async for sub_token in self.tc_manager.process(toolcall_request):
+                    async for sub_token in self.tc_manager.process(toolcall_request, tools=fixed_tools):
                         if sub_token.get("type") == "final":
                             # this is the final message in the recursive toolcalling loop, so we add it to context
                             await self.context.chat.messages.add(sub_token.get("content"))

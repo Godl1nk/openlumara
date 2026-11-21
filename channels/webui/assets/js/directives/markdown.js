@@ -1,3 +1,4 @@
+// -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex
 /* alpine.js directive that renders markdown into an element, but only does
  * the actual work when it matters:
  *
@@ -28,6 +29,7 @@ function markdownRender(el, { expression }, { evaluateLater, effect, cleanup }) 
     let pendingMessage = null;
     let pendingRaw = false;
     let rafId = null;
+    let releaseImages = [];
 
     // -- AI GENERATED CODE (Qwen3.8-Flash-Next) :: (2026-09-16) status:reviewed
     // per-token fade via the shared timeline machinery (fade_tail.js):
@@ -46,8 +48,18 @@ function markdownRender(el, { expression }, { evaluateLater, effect, cleanup }) 
         paintedRaw = raw;
         paintedLen = len;
 
+        releaseImages.forEach(release => release());
+        releaseImages = [];
+
         Alpine.mutateDom(() => {
             el.innerHTML = html;
+            if (!live && html.includes('data-image-tool-view=')) {
+                for (const img of el.querySelectorAll('img[data-image-tool-view]')) {
+                    if (isImageToolView(img.dataset.imageToolView)) {
+                        releaseImages.push(bindImageToolFile(img, 'src', img.dataset.imageToolView));
+                    }
+                }
+            }
             // NOTE: [] is truthy, must check length - otherwise a disabled
             // fade still pays for the full subtree walk every frame
             if (batches && batches.length) {
@@ -60,6 +72,7 @@ function markdownRender(el, { expression }, { evaluateLater, effect, cleanup }) 
     };
 
     cleanup(() => {
+        releaseImages.forEach(release => release());
         if (rafId) cancelAnimationFrame(rafId);
         rafId = null;
         pendingHtml = null;

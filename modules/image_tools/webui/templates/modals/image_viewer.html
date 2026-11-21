@@ -1,11 +1,12 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex #}
 <template x-if="$store.ui.currentModal === 'image_viewer' && $store.imageTools && $store.imageTools.activeImage" x-cloak>
-    <div class="modal image-viewer-modal" @keydown.escape.window="$store.imageTools.closeModal()">
+    <div class="modal image-viewer-modal" @keydown.escape.window="$store.imageTools.closeModal()"
+         x-image-tool-file:viewer="'/api/ext/image_tools/view?file=' + encodeURIComponent($store.imageTools.activeImage.filename)">
         <div class="header">
             <span class="image-viewer-title" x-text="$store.imageTools.activeImage.filename"></span>
             <div class="image-viewer-header-btns">
                 <a
                     class="image-viewer-btn download"
-                    :href="'/api/ext/image_tools/view?file=' + encodeURIComponent($store.imageTools.activeImage.filename)"
                     :download="$store.imageTools.activeImage.filename"
                     title="Download"
                 >
@@ -26,7 +27,6 @@
         <div class="image-viewer-body">
             <div class="image-viewer-preview-wrap">
                 <img
-                    :src="'/api/ext/image_tools/view?file=' + encodeURIComponent($store.imageTools.activeImage.filename)"
                     :alt="$store.imageTools.activeImage.filename"
                     class="image-viewer-img"
                 >

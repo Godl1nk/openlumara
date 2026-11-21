@@ -1,6 +1,7 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex #}
 <div class="image-tools-panel" x-data="imageToolsComponent()" x-intersect.enter="refresh()">
     <div class="image-tools-header">
-        <span class="image-tools-title">Gallery</span>
+        <span class="image-tools-title">Image Tools</span>
         <div class="image-tools-header-actions">
             <button type="button" class="image-tools-icon-btn" title="Refresh Gallery" @click="refresh(true)">
                 {% include 'svg/reload.svg' %}
@@ -16,7 +17,7 @@
         <template x-if="!loading && images.length === 0">
             <div class="image-tools-empty">
                 <p>No images generated or edited yet.</p>
-                <small>Ask the AI to generate an image or edit one with ImageTools!</small>
+                <small>Images saved by Image Tools appear here.</small>
             </div>
         </template>
 
@@ -24,7 +25,7 @@
             <template x-for="img in images" :key="img.filename">
                 <div class="image-tools-card" @click="openImage(img)" :title="img.filename">
                     <div class="image-tools-thumb-wrap">
-                        <img :src="'/api/ext/image_tools/view?file=' + encodeURIComponent(img.filename)" :alt="img.filename" loading="lazy">
+                        <img x-image-tool-file="'/api/ext/image_tools/view?file=' + encodeURIComponent(img.filename)" :alt="img.filename" loading="lazy">
                     </div>
                     <div class="image-tools-card-meta">
                         <span class="image-tools-card-name" x-text="img.filename"></span>

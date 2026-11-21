@@ -1,5 +1,6 @@
 # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex
 import core
+from collections import Counter
 
 class Models(core.module.Module):
     """Lets you or the AI switch between AI models"""
@@ -22,7 +23,7 @@ class Models(core.module.Module):
     }
 
     async def on_ready(self):
-        self._models_cache = None
+        self.disabled_tools[:] = [name for name in self.disabled_tools if name not in ("get_available", "switch")]
 
         if self.config.get("insert_available_models_into_system_prompt") or not self.config.get("allow_ai_to_switch"):
             self.disabled_tools.append("get_available")
@@ -38,38 +39,40 @@ class Models(core.module.Module):
             output += f"Current model: {current_model}"
 
         if self.config.get("insert_available_models_into_system_prompt"):
-            await self._load_models()
-            if self._models_cache and len(self._models_cache) > 1:
+            choices = await self._load_models()
+            available = [item["selector"] for item in choices if item["enabled"] and not item["is_image"]]
+            if len(available) > 1:
                 output += "\n\nModels you can switch to using the models_switch() toolcall: "
-                output += ", ".join(self._models_cache)
+                output += ", ".join(available)
 
         return output
 
     async def _load_models(self):
-        if not self._models_cache:
-            try:
-                self._models_cache = await self.manager.API.list_models()
-            except core.api.APIError:
-                return
+        try:
+            choices = await self.manager.API.model_choices(cached=True)
+        except core.api.APIError:
+            return []
+        counts = Counter(item["id"].casefold() for item in choices)
+        for item in choices:
+            name = item["id"]
+            item["selector"] = f"{item['provider_id']}::{name}" if counts[name.casefold()] > 1 else name
+        return choices
 
     @core.module.tool
     async def get_available(self):
         """Returns a list of AI/LLM models available to switch to, along with current model, image model, and reasoning efforts."""
-        await self._load_models()
+        choices = await self._load_models()
 
         current_model = self.manager.API.get_model()
         image_model = self.manager.API.get_image_model()
-        image_edit_model = self.manager.API.get_image_edit_model_setting()
         disabled_models = self.manager.API.get_disabled_models()
         reasoning_effort = core.config.get("model", "reasoning_effort", default="none")
         custom_effort = core.config.get("model", "custom_reasoning_effort", default="")
 
         return self.result({
-            "models": list(self._models_cache or []),
+            "models": [item["selector"] for item in choices if item["enabled"] and not item["is_image"]],
             "current": current_model,
             "image_model": image_model,
-            "image_edit_model": image_edit_model,
-            "effective_image_edit_model": self.manager.API.get_image_edit_model(),
             "disabled_models": disabled_models,
             "reasoning_effort": reasoning_effort,
             "custom_reasoning_effort": custom_effort
@@ -78,36 +81,28 @@ class Models(core.module.Module):
     @core.module.tool
     async def switch(self, name: str):
         """Switches the active chat model."""
-        await self._load_models()
-        if not self._models_cache:
+        choices = await self._load_models()
+        if not choices:
             return self.result("No models available or API connection error.", success=False)
 
-        found_id = None
-        for model_id in self._models_cache:
-            if model_id.strip().lower() == name.strip().lower():
-                found_id = model_id
-                break
-
-        if not found_id:
-            return self.result(f"Model '{name}' does not exist on the server. Use models() to see available models.", success=False)
-
-        disabled_models = self.manager.API.get_disabled_models()
-        if found_id in disabled_models:
-            return self.result(f"Model '{found_id}' is currently disabled. Enable it first with `/model enable {found_id}`.", success=False)
-
-        if not self.manager.API.set_model(found_id):
-            return self.result("An image model cannot be used as the default chat model.", success=False)
-        return self.result(f"Model has been switched to {found_id}", success=True)
+        target = name.strip().casefold()
+        matches = [item for item in choices if item["enabled"] and not item["is_image"]
+                   and target in (item["id"].casefold(), item["selector"].casefold())]
+        if len(matches) > 1:
+            return self.result("Choose a provider: " + ", ".join(item["selector"] for item in matches), success=False)
+        if not matches or not self.manager.API.set_model(matches[0]["id"], matches[0]["provider_id"]):
+            return self.result(f"Chat model '{name}' unavailable. Use /models to list choices.", success=False)
+        return self.result(f"Model has been switched to {matches[0]['selector']}", success=True)
 
     @core.module.tool
     async def set_image_model(self, name: str):
-        """Sets the designated model to be used for image generation and editing."""
+        """Sets the image generation model."""
         name_clean = str(name).strip()
         if not name_clean:
             return self.result("Image model name cannot be empty.", success=False)
 
         if not self.manager.API.set_image_model(name_clean):
-            return self.result("The default chat model cannot also be the default image model.", success=False)
+            return self.result("Choose an enabled image model. Use /models for provider-qualified names.", success=False)
         return self.result(f"Image model has been set to '{name_clean}'.", success=True)
 
     @core.module.tool
@@ -141,6 +136,8 @@ class Models(core.module.Module):
             return self.result("Model name cannot be empty.", success=False)
 
         updated = self.manager.API.set_model_disabled(name_clean, not enable)
+        if updated is None:
+            return self.result(f"Unknown model '{name_clean}'. Use /models to list choices.", success=False)
         status = "enabled" if enable else "disabled"
         return self.result(f"Model '{name_clean}' has been {status}.", success=True)
 
@@ -157,17 +154,16 @@ class Models(core.module.Module):
         if not args:
             curr = self.manager.API.get_model() or "None"
             img = self.manager.API.get_image_model() or "None"
-            img_edit = self.manager.API.get_image_edit_model_setting() or f"Same as generation ({img})"
             preset_effort = core.config.get("model", "reasoning_effort", default="none")
             custom_effort = core.config.get("model", "custom_reasoning_effort", default="")
             eff_display = f"Custom ({custom_effort})" if custom_effort else preset_effort
-            return f"**Active Chat Model**: `{curr}`\n**Image Generation Model**: `{img}`\n**Image Editing Model**: `{img_edit}`\n**Reasoning Effort**: `{eff_display}`"
+            return f"**Active Chat Model**: `{curr}`\n**Image Generation Model**: `{img}`\n**Reasoning Effort**: `{eff_display}`"
 
         sub = args[0].lower()
         if sub == "image" and len(args) > 1:
             img_target = " ".join(args[1:]).strip()
             if not self.manager.API.set_image_model(img_target):
-                return "The default chat model cannot also be the default image model."
+                return "Choose an enabled image model. Use /models for provider-qualified names."
             return f"Image model set to `{img_target}`"
         elif sub == "effort" and len(args) > 1:
             eff_val = " ".join(args[1:]).strip()
@@ -178,14 +174,10 @@ class Models(core.module.Module):
             else:
                 self.manager.API.set_reasoning_effort(effort="none", custom=eff_val)
                 return f"Custom reasoning effort set to `{eff_val}`"
-        elif sub == "enable" and len(args) > 1:
+        elif sub in ("enable", "disable") and len(args) > 1:
             target = " ".join(args[1:]).strip()
-            self.manager.API.set_model_disabled(target, False)
-            return f"Model `{target}` is now enabled."
-        elif sub == "disable" and len(args) > 1:
-            target = " ".join(args[1:]).strip()
-            self.manager.API.set_model_disabled(target, True)
-            return f"Model `{target}` is now disabled."
+            result = await self.toggle_model(target, enable=sub == "enable")
+            return result["content"]
 
         target_name = " ".join(args).strip()
         res = await self.switch(target_name)
@@ -196,29 +188,27 @@ class Models(core.module.Module):
     })
     async def models(self, args: list):
         """Lists available models."""
-        await self._load_models()
-        if not self._models_cache:
+        choices = await self._load_models()
+        if not choices:
             return "No models available or API connection error."
 
         curr = self.manager.API.get_model()
         img = self.manager.API.get_image_model()
-        img_edit = self.manager.API.get_image_edit_model_setting()
-        disabled = set(self.manager.API.get_disabled_models())
+        chat_provider = self.manager.API.selected_provider_id()
+        image_provider = self.manager.API.selected_provider_id(image=True)
 
         lines = ["**Available Models**:"]
-        for m in self._models_cache:
+        for item in choices:
             tags = []
-            if m == curr:
+            if item["id"] == curr and item["provider_id"] == chat_provider:
                 tags.append("ACTIVE CHAT")
-            if m == img:
+            if item["id"] == img and item["provider_id"] == image_provider:
                 tags.append("IMAGE GEN")
-            if img_edit and m == img_edit:
-                tags.append("IMAGE EDIT")
-            if m in disabled:
+            if not item["enabled"]:
                 tags.append("DISABLED")
 
             tag_str = f" *[{', '.join(tags)}]*" if tags else ""
-            lines.append(f"- `{m}`{tag_str}")
+            lines.append(f"- `{item['selector']}`{tag_str}")
 
         lines.append("\n*Commands: `/model <name>`, `/model image <name>`, `/model effort <level>`, `/model disable <name>`*")
         return "\n".join(lines)

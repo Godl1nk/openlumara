@@ -1,7 +1,6 @@
 import core
 import asyncio
-import copy
-import time
+from uuid import uuid4
 
 class Subagents(core.module.Module):
     """Lets your AI spin up subagents (chat sessions with a seperate context) to perform a request"""
@@ -21,9 +20,13 @@ class Subagents(core.module.Module):
         },
     }
 
-    async def _process_substream(self, stream, ctx):
+    # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:18:00 +08:00 harness:Codex
+    async def _process_substream(self, ctx):
         final_content = []
         tool_calls_occurred = False
+        options = {}
+        fixed_tools = self.channel._apply_request_tool_policy(options)
+        stream = self.manager.API.send_stream(list(ctx), **options)
 
         async for token in stream:
             yield token
@@ -34,7 +37,7 @@ class Subagents(core.module.Module):
             elif token_type == "tool_calls":
                 tool_calls_occurred = True
                 toolcall_request = await self.channel.tc_manager._build_recursive_request(token, [], [])
-                async for sub_token in self.channel.tc_manager.process(toolcall_request, context=ctx):
+                async for sub_token in self.channel.tc_manager.process(toolcall_request, context=ctx, tools=fixed_tools):
                     sub_type = sub_token.get("type")
 
                     # collect the final response
@@ -58,10 +61,7 @@ class Subagents(core.module.Module):
         job["ctx"] = ctx
         
         try:
-            async for token in self._process_substream(
-                self.manager.API.send_stream(subagent_request),
-                ctx
-            ):
+            async for token in self._process_substream(ctx):
                 # only needs to accumulate into 'ctx', lol
                 pass
 
@@ -108,7 +108,10 @@ class Subagents(core.module.Module):
         ]
 
         if self.config.get("run_in_background"):
-            job_id = f"subagent-{int(time.time())}"
+            limit = int(self.config.get("max_background_subagents", default=2) or 0)
+            if sum(not job["done"] for job in self.subagent_jobs.values()) >= limit:
+                return self.result("Background subagent limit reached.", success=False)
+            job_id = f"subagent-{uuid4().hex}"
             job = { "task": None, "title": title, "ctx": None, "done": False, "result": None, "error": None }
             self.subagent_jobs[job_id] = job
             job["task"] = asyncio.create_task(self._run_job(job_id, subagent_request))
@@ -123,12 +126,7 @@ class Subagents(core.module.Module):
             ctx = list(subagent_request)
 
             try:
-                await self.channel.on_stream(
-                    self._process_substream(
-                        self.manager.API.send_stream(subagent_request),
-                        ctx
-                    )
-                )
+                await self.channel.on_stream(self._process_substream(ctx))
 
                 if len(ctx) <= 1:
                     return self.result(f"subagent for task '{title}' returned a blank response", success=False)

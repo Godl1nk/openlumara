@@ -92,7 +92,8 @@ class ToolcallManager:
 
         return toolcall_request
 
-    async def process(self, assistant_message, context=None, push=False):
+    # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:18:00 +08:00 harness:Codex
+    async def process(self, assistant_message, context=None, push=False, tools=None):
         """
         process tool calls from an API response..
         assistant_content is the "normal" non-toolcall content, the text that the AI wants to say that's not toolcalls
@@ -141,24 +142,25 @@ class ToolcallManager:
             if self.channel.manager.API.cancel_request:
                 return
 
-            tool_name = tool_call_dict['function']['name']
+            tool_name = tool_call_dict["function"]["name"]
+            options = {"tools": tools}
+            fixed = self.channel._apply_request_tool_policy(options)
+            allowed_names = {tool["function"]["name"] for tool in options["tools"]}
+            if tool_name not in allowed_names:
+                rejected_msg = json.dumps({"status": "error", "content": f"Tool {tool_name} unavailable for this request."})
+                await ctx_add({
+                    "role": "tool",
+                    "tool_call_id": tool_call_dict["id"],
+                    "content": rejected_msg
+                })
+                yield {"type": "tool", "tool_call_id": tool_call_dict["id"], "content": rejected_msg}
+                continue
+
             tool_args = json_repair.loads(tool_call_dict['function']['arguments'])
 
             # check for meta tools (like tools_load) if dynamic tool loading is enabled
             dynamic_loading = core.config.get("model", "dynamic_tool_loading", default=True)
             if tool_name in tool_loader.meta_tool_names:
-                if self.channel.override_tools and dynamic_loading:
-                    rejected_msg = json.dumps({
-                        "content": "Tool loading is unavailable right now: only a fixed set of tools is accessible.",
-                        "status": "error"
-                    })
-                    await ctx_add({
-                        "role": "tool",
-                        "tool_call_id": tool_call_dict['id'],
-                        "content": rejected_msg
-                    })
-                    yield {"type": "tool", "tool_call_id": tool_call_dict['id'], "content": rejected_msg}
-                    continue
                 if not dynamic_loading:
                     rejected_msg = json.dumps({
                         "content": "Dynamic tool loading is disabled. The meta tool (tools_load) is not available. You have access to all available tools without needing to load them.",
@@ -219,32 +221,6 @@ class ToolcallManager:
                     yield {"type": "tool", "tool_call_id": tool_call_dict['id'], "content": rejected_msg}
                     continue
 
-                # check if tool is loaded
-                if self.channel.override_tools:
-                    loaded_names = [t["function"]["name"] for t in self.channel.override_tools]
-                else:
-                    loaded_names = self.channel.manager.tool_names
-                if tool_name not in loaded_names:
-                    if not dynamic_loading:
-                        rejected_msg = json.dumps({
-                            "content": f"Tool {tool_name} is not available. This tool may be disabled or unavailable.",
-                            "status": "error"
-                        })
-                    else:
-                        rejected_msg = json.dumps({
-                            "content": f"Tool {tool_name} is not loaded. Load it first by calling tools_load with module_names=[\"{tool_name.split('_')[0]}\"], then call it again.",
-                            "status": "error"
-                        })
-
-                    await ctx_add({
-                        "role": "tool",
-                        "tool_call_id": tool_call_dict['id'],
-                        "content": rejected_msg
-                    })
-
-                    yield {"type": "tool", "tool_call_id": tool_call_dict['id'], "content": rejected_msg}
-                    continue
-
                 func_callable = getattr(module_instance, method_name)
 
             # execute the tool function/method
@@ -254,7 +230,10 @@ class ToolcallManager:
             func_response = None
             try:
                 async def _run_tool():
-                    return await func_callable(**tool_args)
+                    # Each tool runs in its own task. Its children inherit the channel.
+                    core.module.current_tool_channel.set(self.channel)
+                    with core.tool_loader.limit_tools(allowed_names if fixed is not None else None):
+                        return await func_callable(**tool_args)
 
                 tool_task = asyncio.create_task(_run_tool())
                 if not getattr(func_callable, "_bypass_timeout", False):
@@ -326,10 +305,12 @@ class ToolcallManager:
             await self.channel.context.compress()
 
         try:
-            async for token in self.channel.manager.API.send_stream(
-                (context if context else await self.channel.context.get(system_prompt=True, end_prompt=False)),
-                tools=self.channel.manager.tools
-            ):
+            request_context = context if context is not None else await self.channel.context.get(
+                system_prompt=True, end_prompt=False
+            )
+            tool_options = {"tools": tools}
+            fixed = self.channel._apply_request_tool_policy(tool_options)
+            async for token in self.channel.manager.API.send_stream(request_context, **tool_options):
                 token_type = token.get("type")
 
                 if token_type == "content":
@@ -357,7 +338,7 @@ class ToolcallManager:
                     async for sub_token in self.process(
                         toolcall_request,
                         push=push,
-                        context=context
+                        context=context, tools=fixed
                     ):
                         yield sub_token
 

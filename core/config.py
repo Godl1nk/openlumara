@@ -108,6 +108,9 @@ When disabled, it will instead remove your old messages from context to make spa
             "description": "An 'agentic loop' is a chain of multiple thoughts, toolcalls, and so on, until the AI reaches a conclusion. When you make a request to the AI, such as `search the web for kitty facts and write a summary of it to a note`, it will first think, then do the web search, then think again (sometimes), then write it to a note, and then it will tell you that it's done. That's an agentic loop! So when you enable this, the AI will forget the thoughts it had in previous agentic loops, which is a huge context/token saver.",
             "depends": {"enable_thinking": True, "keep_reasoning_in_context": True},
         },
+        # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:22:00 +08:00 harness:Codex
+        "provider_id": {"default": "", "description": "Provider selected for the chat model."},
+        "image_provider_id": {"default": "", "description": "Provider selected for the image model."},
         "image_model": {
             "default": "dall-e-3",
             "description": "The default model to use for image generation."

@@ -192,7 +192,7 @@ function settingsModal() {
 
         isPerModelSetting(key) {
             return [
-                "name", "image_model", "image_edit_model", "disabled_models", "model_profiles",
+                "name", "provider_id", "image_model", "image_provider_id", "image_edit_model", "disabled_models", "model_profiles",
                 "temperature", "reasoning_effort", "custom_reasoning_effort"
             ].includes(key);
         },

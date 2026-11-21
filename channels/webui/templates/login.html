@@ -1,3 +1,4 @@
+{# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex #}
 <!DOCTYPE html>
 <html lang="en" x-data="{ username: '', password: '', loading: false }">
 <head>
@@ -15,6 +16,7 @@
     {% for url in ext_css_files %}
     <link rel="stylesheet" href="{{ url }}">
     {% endfor %}
+    <script src="{{ url_for('assets', path='js/services/fetch_gate.js') }}"></script>
     <script>
     // apply the saved WebUI theme to the login page before the card paints
     (function () {
