@@ -47,10 +47,10 @@
 
 {% if config.get("enable_model_switcher") and config.get("enable_admin_settings") %}
 {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-21 21:34 +08:00 harness:Codex #}
-<div class="model-switcher" x-data="modelQuickSwitch()" x-show="!$store.ui.isMobile" x-cloak x-init="$store.modelManager.loadModelOptions()">
+<div class="model-switcher" x-data="modelQuickSwitch()" x-cloak x-init="$store.modelManager.loadModelOptions()">
     <select class="model-select" :value="$store.modelManager.selectedKey()" :disabled="$store.modelManager.selecting"
             @change="$store.modelManager.selectModel($event.target.value)"
-            title="Switch model">
+            title="Switch model" aria-label="Switch model">
         <template x-if="$store.modelManager.modelOptions().length === 0">
             <option disabled selected x-text="$store.modelManager.loading ? 'Loading models…' : $store.modelManager.optionsError ? 'Could not load models' : 'No models available'"></option>
         </template>

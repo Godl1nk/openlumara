@@ -210,6 +210,40 @@
             &.docked {
                 padding: 0 4px;
             }
+
+            /* -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-22 17:08 +08:00 harness:Codex */
+            .input-wrapper:has(> .model-switcher) {
+                flex-wrap: wrap;
+
+                #user-input {
+                    min-width: 0;
+                }
+
+                .model-switcher {
+                    order: -1;
+                    flex: 0 0 100%;
+                    min-width: 0;
+                    margin: 0;
+                    padding: 0 8px;
+                    box-sizing: border-box;
+                    border-bottom: 1px solid var(--border-color);
+
+                    .model-select,
+                    .model-tune-btn {
+                        height: 44px;
+                    }
+
+                    .model-select:first-child {
+                        flex: 1;
+                        min-width: 0;
+                        max-width: none;
+                    }
+
+                    .model-tune-btn {
+                        width: 44px;
+                    }
+                }
+            }
         }
 
         #send, #stop {
