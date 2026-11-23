@@ -542,9 +542,6 @@ class APIClient():
         core.config.config.setdefault("model", {})
         core.config.config["model"]["image_model"] = clean_name
         core.config.config["model"]["image_provider_id"] = provider["id"] if provider else ""
-        # Image Tools can be disabled when the default is selected.
-        module_settings = core.config.config.setdefault("modules", {}).setdefault("settings", {})
-        module_settings.setdefault("image_tools", {})["model"] = clean_name
         core.config.config.save()
         return True
 

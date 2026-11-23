@@ -153,7 +153,13 @@ async def create_fastapi(channel):
             "/icon-maskable-512.png", "/manifest.json", "/sw.js",
         ]
         public_prefixes = ("/assets/", "/ext-assets/", "/themes/", "/api/themes")
-        if request.url.path in public_paths or str(request.url.path).startswith(public_prefixes):
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-22 harness:Codex
+        path = request.url.path
+        image_assets = "/ext-assets/stable_diffusion/"
+        generated_image = path.startswith(image_assets) and (
+            path[len(image_assets):].replace("\\", "/").lstrip("/").partition("/")[0] == "gen"
+        )
+        if path in public_paths or (path.startswith(public_prefixes) and not generated_image):
             return await call_next(request)
         
         # Check session for API and other routes.
@@ -242,8 +248,8 @@ async def create_fastapi(channel):
                     # a reload (the ?v= bump ritual). no-cache revalidates
                     # every use; FileResponse's ETag/Last-Modified answer
                     # with a cheap 304 while unchanged.
-                    return fastapi.responses.FileResponse(
-                        full_path, headers={"Cache-Control": "no-cache"})
+                    cache_control = "private, no-cache" if module_name == "stable_diffusion" and prefix == "gen" else "no-cache"
+                    return fastapi.responses.FileResponse(full_path, headers={"Cache-Control": cache_control})
 
         # default: <module>/webui/assets/
         module_dir = channel._ui_asset_dirs().get(module_name)
@@ -264,6 +270,10 @@ async def create_fastapi(channel):
     def _ui_api_lookup(module_name, route_path, method):
         """resolve /api/ext/<module>/<path> to a bound handler.
         returns (handler, None) on success or (None, reason) on miss."""
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-22 harness:Codex
+        wanted_path = str(route_path).strip("/").lower()
+        if module_name == "image_tools" and wanted_path in {"view", "list", "delete", "settings"}:
+            module_name = "stable_diffusion"
         module = channel.manager.modules.get(module_name)
         if module is None:
             return None, "unknown module"
@@ -271,7 +281,6 @@ async def create_fastapi(channel):
         if not channel._ui_extension_enabled(module):
             return None, "webui extension disabled"
         
-        wanted_path = str(route_path).strip("/").lower()
         route_exists = False
         for klass in type(module).__mro__:
             for attr_name, attr in vars(klass).items():

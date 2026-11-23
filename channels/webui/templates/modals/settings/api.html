@@ -453,8 +453,8 @@
         </div>
 
         <!-- IMAGE GENERATION -->
-        {% set img_cfg = core_config.get('modules', 'settings', 'image_tools', {}) or {} %}
-        {% if 'image_tools' in (core_config.get('modules', 'enabled', []) or []) and img_cfg.get('enable_webui_extension', True) %}
+        {% set img_cfg = core_config.get('modules', 'settings', 'stable_diffusion', {}) or {} %}
+        {% if 'stable_diffusion' in (core_config.get('modules', 'enabled', []) or []) and img_cfg.get('enable_webui_extension', True) %}
         <div class="image-gen-card" x-data="imageGenSettingsComponent()">
             <!-- Header Row with Master Toggle -->
             <div class="image-gen-header">
@@ -466,15 +466,14 @@
                             <polyline points="21 15 16 10 5 21"/>
                         </svg>
                     </span>
-                    <span class="image-gen-title">Image Tools</span>
+                    <span class="image-gen-title">Image generation and editing</span>
                 </div>
                 <label class="toggle-switch" title="Enable AI image generation and editing">
                     <input type="checkbox" x-model="settings.enabled" @change="save()">
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            <div class="image-gen-subtext" x-show="settings.generator_available !== false">Configure generation behavior. The default image model is selected in Default Models above.</div>
-            <div class="image-gen-subtext" x-show="settings.generator_available === false">Choose the generator in Modules → Image Tools.</div>
+            <div class="image-gen-subtext">Choose the backend in Modules → Stable Diffusion. The selected-provider backend uses the image model above.</div>
             <div class="provider-error-msg" x-show="error" x-text="error"></div>
 
             <!-- Ask Before Generate / Edit Row with Toggle -->
@@ -490,7 +489,7 @@
             </div>
 
             <!-- Fields: Endpoint, Quality -->
-            <div class="image-gen-fields" x-show="settings.generator_available !== false">
+            <div class="image-gen-fields" x-show="settings.selected_provider">
                 <!-- Endpoint -->
                 <div class="image-gen-field-row">
                     <label class="field-label" for="image-gen-endpoint-select">Endpoint override</label>

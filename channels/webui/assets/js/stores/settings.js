@@ -147,8 +147,8 @@ SETTINGS_STORE = {
         console.log("saving settings to server..");
 
         try {
-            const imageFields = this.categories.modules?.settings?.image_tools?.value || {};
-            const original = this.originalCategories.modules?.settings?.image_tools?.value || {};
+            const imageFields = this.categories.modules?.settings?.stable_diffusion?.value || {};
+            const original = this.originalCategories.modules?.settings?.stable_diffusion?.value || {};
             const result = await simpleApiPost('/api/settings/save', {
                 categories: JSON.parse(JSON.stringify(this.categories)),
                 changed_modules: Array.from(this.changedModuleSettings),

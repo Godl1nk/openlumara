@@ -70,8 +70,9 @@ function renderMarkdown(text, live = false) {
 
     _tempHighlightDiv.innerHTML = html;
 
-    if (html.includes(IMAGE_TOOL_VIEW_PATH)) {
-        for (const img of _tempHighlightDiv.querySelectorAll('img[src*="/api/ext/image_tools/view"]')) {
+    // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:06 +08:00 harness:Codex
+    if (IMAGE_TOOL_VIEW_PATHS.some(path => html.includes(path))) {
+        for (const img of _tempHighlightDiv.querySelectorAll(IMAGE_TOOL_VIEW_SELECTOR)) {
             const url = img.getAttribute('src');
             if (!isImageToolView(url)) continue;
             img.removeAttribute('src');

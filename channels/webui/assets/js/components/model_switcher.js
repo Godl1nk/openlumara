@@ -31,8 +31,6 @@ function syncManagedModelSetting(key, value) {
     for (const tree of [store?.categories, store?.originalCategories]) {
         const field = tree?.model?.settings?.[key];
         if (field) field.value = value;
-        const imageModel = tree?.modules?.settings?.image_tools?.value?.model;
-        if (key === "image_model" && imageModel) imageModel.value = value;
     }
 }
 
@@ -618,10 +616,10 @@ function imageGenSettingsComponent() {
 
         async init() {
             try {
-                const res = await simpleApiFetch("/api/ext/image_tools/settings");
+                const res = await simpleApiFetch("/api/ext/stable_diffusion/settings");
                 if (res) {
                     this.settings.enabled = res.enabled !== false;
-                    this.settings.generator_available = res.generator_available !== false;
+                    this.settings.selected_provider = Boolean(res.selected_provider);
                     this.settings.ask_before_generate = Boolean(res.ask_before_generate);
                     this.settings.endpoint = res.endpoint || "auto";
                     this.settings.quality = res.quality || "high";
@@ -651,7 +649,7 @@ function imageGenSettingsComponent() {
             try {
                 do {
                     this.pendingSave = false;
-                    await simpleApiPost("/api/ext/image_tools/settings", {
+                    await simpleApiPost("/api/ext/stable_diffusion/settings", {
                         enabled: this.settings.enabled,
                         ask_before_generate: this.settings.ask_before_generate,
                         endpoint: this.settings.endpoint,

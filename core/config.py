@@ -1062,6 +1062,53 @@ def sync_module_settings(config_dict, instances, section_key, available_names):
     # it is disabled and we leave its settings in 'settings' untouched.
 
 
+# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-22 harness:Codex
+def _migrate_image_tools(raw_config):
+    modules = raw_config.get("modules", {})
+    enabled = modules.get("enabled", [])
+    settings = modules.get("settings", {})
+    # Preserve the Character-mode module allowlist as well as the default preload.
+    for section, key in ((raw_config.get("model", {}), "preloaded_modules"),
+                         (settings.get("characters", {}), "enabled_modules")):
+        names = section.get(key) or []
+        if any(str(name).strip().lower() == "image_tools" for name in names):
+            section[key] = list(dict.fromkeys(
+                "stable_diffusion" if str(name).strip().lower() == "image_tools" else name for name in names
+            ))
+    was_enabled = "image_tools" in enabled
+    if not was_enabled and "image_tools" not in settings:
+        return
+
+    previous = modules.setdefault("settings", {}).pop("image_tools", {})
+    settings = modules["settings"]
+    combined = settings.setdefault("stable_diffusion", {})
+    if "output_directory" in previous:
+        combined.setdefault("output_directory", previous["output_directory"])
+    if not was_enabled:
+        return
+
+    for field in ("enabled", "ask_before_generate", "approval_timeout", "endpoint", "quality",
+                  "openai_api_key", "openai_api_url", "openai_model"):
+        if field in previous:
+            combined.setdefault(field, previous[field])
+
+    use_previous_backend = "stable_diffusion" not in enabled or previous.get("generation") == "image_tools"
+    if "stable_diffusion" not in enabled and "enable_webui_extension" in previous:
+        combined.setdefault("enable_webui_extension", previous["enable_webui_extension"])
+    if use_previous_backend:
+        backend = previous.get("backend", "mock")
+        combined["backend"] = {"openai": "selected_provider", "sd_webui": "a1111"}.get(backend, "mock")
+        if backend == "sd_webui":
+            combined["URL"] = previous.get("sd_webui_url") or "http://127.0.0.1:7860"
+        if previous.get("generation") == "disabled":
+            combined["generation"] = "disabled"
+        model = raw_config.setdefault("model", {})
+        if backend == "openai" and previous.get("model") and not model.get("image_provider_id"):
+            model["image_model"] = previous["model"]
+    modules["enabled"] = list(dict.fromkeys("stable_diffusion" if name == "image_tools" else name for name in enabled))
+    modules["disabled"] = [name for name in modules.get("disabled", []) if name not in ("image_tools", "stable_diffusion")]
+
+
 def load(file_path=None):
     """
     Load config file.
@@ -1085,6 +1132,7 @@ def load(file_path=None):
         new_config = True
 
     raw_config = dict(config) if config else {}
+    _migrate_image_tools(raw_config)
 
     enabled_channels = raw_config.get("channels", {}).get("enabled", [])
     if not enabled_channels and new_config:

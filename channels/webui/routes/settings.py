@@ -22,9 +22,9 @@ def register(app, channel):
         # the Your Skills tab only makes sense while the skills module is loaded
         skills_enabled = "skills" in channel.manager.modules
         structure = settings_structure.build_settings_structure(core.config.config, module_info, core_sections, skills_enabled=skills_enabled)
-        image_module = channel.manager.modules.get("image_tools")
+        image_module = channel.manager.modules.get("stable_diffusion")
         if image_module and channel._ui_extension_enabled(image_module):
-            fields = structure.get("modules", {}).get("settings", {}).get("image_tools", {}).get("value", {})
+            fields = structure.get("modules", {}).get("settings", {}).get("stable_diffusion", {}).get("value", {})
             for key in IMAGE_CARD_FIELDS:
                 fields.pop(key, None)
 
@@ -126,20 +126,13 @@ def register(app, channel):
                 if live_key in live_model:
                     flat_model[live_key] = copy.deepcopy(live_model[live_key])
 
-        live_image = core.config.get("modules", "settings", "image_tools", {}) or {}
-        flat_image = (flattened.get("modules", {}).get("settings", {}) or {}).get("image_tools")
+        live_image = core.config.get("modules", "settings", "stable_diffusion", {}) or {}
+        flat_image = (flattened.get("modules", {}).get("settings", {}) or {}).get("stable_diffusion")
         if isinstance(flat_image, dict):
             changed = data.get("changed_image_fields", [])
-            for live_key in (*IMAGE_CARD_FIELDS, "model"):
+            for live_key in IMAGE_CARD_FIELDS:
                 if live_key in live_image and (live_key not in changed or live_key not in flat_image):
                     flat_image[live_key] = copy.deepcopy(live_image[live_key])
-            if "model" in changed and flat_image.get("model") and isinstance(flat_model, dict):
-                selection = channel.manager.API.resolve_model_selection(flat_image["model"], image=True)
-                if not selection:
-                    return utils.api_result("Choose an enabled image model. Use /models for provider-qualified names.", success=False)
-                name, provider = selection
-                flat_image["model"] = flat_model["image_model"] = name
-                flat_model["image_provider_id"] = provider["id"] if provider else ""
 
         # snapshot the pre-save config so we can tell the frontend whether
         # the changes need a server restart or an API reconnect

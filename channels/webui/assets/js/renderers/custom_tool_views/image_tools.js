@@ -1,13 +1,15 @@
 // -- AI GENERATED CODE (GPT-6) :: 2026-11-21 17:42:04 +08:00 harness:Codex
 // image generation/editing tool cards. markup lives in chat/tool_displays.html,
 // styling in chat/custom_tool_views.css.
-const IMAGE_TOOL_VIEW_PATH = '/api/ext/image_tools/view';
+// -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:06 +08:00 harness:Codex
+const IMAGE_TOOL_VIEW_PATHS = ['/api/ext/stable_diffusion/view', '/api/ext/image_tools/view'];
+const IMAGE_TOOL_VIEW_SELECTOR = IMAGE_TOOL_VIEW_PATHS.map(path => `img[src*="${path}"]`).join(',');
 
 function isImageToolView(url) {
     if (!url) return false;
     try {
         const parsed = new URL(url, window.location.href);
-        return parsed.origin === window.location.origin && parsed.pathname === IMAGE_TOOL_VIEW_PATH;
+        return parsed.origin === window.location.origin && IMAGE_TOOL_VIEW_PATHS.includes(parsed.pathname);
     } catch {
         return false;
     }
@@ -74,7 +76,7 @@ document.addEventListener('alpine:init', () => {
         cleanup(() => release?.());
     });
     registerToolDisplay({
-        match: /^image_tools_(generate|resize|crop|rotate|flip|apply_filter|add_text|convert_format)$/,
+        match: /^(?:image_tools|stable_diffusion)_(generate|resize|crop|rotate|flip|apply_filter|add_text|convert_format)$/,
         view: 'image-result',
         summary: res => res?.content?.filename || ''
     });
@@ -85,7 +87,7 @@ const IMAGE_TOOL_ACTION = /^(tools_)?(generate|resize|crop|rotate|flip|apply_fil
 // steps start expanded when they contain an image so the picture is visible
 function stepHasImageResult(step) {
     for (const group of (step?.modules ?? [])) {
-        if (!['image', 'image_tools'].includes(String(group?.module || '').toLowerCase())) continue;
+        if (!['image', 'image_tools', 'stable_diffusion'].includes(String(group?.module || '').toLowerCase())) continue;
         for (const action of (group?.actions ?? [])) {
             if (IMAGE_TOOL_ACTION.test(action?.name || '')) return true;
         }

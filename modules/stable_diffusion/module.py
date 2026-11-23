@@ -10,6 +10,8 @@ import re
 import time
 import random
 import asyncio
+import hashlib
+from .image_tools import ImageTools
 
 def _swallow_task_result(task):
     # consume a detached task's outcome so asyncio never logs it as
@@ -17,18 +19,97 @@ def _swallow_task_result(task):
     if not task.cancelled():
         task.exception()
 
-class StableDiffusion(core.module.Module):
+class StableDiffusion(ImageTools, core.module.Module):
     """Lets you or your AI generate images using Stable Diffusion. supports a variety of backends"""
     category = 'media'
+    dependencies = ['pillow']
+
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-22 harness:Codex
+    # The tool registry discovers methods declared on the concrete module.
+    add_text = ImageTools.add_text
+    resize = ImageTools.resize
+    crop = ImageTools.crop
+    rotate = ImageTools.rotate
+    flip = ImageTools.flip
+    apply_filter = ImageTools.apply_filter
+    convert_format = ImageTools.convert_format
+    get_info = ImageTools.get_info
+    list_images = ImageTools.list_images
+    set_image_model = ImageTools.set_image_model
 
     settings = {
+        "enabled": {
+            "type": "boolean",
+            "default": True,
+            "description": "Enable or disable AI image generation and editing."
+        },
+        "generation": {
+            "type": "select",
+            "default": "auto",
+            "description": "Choose whether the AI can generate images. Editing stays available.",
+            "options": {
+                "auto": "Generation and editing",
+                "disabled": "Editing only"
+            }
+        },
+        "ask_before_generate": {
+            "type": "boolean",
+            "default": False,
+            "description": "Ask for confirmation before AI image generation or editing."
+        },
+        "approval_timeout": {
+            "type": "number",
+            "default": 60,
+            "description": "Seconds to wait for an approval answer before cancelling the action. Capped by core.tool_timeout minus 2 seconds."
+        },
+        "endpoint": {
+            "type": "string",
+            "default": "auto",
+            "description": "Configured provider endpoint for image generation (or 'auto')."
+        },
+        "quality": {
+            "type": "select",
+            "default": "high",
+            "options": {
+                "high": "High (best quality)",
+                "standard": "Standard",
+                "hd": "HD (Ultra)"
+            },
+            "description": "Generation quality level (applies to DALL-E 3; mapped to standard/hd)."
+        },
+        "openai_api_key": {
+            "type": "string",
+            "default": "",
+            "description": "API key for the fallback image endpoint.",
+            "depends": {"backend": "selected_provider"}
+        },
+        "openai_api_url": {
+            "type": "string",
+            "default": "https://api.openai.com/v1",
+            "description": "Base URL for OpenAI-compatible image generations.",
+            "depends": {"backend": "selected_provider"}
+        },
+        "openai_model": {
+            "type": "string",
+            "default": "dall-e-3",
+            "description": "Model identifier for OpenAI image generation (e.g. dall-e-3, dall-e-2).",
+            "depends": {"backend": "selected_provider"}
+        },
+        "output_directory": {
+            "type": "string",
+            "default": "data/images",
+            "description": "Folder for edited images and images from the former Image Tools module."
+        },
+
         'backend': {
-            'description': "Engine: sdcpp, a1111, openai, or thenoise",
+            'description': "Image generation backend",
             'default': 'sdcpp',
             "type": "select",
             "options": {
                 "sdcpp": "stable-diffusion.cpp server or a compatible server such as koboldcpp's image server",
                 "openai": "OpenAI API-compatible endpoint, such as lemonade",
+                "selected_provider": "Use selected image provider",
+                "mock": "Offline placeholder",
                 "a1111": "Automatic1111",
                 "thenoise": "TheNoise - an image generation server specifically for AMD hardware"
             }
@@ -122,6 +203,8 @@ class StableDiffusion(core.module.Module):
         return {'gen': folder} if folder else {}
 
     async def on_ready(self):
+        self._prepare_image_tools()
+        starting = not hasattr(self, "output_dir")
         self.output_dir = self.asset_mounts.get('gen') or os.path.join(
             os.path.dirname(os.path.abspath(__file__)), 'webui', 'assets')
         if not os.path.exists(self.output_dir):
@@ -130,7 +213,7 @@ class StableDiffusion(core.module.Module):
         # <token>.png never becomes a real image, and a <token>.json whose
         # picture is gone (or still an empty placeholder) is dead weight
         try:
-            for fname in os.listdir(self.output_dir):
+            for fname in os.listdir(self.output_dir) if starting else ():
                 if fname.endswith('.png') and self._stem_token(fname[:-4]):
                     stale = os.path.join(self.output_dir, fname)
                     if os.path.getsize(stale) == 0:
@@ -386,6 +469,9 @@ class StableDiffusion(core.module.Module):
             w, h = h, w
         if orient == 'landscape' and h > w:
             w, h = h, w
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:06 +08:00 harness:Codex
+        if self.config.get("backend") == "selected_provider":
+            return self._selected_provider_resolution(w, h)
         return w, h
 
     # ---- per-backend generators: each returns raw image bytes ----
@@ -518,6 +604,13 @@ class StableDiffusion(core.module.Module):
                                        height=1024, cfg_scale=1.0, sampler_name='', seed=-1,
                                        note=None):
         backend = (self.config.get('backend') or 'sdcpp').lower()
+        if backend in ('selected_provider', 'mock'):
+            try:
+                if backend == 'mock':
+                    return await asyncio.to_thread(self._generate_mock, prompt, (width, height)), None
+                return await self._generate_selected_provider(prompt, f'{width}x{height}'), None
+            except Exception as error:
+                return None, str(error)
         base = self._base_url()
         gen = {
             'sdcpp': self._gen_sdcpp,
@@ -564,11 +657,11 @@ class StableDiffusion(core.module.Module):
 
         width, height = parsed
         # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:19:00 +08:00 harness:Codex
-        image_tools = self.manager.modules.get("image_tools")
-        if image_tools is not None:
-            refusal = await image_tools.authorize_image_action("Generate image with Stable Diffusion?", prompt)
-            if refusal:
-                return self.result(refusal, success=False)
+        if self._generation_disabled():
+            return self.result("AI image generation is disabled in settings.", success=False)
+        refusal = await self.authorize_image_action("Generate image?", prompt)
+        if refusal:
+            return self.result(refusal, success=False)
         steps = self.config.get("steps")
         cfg_scale = self.config.get("cfg_scale")
         sampler = self.config.get("sampler")
@@ -594,18 +687,18 @@ class StableDiffusion(core.module.Module):
             return self.result(err, success=False)
 
         slug = self._slugify(name)
-        await self._finalize_image(token, slug, image_bytes, self._meta_for(
+        entry = await self._finalize_image(token, slug, image_bytes, self._meta_for(
             name, prompt, negative_prompt, seed, width, height,
             orientation, aspect_ratio, cfg_scale, steps, sampler, backend,
             self._current_chat_id(), category))
 
         tag = '{{sd|' + token + '}}'
+        url = entry['url']
+        image_path = os.path.abspath(os.path.join(self.output_dir, url.rsplit('/', 1)[-1]))
         tag_left = '{{sd|' + token + '|left}}'
         tag_right = '{{sd|' + token + '|right}}'
         pushed = False
         if self.config.get('push_image'):
-            base = slug + '.' + token if slug else token
-            url = '/ext-assets/stable_diffusion/gen/{}.png'.format(base)
             html = '<img src="{}" alt="{}" style="max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px;">'.format(url, name or token)
             await self.channel.push({'role': 'assistant', 'content': html})
             pushed = True
@@ -613,9 +706,9 @@ class StableDiffusion(core.module.Module):
         return ('Image generated. To show it, insert this tag verbatim anywhere in your reply: {} '
                 '(placement tails also work: {} or {}). The tag keeps working in any later message. '
                 'Seed used: {} - pass seed={} with an adjusted prompt to refine this same image; '
-                'omit seed for a brand new one.{}').format(
+                'omit seed for a brand new one.{} Saved image: {}').format(
             tag, tag_left, tag_right,
-            seed, seed, ' Image was also pushed to the chat.' if pushed else '')
+            seed, seed, ' Image was also pushed to the chat.' if pushed else '', image_path)
 
     # ---- manual generation: the gallery sidebar's own generate form ------
 
@@ -764,6 +857,16 @@ class StableDiffusion(core.module.Module):
                 images[token] = entry
         except Exception:
             pass
+        edit_directory = self._get_output_dir()
+        same_directory = os.path.realpath(self.output_dir) == os.path.realpath(edit_directory)
+        generated_names = {entry["url"].rsplit("/", 1)[-1] for entry in images.values()} if same_directory else ()
+        for image in self._recent_images((edit_directory,), 100, exclude=generated_names):
+            filename = image["filename"]
+            token = "file-" + hashlib.sha256(filename.encode()).hexdigest()[:20]
+            images[token] = {
+                "url": self._view_url(filename), "name": filename,
+                "date": image["modified"], "legacy_file": True,
+            }
         return {'images': images, 'categories': self._image_categories()}
 
     @webui.route('meta_update', method='POST')
@@ -915,10 +1018,19 @@ class StableDiffusion(core.module.Module):
         self.config.set('resolution', tier)
         return {'resolution': tier}
 
-    @core.module.command('sd_status', help='Checks if the SD backend is reachable')
+    @core.module.command('sd_status', help='Checks if the image backend is reachable')
     async def sd_status_command(self, args):
-        base = self._base_url()
         backend = (self.config.get('backend') or 'sdcpp').lower()
+        if backend == 'mock':
+            return "The offline image backend is ready."
+        if backend == 'selected_provider':
+            try:
+                endpoint, key = self._selected_image_endpoint()
+                result = await self.manager.API.test_provider_connection(endpoint, key or "")
+            except Exception as error:
+                return f"Selected image provider is unavailable: {error}"
+            return "Selected image provider is reachable." if result.get("success") else "Selected image provider did not answer /models."
+        base = self._base_url()
         probes = {
             'sdcpp': base + '/sdcpp/v1/capabilities',
             'a1111': base + '/sdapi/v1/options',

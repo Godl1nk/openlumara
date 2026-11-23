@@ -240,6 +240,7 @@
         var orig = window.handleWebSocketMessage;
         window.handleWebSocketMessage = function (data) {
             try {
+                if (data && data.type === "sd_gallery_refresh") sdLoadMap();
                 if (data && data.type === "sd_new_image") {
                     if (data.token && data.meta) {
                         SD_IMG_URLS[data.token] = data.meta;
@@ -609,6 +610,7 @@
                 this.wallScroll = 0;
                 this.wallFilter = "all";
                 this.setWallCols();
+                this.refresh();
                 Alpine.store("ui").openModal("sd_gallery_wall");
             },
             wallCols: 4,
@@ -757,9 +759,14 @@
                 if (!window.confirm("Delete \"" + (m.name || m.token) +
                     "\" for good? This cannot be undone.")) return;
                 try {
-                    await simpleApiPost("/api/ext/stable_diffusion/delete_image", {
-                        token: this.selectedToken
-                    });
+                    if (m.legacy_file) {
+                        await simpleApiPost("/api/ext/stable_diffusion/delete", { filename: m.name });
+                        delete SD_IMG_URLS[m.token];
+                        sdBuildGallery();
+                        if (this.selectedToken === m.token) this.leaveLightbox();
+                    } else {
+                        await simpleApiPost("/api/ext/stable_diffusion/delete_image", { token: m.token });
+                    }
                     // the sd_image_gone broadcast prunes the wall and closes
                     // this lightbox all by itself
                 } catch (e) {

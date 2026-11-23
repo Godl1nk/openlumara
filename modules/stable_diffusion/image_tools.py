@@ -1,138 +1,41 @@
 # -- AI GENERATED CODE (GPT-6) :: 2026-11-21 18:19:00 +08:00 harness:Codex
+import asyncio
 import os
 import io
 import time
 import base64
 import hashlib
-import asyncio
 import urllib.parse
 from pathlib import Path
+
+import aiohttp
 from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageEnhance
-import httpx
-import ulid
 
 import core
 import channels.webui.api as webui
 
-class ImageTools(core.module.Module):
-    """
-    AI Image Generation and Local Image Manipulation.
-    Generate images via OpenAI DALL-E, local Stable Diffusion, or offline mock generator,
-    and edit images locally (resize, crop, rotate, flip, filters, format conversions).
-    """
+class ImageTools:
+    """Provider generation, editing and historical image links for Stable Diffusion."""
 
-    category = "utilities"
     edit_tools = {"add_text", "resize", "crop", "rotate", "flip", "apply_filter", "convert_format"}
     media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                    ".webp": "image/webp", ".bmp": "image/bmp", ".gif": "image/gif"}
 
-    settings = {
-        "enabled": {
-            "type": "boolean",
-            "default": True,
-            "description": "Enable or disable image generation and editing."
-        },
-        "generation": {
-            "type": "select",
-            "default": "auto",
-            "description": "Choose when Image Tools exposes its generator. Editing stays available.",
-            "options": {
-                "auto": "Use upstream Stable Diffusion when enabled",
-                "image_tools": "Keep the Image Tools generator available",
-                "disabled": "Editing only"
-            }
-        },
-        "ask_before_generate": {
-            "type": "boolean",
-            "default": False,
-            "description": "Ask for confirmation before AI image generation or editing."
-        },
-        "approval_timeout": {
-            "type": "number",
-            "default": 60,
-            "description": "Seconds to wait for an approval answer before cancelling the action. Capped by core.tool_timeout minus 2 seconds."
-        },
-        "endpoint": {
-            "type": "string",
-            "default": "auto",
-            "description": "Configured provider endpoint for image generation (or 'auto')."
-        },
-        "model": {
-            "type": "string",
-            "default": "Qwen-Image-2.1",
-            "description": "Model to use for image generation."
-        },
-        "quality": {
-            "type": "select",
-            "default": "high",
-            "options": {
-                "high": "High (best quality)",
-                "standard": "Standard",
-                "hd": "HD (Ultra)"
-            },
-            "description": "Generation quality level (applies to DALL-E 3; mapped to standard/hd)."
-        },
-        "backend": {
-            "type": "select",
-            "default": "mock",
-            "description": "Image generation engine: 'mock' (offline gradient placeholder), 'openai' (DALL-E 3 / OpenAI API-compatible), 'sd_webui' (Local Stable Diffusion WebUI / Forge txt2img).",
-            "options": {
-                "mock": "Mock / Offline Generator (Generates stylized PNGs without external APIs)",
-                "openai": "OpenAI DALL-E (DALL-E 3 / DALL-E 2 / OpenAI API-compatible)",
-                "sd_webui": "Local Stable Diffusion WebUI / Forge (txt2img API)"
-            }
-        },
-        "openai_api_key": {
-            "type": "string",
-            "default": "",
-            "description": "API key for image generation. If empty, falls back to the Aegis core api.key.",
-            "depends": "backend"
-        },
-        "openai_api_url": {
-            "type": "string",
-            "default": "https://api.openai.com/v1",
-            "description": "Base URL for OpenAI-compatible image generations.",
-            "depends": "backend"
-        },
-        "openai_model": {
-            "type": "string",
-            "default": "dall-e-3",
-            "description": "Model identifier for OpenAI image generation (e.g. dall-e-3, dall-e-2).",
-            "depends": "backend"
-        },
-        "sd_webui_url": {
-            "type": "string",
-            "default": "http://127.0.0.1:7860",
-            "description": "Base URL of local Stable Diffusion WebUI / Forge instance.",
-            "depends": "backend"
-        },
-        "output_directory": {
-            "type": "string",
-            "default": "data/images",
-            "description": "Folder relative to project root where generated and edited images are stored."
-        }
-    }
-
-    dependencies = ["pillow", "httpx"]
-
-    async def on_ready(self):
+    def _prepare_image_tools(self):
         """Ensure the output directory exists."""
         out_dir = self._get_output_dir()
         os.makedirs(out_dir, exist_ok=True)
         disabled = set()
         if self.config.get("enabled") is False:
             disabled.update(self.edit_tools)
-        if disabled or self._generation_disabled():
-            disabled.add("generate")
+        if self.config.get("enabled") is False or self._generation_disabled():
+            disabled.add("generate_image")
         if "models" in core.config.get("modules", "enabled", default=[]):
             disabled.add("set_image_model")
         self.disabled_tools[:] = sorted(disabled)
 
     def _generation_disabled(self):
-        generation = self.config.get("generation", default="auto")
-        return generation == "disabled" or (
-            generation == "auto" and "stable_diffusion" in core.config.get("modules", "enabled", default=[])
-        )
+        return self.config.get("generation") == "disabled"
 
     def _get_output_dir(self) -> str:
         configured = self.config.get("output_directory") or "data/images"
@@ -142,9 +45,14 @@ class ImageTools(core.module.Module):
 
     def _view_url(self, path: str) -> str:
         """Web URL that serves an image saved in the output directory."""
-        return f"/api/ext/image_tools/view?file={urllib.parse.quote(os.path.basename(path))}"
+        return f"/api/ext/stable_diffusion/view?file={urllib.parse.quote(os.path.basename(path))}"
 
-    def _edit_result(self, action: str, src: str, dest: str, alt: str = None, **extra):
+    async def _refresh_gallery(self):
+        websockets = getattr(self.channel, "websocket_manager", None)
+        if websockets is not None:
+            await websockets.broadcast({"type": "sd_gallery_refresh"})
+
+    async def _edit_result(self, action: str, src: str, dest: str, alt: str = None, **extra):
         """Edit result carrying a ready-to-use web link.
 
         The model pastes this into its reply, so it has to be a URL: a bare
@@ -158,6 +66,7 @@ class ImageTools(core.module.Module):
         if Path(dest).resolve().parent == Path(self._get_output_dir()).resolve():
             url = self._view_url(dest)
             payload.update(url=url, markdown=f"![{alt or action}]({url})")
+            await self._refresh_gallery()
         payload.update(extra)
         return self.result(payload, success=True)
 
@@ -165,7 +74,7 @@ class ImageTools(core.module.Module):
         """Resolve active image model from module config, global core config, or fallback."""
         if core.config.get("model", "image_provider_id"):
             return self.manager.API.get_image_model()
-        return self.config.get("model") or core.config.get("model", "image_model") or self.config.get("openai_model") or "dall-e-3"
+        return core.config.get("model", "image_model") or self.config.get("openai_model") or "dall-e-3"
 
     def _provider_for_endpoint(self, endpoint: str, providers=None):
         """Resolve provider ID or an unambiguous legacy display name."""
@@ -210,7 +119,7 @@ class ImageTools(core.module.Module):
     async def authorize_image_action(self, action: str, detail: str = ""):
         """Return a refusal reason or None before an AI image operation."""
         if self.config.get("enabled") is False:
-            return "AI image generation and editing are disabled in Image Tools."
+            return "AI image generation and editing are disabled in Stable Diffusion."
         if not self.config.get("ask_before_generate"):
             return None
 
@@ -249,106 +158,7 @@ class ImageTools(core.module.Module):
             return str(out_p.resolve())
         return str(p.resolve())
 
-    # =========================================================================
-    # AI Tools - Image Generation
-    # =========================================================================
-
-    @core.module.tool
-    async def generate(self, prompt: str, size: str = "1024x1024", style: str = "vivid", negative_prompt: str = "", filename: str = ""):
-        """
-        Generates an image from a text prompt using the configured backend (OpenAI DALL-E, Local SD WebUI, or Mock).
-
-        Args:
-            prompt: Detailed text description of the image to generate.
-            size: Dimensions ("1024x1024", "512x512") or aspect ratio preset ("1:1", "16:9", "9:16", "4:3", "landscape", "portrait").
-            style: Visual style (for DALL-E 3: "vivid" or "natural").
-            negative_prompt: Optional negative prompt (used when backend is Stable Diffusion / Forge).
-            filename: Optional custom base filename (without path).
-        """
-        if self._generation_disabled():
-            return self.result("Image generation is currently disabled in settings.", success=False)
-
-        if not prompt or not str(prompt).strip():
-            return self.result("Prompt cannot be empty.", success=False)
-
-        effective_model = self._get_image_model()
-        configured_endpoint = self.config.get("endpoint") or "auto"
-
-        approval_error = await self.authorize_image_action(
-            "🎨 Image generation requested:",
-            f"- Prompt: '{prompt}'\n- Model: {effective_model}\n- Endpoint: {configured_endpoint}\n\nProceed with generation?"
-        )
-        if approval_error:
-            return self.result(approval_error, success=False)
-
-        backend = self.config.get("backend") or "mock"
-        out_dir = self._get_output_dir()
-        os.makedirs(out_dir, exist_ok=True)
-
-        # Parse dimensions or aspect ratio preset
-        size_str = str(size).lower().strip()
-        aspect_presets = {
-            "1:1": "1024x1024", "square": "1024x1024",
-            "16:9": "1344x768", "landscape": "1344x768",
-            "9:16": "768x1344", "portrait": "768x1344",
-            "4:3": "1152x864", "3:4": "864x1152",
-            "21:9": "1536x640"
-        }
-        if size_str in aspect_presets:
-            size_str = aspect_presets[size_str]
-
-        try:
-            parts = size_str.split("x")
-            width, height = int(parts[0]), int(parts[1])
-        except Exception:
-            width, height = 1024, 1024
-            size_str = "1024x1024"
-        clean_base = filename.strip() if filename else f"gen_{str(ulid.ULID()).lower()}"
-        clean_base = Path(clean_base).stem
-        target_path = os.path.join(out_dir, f"{clean_base}.png")
-
-        effective_model = self._get_image_model()
-        try:
-            if backend == "openai":
-                await self._generate_openai(prompt, size_str, style, target_path, model=effective_model)
-            elif backend == "sd_webui":
-                await self._generate_sd(prompt, width, height, target_path, negative_prompt=negative_prompt)
-            else:
-                self._generate_mock(prompt, (width, height), target_path)
-
-            rel_path = os.path.relpath(target_path, core.get_path()).replace(os.sep, "/")
-            inline_url = self._view_url(target_path)
-            result_data = {
-                "status": "generated",
-                "path": target_path,
-                "relative_path": rel_path,
-                "filename": os.path.basename(target_path),
-                "size": f"{width}x{height}",
-                "backend": backend,
-                "model": effective_model,
-                "prompt": prompt,
-                "url": inline_url,
-                "markdown": f"![{prompt}]({inline_url})"
-            }
-
-            if self.channel:
-                try:
-                    await self.channel.push(
-                        f"🎨 **Generated Image**: `{result_data['filename']}`\n\n"
-                        f"![{prompt}]({inline_url})\n\n*Prompt: {prompt}*",
-                        defer=False,
-                        # shown immediately, but the tool result already carries
-                        # this info; don't inject an assistant message mid tool call
-                        add_to_context=False
-                    )
-                except Exception:
-                    pass
-
-            return self.result(result_data, success=True)
-        except Exception as e:
-            return self.result(f"Failed to generate image via {backend}: {core.detail_error(e)}", success=False)
-
-    def _generate_mock(self, prompt: str, size: tuple, target_path: str):
+    def _generate_mock(self, prompt: str, size: tuple):
         """Generates an attractive offline placeholder image without external API calls."""
         w, h = size
         w, h = max(64, min(w, 2048)), max(64, min(h, 2048))
@@ -372,10 +182,11 @@ class ImageTools(core.module.Module):
         summary = f"Prompt:\n{prompt[:120]}..." if len(prompt) > 120 else f"Prompt:\n{prompt}"
         draw.text((24, 24), summary, fill=(255, 255, 255))
         draw.text((24, h - 36), f"{w}x{h} • Aegis ImageTools (Mock)", fill=(230, 230, 230))
-        img.save(target_path, "PNG")
+        output = io.BytesIO()
+        img.save(output, "PNG")
+        return output.getvalue()
 
-    async def _generate_openai(self, prompt: str, size: str, style: str, target_path: str, model: str = None):
-        """Calls OpenAI DALL-E / compatible image generation endpoint."""
+    def _selected_image_endpoint(self):
         # explicit endpoint setting wins over model-based provider discovery
         endpoint_name = str(self.config.get("endpoint") or "auto").strip()
         provider = self._provider_for_endpoint(endpoint_name)
@@ -397,8 +208,26 @@ class ImageTools(core.module.Module):
                 api_key = core.config.get("api", "key")
                 if not api_key and api_url.rstrip("/") == module_url.rstrip("/"):
                     api_key = self.config.get("openai_api_key")
-        model = model or self._get_image_model()
-        endpoint = f"{api_url.rstrip('/')}/images/generations"
+        return api_url.rstrip("/"), api_key
+
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:06 +08:00 harness:Codex
+    def _selected_provider_resolution(self, width, height):
+        model = self._get_image_model().lower()
+        if model == "dall-e-2":
+            side = min((256, 512, 1024), key=lambda size: abs(size - max(width, height)))
+            return side, side
+        if model == "dall-e-3" or model.startswith("gpt-image-1"):
+            long_side = 1792 if model == "dall-e-3" else 1536
+            if width == height:
+                return 1024, 1024
+            return (long_side, 1024) if width > height else (1024, long_side)
+        return width, height
+
+    async def _generate_selected_provider(self, prompt: str, size: str):
+        """Calls the selected OpenAI-compatible image endpoint."""
+        api_url, api_key = self._selected_image_endpoint()
+        model = self._get_image_model()
+        endpoint = f"{api_url}/images/generations"
         headers = {
             "Content-Type": "application/json"
         }
@@ -408,74 +237,44 @@ class ImageTools(core.module.Module):
             "model": model,
             "prompt": prompt,
             "n": 1,
-            "size": size,
-            "response_format": "b64_json"
+            "size": size
         }
-        if model == "dall-e-3" and style in ("vivid", "natural"):
-            payload["style"] = style
+        if not model.lower().startswith("gpt-image-"):
+            payload["response_format"] = "b64_json"
         if model == "dall-e-3":
             quality = str(self.config.get("quality") or "high").lower()
             payload["quality"] = "hd" if quality in ("high", "hd") else "standard"
 
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            resp = await client.post(endpoint, json=payload, headers=headers)
-            if resp.status_code != 200:
-                raise RuntimeError(f"OpenAI API returned HTTP {resp.status_code}: {resp.text}")
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=90), trust_env=True) as session:
+            async with session.post(endpoint, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    detail = (await response.content.read(2048)).decode(errors="replace")
+                    raise RuntimeError(f"Image API returned HTTP {response.status}: {detail}")
+                data = await response.json(content_type=None)
 
-            data = resp.json()
             items = data.get("data", [])
             if not items:
                 raise RuntimeError("No image data returned from image API")
 
             first_item = items[0]
             if "b64_json" in first_item:
-                raw_bytes = base64.b64decode(first_item["b64_json"])
-                with open(target_path, "wb") as f:
-                    f.write(raw_bytes)
+                return base64.b64decode(first_item["b64_json"])
             elif "url" in first_item:
                 img_url = str(first_item["url"])
                 if urllib.parse.urlparse(img_url).scheme not in ("http", "https"):
                     raise RuntimeError("Image API returned a non-http(s) image URL")
-                img_resp = await client.get(img_url)
-                if img_resp.status_code != 200:
-                    raise RuntimeError(f"Failed to download image URL: {img_resp.status_code}")
-                if len(img_resp.content) > 50 * 1024 * 1024:
+                limit = 50 * 1024 * 1024
+                async with session.get(img_url, allow_redirects=False) as image_response:
+                    if image_response.status != 200:
+                        raise RuntimeError(f"Failed to download image URL: {image_response.status}")
+                    try:
+                        await image_response.content.readexactly(limit + 1)
+                    except asyncio.IncompleteReadError as image:
+                        return image.partial
                     raise RuntimeError("Image download exceeded the 50 MB limit")
-                with open(target_path, "wb") as f:
-                    f.write(img_resp.content)
             else:
                 raise RuntimeError("Unrecognized response payload structure")
 
-    async def _generate_sd(self, prompt: str, width: int, height: int, target_path: str, negative_prompt: str = ""):
-        """Calls local Stable Diffusion WebUI / Forge txt2img API."""
-        base_url = (self.config.get("sd_webui_url") or "http://127.0.0.1:7860").rstrip("/")
-        endpoint = f"{base_url}/sdapi/v1/txt2img"
-        payload = {
-            "prompt": prompt,
-            "negative_prompt": negative_prompt or "",
-            "width": width,
-            "height": height,
-            "steps": 25,
-            "cfg_scale": 7.0
-        }
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(endpoint, json=payload)
-            if resp.status_code != 200:
-                raise RuntimeError(f"SD WebUI returned HTTP {resp.status_code}: {resp.text}")
-
-            data = resp.json()
-            images = data.get("images", [])
-            if not images:
-                raise RuntimeError("No images returned from SD WebUI")
-
-            img_b64 = images[0]
-            if "," in img_b64:
-                img_b64 = img_b64.split(",", 1)[1]
-            raw_bytes = base64.b64decode(img_b64)
-            with open(target_path, "wb") as f:
-                f.write(raw_bytes)
-
-    # =========================================================================
     @core.module.tool
     async def set_image_model(self, model_name: str):
         """
@@ -537,7 +336,7 @@ class ImageTools(core.module.Module):
                 draw.text((20, y), text[:100], fill=text_color)
                 out.save(dest)
 
-            return self._edit_result("add_text", src, dest, text=text)
+            return await self._edit_result("add_text", src, dest, text=text)
         except Exception as e:
             return self.result(f"Failed to add text: {core.detail_error(e)}", success=False)
 
@@ -571,7 +370,7 @@ class ImageTools(core.module.Module):
                 out = img.resize((width, height), Image.Resampling.LANCZOS)
                 out.save(dest)
 
-            return self._edit_result("resize", src, dest, f"resized {width}x{height}", dimensions=f"{width}x{height}")
+            return await self._edit_result("resize", src, dest, f"resized {width}x{height}", dimensions=f"{width}x{height}")
         except Exception as e:
             return self.result(f"Resize failed: {core.detail_error(e)}", success=False)
 
@@ -613,7 +412,7 @@ class ImageTools(core.module.Module):
                 cropped = img.crop((left_c, top_c, right_c, bottom_c))
                 cropped.save(dest)
 
-            return self._edit_result("crop", src, dest, f"cropped {cropped.width}x{cropped.height}",
+            return await self._edit_result("crop", src, dest, f"cropped {cropped.width}x{cropped.height}",
                                      box=[left_c, top_c, right_c, bottom_c],
                                      new_size=f"{cropped.width}x{cropped.height}")
         except Exception as e:
@@ -646,7 +445,7 @@ class ImageTools(core.module.Module):
                 rotated = img.rotate(float(angle), expand=bool(expand), resample=Image.Resampling.BICUBIC)
                 rotated.save(dest)
 
-            return self._edit_result("rotate", src, dest, f"rotated {angle} degrees",
+            return await self._edit_result("rotate", src, dest, f"rotated {angle} degrees",
                                      angle=angle, dimensions=f"{rotated.width}x{rotated.height}")
         except Exception as e:
             return self.result(f"Rotation failed: {core.detail_error(e)}", success=False)
@@ -682,7 +481,7 @@ class ImageTools(core.module.Module):
                     flipped = ImageOps.mirror(img)
                 flipped.save(dest)
 
-            return self._edit_result("flip", src, dest, f"flipped {mode_clean}", mode=mode_clean)
+            return await self._edit_result("flip", src, dest, f"flipped {mode_clean}", mode=mode_clean)
         except Exception as e:
             return self.result(f"Flip failed: {core.detail_error(e)}", success=False)
 
@@ -739,7 +538,7 @@ class ImageTools(core.module.Module):
 
                 out.save(dest)
 
-            return self._edit_result("filter", src, dest, f"{f_name} filter", filter=f_name)
+            return await self._edit_result("filter", src, dest, f"{f_name} filter", filter=f_name)
         except Exception as e:
             return self.result(f"Filter failed: {core.detail_error(e)}", success=False)
 
@@ -778,7 +577,7 @@ class ImageTools(core.module.Module):
                     img = img.convert("RGB")
                 img.save(dest, fmt.upper())
 
-            return self._edit_result("convert_format", src, dest, f"converted to {fmt}", format=fmt)
+            return await self._edit_result("convert_format", src, dest, f"converted to {fmt}", format=fmt)
         except Exception as e:
             return self.result(f"Format conversion failed: {core.detail_error(e)}", success=False)
 
@@ -823,14 +622,25 @@ class ImageTools(core.module.Module):
         Args:
             limit: Maximum number of image records to return (default 20).
         """
-        out_dir = self._get_output_dir()
-        if not os.path.isdir(out_dir):
-            return self.result([], success=True)
+        images = self._recent_images((self._get_output_dir(), self.output_dir), limit)
+        return self.result(images, success=True)
 
+    def _recent_images(self, folders, limit, exclude=()):
         files = []
-        for entry in os.scandir(out_dir):
-            if entry.is_file() and os.path.splitext(entry.name)[1].lower() in self.media_types:
-                files.append((entry.stat().st_mtime, entry.path, entry.name))
+        for folder in dict.fromkeys(os.path.realpath(path) for path in folders):
+            if not os.path.isdir(folder):
+                continue
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if (entry.name in exclude or not entry.is_file(follow_symlinks=False)
+                        or os.path.splitext(entry.name)[1].lower() not in self.media_types):
+                        continue
+                    try:
+                        stat = entry.stat(follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue
+                    if stat.st_size:
+                        files.append((stat.st_mtime, entry.path, entry.name))
 
         files.sort(reverse=True, key=lambda x: x[0])
         limit_clean = max(1, min(int(limit), 100))
@@ -842,7 +652,7 @@ class ImageTools(core.module.Module):
                 "path": path,
                 "modified": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
             })
-        return self.result(items, success=True)
+        return items
 
     # -------------------------------------------------------------------------
     # Helper Paths
@@ -877,14 +687,13 @@ class ImageTools(core.module.Module):
         return os.path.join(out_dir, new_name)
 
     # =========================================================================
-    # WebUI API Routes (/api/ext/image_tools/...)
+    # WebUI API Routes (/api/ext/stable_diffusion/...)
     # =========================================================================
 
     @webui.route("list")
     async def _route_list(self, body=None, query=None):
         """Returns metadata for recent images in output directory."""
-        res = await self.list_images(limit=50)
-        return {"images": res.get("content", [])}
+        return {"images": self._recent_images((self._get_output_dir(),), 50)}
 
     @webui.route("view")
     async def _route_view(self, body=None, query=None):
@@ -898,11 +707,11 @@ class ImageTools(core.module.Module):
         clean_name = os.path.basename(fname)
         full_path = os.path.join(self._get_output_dir(), clean_name)
         import fastapi
-        if not os.path.isfile(full_path):
-            raise fastapi.HTTPException(status_code=404, detail="Image not found")
         ext = os.path.splitext(clean_name)[1].lower()
-        mt = self.media_types.get(ext, "application/octet-stream")
-        return fastapi.responses.FileResponse(full_path, media_type=mt)
+        mt = self.media_types.get(ext)
+        if not mt or os.path.islink(full_path) or not os.path.isfile(full_path):
+            raise fastapi.HTTPException(status_code=404, detail="Image not found")
+        return fastapi.responses.FileResponse(full_path, media_type=mt, headers={"Cache-Control": "private, no-cache"})
 
     @webui.route("delete", method="POST", admin_only=True)
     async def _route_delete(self, body=None, query=None):
@@ -914,8 +723,9 @@ class ImageTools(core.module.Module):
 
         clean_name = os.path.basename(fname)
         full_path = os.path.join(self._get_output_dir(), clean_name)
-        if os.path.isfile(full_path):
+        if os.path.splitext(clean_name)[1].lower() in self.media_types and os.path.isfile(full_path):
             os.remove(full_path)
+            await self._refresh_gallery()
             return self.result(f"Deleted {clean_name}", success=True)
         return self.result("File not found", success=False)
     @webui.route("settings")
@@ -935,7 +745,7 @@ class ImageTools(core.module.Module):
         provider = self._provider_for_endpoint(endpoint, providers)
         return {
             "enabled": self.config.get("enabled") is not False,
-            "generator_available": not self._generation_disabled(),
+            "selected_provider": self.config.get("backend") == "selected_provider",
             "ask_before_generate": bool(self.config.get("ask_before_generate")),
             "endpoint": provider["id"] if provider else endpoint,
             "model": self._get_image_model(),
@@ -965,13 +775,13 @@ class ImageTools(core.module.Module):
 
     @core.module.command("images", help={
         "list": "Lists recent generated/edited images",
-        "dir": "Shows configured image output folder"
+        "dir": "Shows generated and edited image folders"
     })
     async def images_command(self, args: list):
         """View recent images directly in chat."""
         sub = args[0] if args else "list"
         if sub == "dir":
-            return f"Image output directory: `{self._get_output_dir()}`"
+            return f"Generated images: `{self.output_dir}`\nEdited images: `{self._get_output_dir()}`"
 
         res = await self.list_images(limit=10)
         items = res.get("content", [])
