@@ -61,17 +61,14 @@
                     :selected="option.key === $store.modelManager.selectedKey()"></option>
         </template>
     </select>
-    <select class="model-select effort-select" :value="currentEffort" :disabled="effortSaving || $store.modelManager.loading"
-            @change="setEffort($event.target.value)"
+    {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex #}
+    <select class="model-select effort-select" :value="currentEffort" :disabled="effortBusy"
+            @change="setEffort($event.target.value, $event.target)"
             title="Reasoning effort for the active model"
             aria-label="Reasoning effort">
-        <option value="default">Default</option>
-        <option value="none">None</option>
-        <option value="low">Low</option>
-        <option value="medium">Medium</option>
-        <option value="high">High</option>
-        <option value="xhigh">xhigh</option>
-        <option value="max">Max</option>
+        <template x-for="option in effortOptions" :key="option">
+            <option :value="option" :selected="option === currentEffort" x-text="modelOptionLabel('thinking_effort', option)"></option>
+        </template>
     </select>
     <button type="button" class="btn model-tune-btn" title="Manage API providers and models" @click="await $store.ui.openModal('settings', 'api')">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -92,7 +89,7 @@
 {% if config.get("enable_thinking_toggle") and config.get("enable_admin_settings") %}
 <div class="thinking-toggle" x-data="thinkingToggle({{ 'true' if core_config.get('model', 'enable_thinking', default=True) else 'false' }})" x-cloak>
     {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex #}
-    <button type="button" :title="enabled ? 'Thinking on' : 'Thinking off'" :aria-pressed="enabled" :aria-disabled="saving || $store.modelManager.loading" @click="toggle()">
+    <button type="button" :title="enabled ? 'Thinking on' : 'Thinking off'" :aria-pressed="enabled" :aria-disabled="busy" @click="toggle()">
         <span class="icon-on" x-show="enabled">{% include 'svg/brain.svg' %}</span>
         <span class="icon-off" x-show="!enabled" x-cloak>{% include 'svg/brain_off.svg' %}</span>
     </button>

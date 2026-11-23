@@ -9,8 +9,16 @@ function thinkingToggle(initial) {
 
         get enabled() {
             const ref = Alpine.store('modelManager').activeModelRef;
-            const effort = String(ref?.model.thinking_effort || 'default').trim().toLowerCase();
+            const effort = modelOptionValue('thinking_effort', ref?.model.thinking_effort);
             return effort === 'default' ? this.globalEnabled : effort !== 'none';
+        },
+
+        // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex
+        get busy() {
+            const manager = Alpine.store('modelManager');
+            const ref = manager.activeModelRef;
+            return this.saving || manager.loading || manager.selecting ||
+                Boolean(ref && manager.isSavingOption(ref.prov, ref.model, 'thinking_effort'));
         },
 
         init() {
@@ -21,7 +29,7 @@ function thinkingToggle(initial) {
         async toggle() {
             // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex
             const manager = Alpine.store('modelManager');
-            if (this.saving || manager.loading) return;
+            if (this.busy) return;
             this.saving = true;
 
             try {
@@ -32,10 +40,17 @@ function thinkingToggle(initial) {
                 const next = !this.enabled;
                 const ref = manager.activeModelRef;
                 if (ref) {
-                    const saved = ref.model.previous_thinking_effort || 'default';
-                    const restored = saved === 'default' && !this.globalEnabled ? 'low' : saved;
-                    const effort = next ? restored : 'none';
-                    await manager.saveThinkingEffort(ref, effort);
+                    let effort = 'none';
+                    if (next) {
+                        const saved = modelOptionValue('thinking_effort', ref.model.previous_thinking_effort);
+                        const options = manager.modelOptionPresets(ref.model, 'thinking_effort');
+                        effort = options.includes(saved) ? saved : 'default';
+                        if (effort === 'default' && !this.globalEnabled) {
+                            effort = options.includes('low') ? 'low' : options[0];
+                            if (!effort) throw new Error('Add a thinking effort in model settings first.');
+                        }
+                    }
+                    await manager.saveModelOption(ref, 'thinking_effort', effort);
                 } else {
                     await simpleApiPost('/api/settings/field', { path: ['model', 'enable_thinking'], value: next });
                     manager.globalThinking = next;

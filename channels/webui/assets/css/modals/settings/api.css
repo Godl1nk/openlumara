@@ -784,6 +784,40 @@
     line-height: 1.4;
 }
 
+/* -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex */
+.model-option-grid { margin-bottom: 14px; }
+.model-option-editor {
+    margin: 0;
+    padding: 8px 10px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+}
+.model-option-editor legend { padding: 0 4px; }
+.model-option-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 4px;
+}
+.model-option-list li {
+    display: flex;
+    align-items: center;
+    max-width: 100%;
+    gap: 3px;
+    padding-inline: 7px 2px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-secondary);
+    overflow-wrap: anywhere;
+}
+.model-option-list button { display: grid; place-items: center; min-width: 24px; min-height: 24px; }
+.model-option-add { display: flex; align-items: center; gap: 6px; }
+.model-option-add input { min-width: 0; }
+.model-option-add button { flex-shrink: 0; }
+.model-option-editor [role="alert"] { color: var(--error); }
+
 .modal .model-advanced-input {
     width: 100% !important;
     min-height: 34px;

@@ -115,6 +115,7 @@ def register(app, channel):
         """Returns configured providers, models, and current selections"""
         return utils.api_result({
             "providers": channel.manager.API.get_providers(),
+            "model_option_defaults": core.api.MODEL_OPTION_DEFAULTS,
             "current_model": channel.manager.API.get_model(),
             "provider_id": channel.manager.API.selected_provider_id(),
             "image_provider_id": channel.manager.API.selected_provider_id(image=True),
@@ -187,6 +188,9 @@ def register(app, channel):
     async def provider_model_update(request: fastapi.Request):
         """Updates settings for a provider model"""
         data = await request.json()
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex
+        if not isinstance(data, dict) or not isinstance(data.get("settings", {}), dict):
+            return utils.api_result("Model settings must be an object.", success=False)
         pid = data.get("provider_id")
         mid = data.get("model_id")
         settings = data.get("settings", {})
@@ -211,7 +215,10 @@ def register(app, channel):
         if settings.get("custom_fields") not in (None, "default") and not isinstance(settings.get("custom_fields"), dict):
             return utils.api_result("Custom request fields must be a JSON object or Default", success=False)
 
-        model = channel.manager.API.update_model_settings(pid, mid, settings)
+        try:
+            model = channel.manager.API.update_model_settings(pid, mid, settings)
+        except ValueError as error:
+            return utils.api_result(str(error), success=False)
         return utils.api_result({
             "model": model,
             "max_context": channel.manager.API.get_max_context()

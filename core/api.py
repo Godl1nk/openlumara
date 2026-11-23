@@ -9,6 +9,81 @@ import time
 import urllib.parse
 import ulid
 
+# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex
+MODEL_OPTION_DEFAULTS = {
+    "context_length": ("8192", "16384", "32768", "65536", "128000", "131072", "180000", "200000", "1000000"),
+    "thinking_effort": ("low", "medium", "high", "xhigh", "max"),
+}
+_MODEL_OPTION_MODES = {"context_length": ("auto",), "thinking_effort": ("default", "none")}
+_MAX_SAFE_TOKEN_COUNT = 2**53 - 1
+
+
+def _model_option_value(field, value):
+    label = field.replace("_", " ").capitalize()
+    if value is not None and type(value) not in (str, int):
+        raise ValueError(f"{label} must be a name or a whole number.")
+    text = str(value).strip() if value is not None else ""
+    modes = _MODEL_OPTION_MODES[field]
+    if not text:
+        return modes[0]
+    folded = text.lower()
+    if folded in modes or folded in MODEL_OPTION_DEFAULTS[field]:
+        return folded
+    if text.isascii() and text.isdecimal():
+        digits = text.lstrip("0") or "0"
+        if len(digits) <= 16 and int(digits) <= _MAX_SAFE_TOKEN_COUNT and (digits != "0" or field == "thinking_effort"):
+            return digits
+        raise ValueError(f"{label} is outside the supported token count range.")
+    if field == "context_length":
+        raise ValueError("Context length must be a positive whole number or Auto.")
+    if isinstance(value, int) or len(text.splitlines()) != 1:
+        raise ValueError("Thinking effort must be a single name or a non-negative whole number.")
+    return text
+
+
+def _saved_model_option(field, value):
+    try:
+        return _model_option_value(field, value)
+    except ValueError:
+        return _MODEL_OPTION_MODES[field][0]
+
+
+def _model_option_updates(model, settings):
+    updates = dict(settings)
+    for field, defaults in MODEL_OPTION_DEFAULTS.items():
+        options_key = f"{field}_options"
+        if field not in settings and options_key not in settings:
+            continue
+
+        modes = _MODEL_OPTION_MODES[field]
+        active = _saved_model_option(field, model.get(field))
+        selected = _model_option_value(field, settings[field]) if field in settings else active
+        previous = _saved_model_option(field, model.get("previous_thinking_effort")) if field == "thinking_effort" else modes[0]
+        stored = model.get(options_key)
+        if options_key in settings:
+            submitted = settings[options_key]
+            if not isinstance(submitted, list):
+                raise ValueError(f"{field.replace('_', ' ').capitalize()} options must be a list.")
+            options = [_model_option_value(field, value) for value in submitted]
+            if selected not in modes and selected not in options:
+                if field in settings:
+                    raise ValueError("Add the selected value to the list of options first.")
+                selected = modes[0]
+        else:
+            options = [_saved_model_option(field, value) for value in stored] if isinstance(stored, list) else list(defaults)
+            options.extend((active, previous, selected))
+        options = list(dict.fromkeys(value for value in options if value not in modes))
+        if options_key in settings or isinstance(stored, list) or options != list(defaults):
+            updates[options_key] = options
+        updates[field] = selected
+        if field == "thinking_effort":
+            if selected == "none" and active != "none":
+                previous = active
+            if selected == "none" or "previous_thinking_effort" in model:
+                updates["previous_thinking_effort"] = previous if previous in options else "default"
+    return updates
+
+
 class APIError(Exception):
     """Holds an error message, used for passing on to channels as a value, and raisable as an exception"""
     def __init__(self, message: str = None, exc = None):
@@ -469,8 +544,10 @@ class APIClient():
             ctx_val = m.get("context_length")
             if ctx_val and str(ctx_val).strip().lower() != "auto":
                 try:
-                    return int(ctx_val)
-                except (ValueError, TypeError):
+                    parsed = int(ctx_val)
+                    if parsed > 0:
+                        return parsed
+                except (ValueError, TypeError, OverflowError):
                     pass
             return int(self.detect_model_context(target))
 
@@ -786,17 +863,20 @@ class APIClient():
 
     async def refresh_provider_models(self, provider_id: str):
         """Re-queries {url}/models and merges model customizations."""
-        providers = self.get_providers()
-        target = None
-        for p in providers:
-            if p["id"] == provider_id:
-                target = p
-                break
+        target = next((provider for provider in self.get_providers() if provider["id"] == provider_id), None)
         if not target:
             return []
 
-        res = await self.test_provider_connection(target["url"], target.get("key", ""))
+        endpoint = target["url"], target.get("key", "")
+        res = await self.test_provider_connection(*endpoint)
         if not res.get("success"):
+            return None
+
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex
+        # A model's settings may have changed while the provider was being probed.
+        providers = self.get_providers()
+        target = next((provider for provider in providers if provider["id"] == provider_id), None)
+        if not target or (target["url"], target.get("key", "")) != endpoint:
             return None
 
         discovered_ids = res.get("models", [])
@@ -868,8 +948,7 @@ class APIClient():
                             return None
                         if settings.get("is_image") is False and self.is_selected_model(model_id, provider_id, image=True):
                             return None
-                        if settings.get("thinking_effort") == "none" and m.get("thinking_effort") != "none":
-                            m["previous_thinking_effort"] = m.get("thinking_effort") or "default"
+                        settings = _model_option_updates(m, settings)
                         for k, v in settings.items():
                             if k != "id":
                                 m[k] = v
@@ -1021,7 +1100,7 @@ class APIClient():
                     req.setdefault("chat_template_kwargs", {})["enable_thinking"] = False
                 else:
                     req.setdefault("chat_template_kwargs", {})["enable_thinking"] = True
-                    if m_effort.isdigit():
+                    if m_effort.isascii() and m_effort.isdecimal():
                         req["reasoning_effort"] = int(m_effort)
                     else:
                         req["reasoning_effort"] = m_effort

@@ -223,24 +223,21 @@
                                     <div class="model-item-right">
                                         <template x-if="!m.is_image">
                                             <div class="model-chat-controls">
-                                        <!-- Context Dropdown/Button -->
+                                        {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex #}
+                                        <!-- Context length -->
                                         <div class="model-pill-select-wrap">
                                             <select
                                                 class="model-pill-select"
-                                                :value="m.context_length || 'auto'"
-                                                @change="updateModelContext(prov, m, $event.target.value)"
-                                                title="Context length limit"
+                                                :value="modelOptionValue('context_length', m.context_length)"
+                                                :disabled="$store.modelManager.isSavingOption(prov, m, 'context_length')"
+                                                @change="updateModelChoice(prov, m, 'context_length', $event.target)"
+                                                title="Context length limit used to trim chat history"
+                                                aria-label="Context length"
                                             >
-                                                <option value="auto">Context: Auto</option>
-                                                <option value="8192">Context: 8k</option>
-                                                <option value="16384">Context: 16k</option>
-                                                <option value="32768">Context: 32k</option>
-                                                <option value="65536">Context: 64k</option>
-                                                <option value="128000">Context: 128k</option>
-                                                <option value="131072">Context: 131k</option>
-                                                <option value="180000">Context: 180,000</option>
-                                                <option value="200000">Context: 200k</option>
-                                                <option value="1000000">Context: 1M</option>
+                                                <template x-for="option in $store.modelManager.modelOptionMenu(m, 'context_length')" :key="option">
+                                                    <option :value="option" :selected="option === modelOptionValue('context_length', m.context_length)"
+                                                            x-text="'Context: ' + modelOptionLabel('context_length', option)"></option>
+                                                </template>
                                             </select>
                                         </div>
 
@@ -270,17 +267,16 @@
                                         <div class="model-pill-select-wrap">
                                             <select
                                                 class="model-pill-select thinking"
-                                                :value="m.thinking_effort || 'default'"
-                                                @change="updateModelThinking(prov, m, $event.target.value)"
+                                                :value="modelOptionValue('thinking_effort', m.thinking_effort)"
+                                                :disabled="$store.modelManager.isSavingOption(prov, m, 'thinking_effort')"
+                                                @change="updateModelChoice(prov, m, 'thinking_effort', $event.target)"
                                                 title="Reasoning effort for this model. Default sends no override, so the host server decides."
+                                                aria-label="Thinking effort"
                                             >
-                                                <option value="default">Thinking: Default</option>
-                                                <option value="none">Thinking: None</option>
-                                                <option value="low">Thinking: Low</option>
-                                                <option value="medium">Thinking: Medium</option>
-                                                <option value="high">Thinking: High</option>
-                                                <option value="xhigh">Thinking: xhigh</option>
-                                                <option value="max">Thinking: Max</option>
+                                                <template x-for="option in $store.modelManager.modelOptionMenu(m, 'thinking_effort')" :key="option">
+                                                    <option :value="option" :selected="option === modelOptionValue('thinking_effort', m.thinking_effort)"
+                                                            x-text="'Thinking: ' + modelOptionLabel('thinking_effort', option)"></option>
+                                                </template>
                                             </select>
                                         </div>
                                             </div>
@@ -293,7 +289,8 @@
                                                 :class="{ active: isModelAdvancedOpen(prov, m) }"
                                                 @click="toggleModelAdvanced(prov, m)"
                                                 :aria-expanded="isModelAdvancedOpen(prov, m)"
-                                                title="Advanced request settings for this chat model"
+                                                title="Edit dropdown options and request settings for this model"
+                                                aria-label="Advanced model settings"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                     <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
@@ -325,9 +322,38 @@
 
                                 <div class="model-advanced-panel" x-show="!m.is_image && isModelAdvancedOpen(prov, m)" x-cloak>
                                     <div class="model-advanced-head">
-                                        <span>Advanced request settings</span>
+                                        <span>Advanced model settings</span>
                                         <span class="model-advanced-scope">Chat only · this model</span>
                                     </div>
+                                    <template x-if="!m.is_image && isModelAdvancedOpen(prov, m)">
+                                        <div class="model-advanced-grid model-option-grid">
+                                            <template x-for="field in ['context_length', 'thinking_effort']" :key="field">
+                                                <fieldset class="model-advanced-field model-option-editor" x-data="modelOptionEditor(prov, m, field)">
+                                                    <legend x-text="field === 'context_length' ? 'Context length options' : 'Thinking effort options'"></legend>
+                                                    <ul class="model-option-list">
+                                                        <template x-for="option in options" :key="option">
+                                                            <li>
+                                                                <span x-text="modelOptionLabel(field, option)"></span>
+                                                                <button type="button" class="models-link-btn" :disabled="saving"
+                                                                        :aria-label="'Remove ' + modelOptionLabel(field, option)"
+                                                                        @click="editOption(option, true)">×</button>
+                                                            </li>
+                                                        </template>
+                                                    </ul>
+                                                    <form class="model-option-add" @submit.prevent="editOption(draft)">
+                                                        <input type="text" class="model-advanced-input" x-model="draft" required
+                                                               :inputmode="field === 'context_length' ? 'numeric' : 'text'"
+                                                               :pattern="field === 'context_length' ? '[0-9]+' : null"
+                                                               :aria-label="field === 'context_length' ? 'Custom context length in tokens' : 'Custom thinking effort'"
+                                                               :placeholder="field === 'context_length' ? 'e.g. 24576 tokens' : 'e.g. minimal or 1024'">
+                                                        <button type="submit" class="provider-tool-btn" :disabled="saving || !draft.trim()">Add</button>
+                                                    </form>
+                                                    <small x-show="error" x-text="error" role="alert"></small>
+                                                    <small x-text="field === 'context_length' ? 'Removing the selected length switches to Auto.' : 'Use an effort name or budget your provider accepts. Removing the selected effort switches to Default.'"></small>
+                                                </fieldset>
+                                            </template>
+                                        </div>
+                                    </template>
                                     <div class="model-advanced-grid">
                                         <label class="model-advanced-field">
                                             <span>Output Token Limit</span>

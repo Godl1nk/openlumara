@@ -34,6 +34,29 @@ function syncManagedModelSetting(key, value) {
     }
 }
 
+// -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex
+const MODEL_OPTION_MODES = { context_length: ["auto"], thinking_effort: ["default", "none"] };
+const THINKING_OPTION_LABELS = new Map([
+    ["default", "Default"], ["none", "None"], ["low", "Low"],
+    ["medium", "Medium"], ["high", "High"], ["xhigh", "xhigh"], ["max", "Max"]
+]);
+const contextTokenFormat = new Intl.NumberFormat();
+
+function modelOptionValue(field, value) {
+    const text = String(value ?? "").trim();
+    const folded = text.toLowerCase();
+    if (MODEL_OPTION_MODES[field].includes(folded) || (field === "thinking_effort" && THINKING_OPTION_LABELS.has(folded))) {
+        return folded;
+    }
+    if (/^[0-9]+$/.test(text)) return text.replace(/^0+(?=[0-9])/, "");
+    return text || MODEL_OPTION_MODES[field][0];
+}
+
+function modelOptionLabel(field, value) {
+    if (field === "context_length") return value === "auto" ? "Auto" : contextTokenFormat.format(Number(value));
+    return THINKING_OPTION_LABELS.get(value) ?? value;
+}
+
 
 const MODEL_MANAGER_STORE = {
     providers: [],
@@ -47,6 +70,8 @@ const MODEL_MANAGER_STORE = {
     loading: false,
     optionsError: false,
     modelOptionsRequest: null,
+    modelOptionDefaults: {},
+    savingOptions: {},
 
     async fetchProviders() {
         this.loading = true;
@@ -60,6 +85,7 @@ const MODEL_MANAGER_STORE = {
                 this.currentProviderId = res.provider_id || "";
                 this.imageProviderId = res.image_provider_id || "";
                 this.disabledModels = res.disabled_models || [];
+                this.modelOptionDefaults = res.model_option_defaults || {};
             }
             return Boolean(res);
         } catch (e) {
@@ -151,15 +177,77 @@ const MODEL_MANAGER_STORE = {
         }
     },
 
-    async saveThinkingEffort(ref, effort) {
-        const result = await simpleApiPost("/api/provider/model/update", {
-            provider_id: ref.prov.id,
-            model_id: ref.model.id,
-            settings: { thinking_effort: effort }
-        });
-        Object.assign(ref.model, result.model);
+    modelOptionPresets(model, field) {
+        const stored = model?.[field + "_options"];
+        const options = [...(Array.isArray(stored) ? stored : this.modelOptionDefaults[field] ?? []), model?.[field]];
+        if (field === "thinking_effort" && !Array.isArray(stored)) options.push(model?.previous_thinking_effort);
+        return [...new Set(options.map(value => modelOptionValue(field, value)))]
+            .filter(value => !MODEL_OPTION_MODES[field].includes(value));
+    },
+
+    modelOptionMenu(model, field) {
+        return [...MODEL_OPTION_MODES[field], ...this.modelOptionPresets(model, field)];
+    },
+
+    isSavingOption(prov, model, field) {
+        return Boolean(this.savingOptions[JSON.stringify([prov.id, model.id, field])]);
+    },
+
+    async saveModelOption({ prov, model }, field, value) {
+        const pending = JSON.stringify([prov.id, model.id, field]);
+        if (this.savingOptions[pending]) return false;
+
+        const optionsKey = field + "_options";
+        const key = Array.isArray(value) ? optionsKey : field;
+        this.savingOptions[pending] = true;
+        try {
+            const result = await simpleApiPost("/api/provider/model/update", {
+                provider_id: prov.id,
+                model_id: model.id,
+                settings: { [key]: value }
+            });
+            const current = this.providers.find(provider => provider.id === prov.id)?.models.find(entry => entry.id === model.id) ?? model;
+            current[field] = result.model[field];
+            if (Object.hasOwn(result.model, optionsKey)) current[optionsKey] = result.model[optionsKey];
+            if (field === "thinking_effort") current.previous_thinking_effort = result.model.previous_thinking_effort;
+            if (field === "context_length" && this.selectedKey() === JSON.stringify([prov.id, model.id])) {
+                syncContextPill(result.max_context);
+            }
+            return true;
+        } finally {
+            delete this.savingOptions[pending];
+        }
     }
 };
+
+function modelOptionEditor(prov, model, field) {
+    const manager = () => Alpine.store("modelManager");
+    return {
+        draft: "",
+        error: "",
+        get options() {
+            return manager().modelOptionPresets(model, field);
+        },
+        get saving() {
+            return manager().isSavingOption(prov, model, field);
+        },
+        async editOption(value, remove = false) {
+            if (this.saving || !value.trim()) return;
+            const option = modelOptionValue(field, value);
+            if (!remove && (this.options.includes(option) || MODEL_OPTION_MODES[field].includes(option))) {
+                this.error = "This option is already available.";
+                return;
+            }
+            this.error = "";
+            const updated = remove ? this.options.filter(item => item !== option) : [...this.options, option];
+            try {
+                if (await manager().saveModelOption({ prov, model }, field, updated) && !remove) this.draft = "";
+            } catch (error) {
+                this.error = String(error);
+            }
+        }
+    };
+}
 
 function modelQuickSwitch() {
     return {
@@ -171,9 +259,7 @@ function modelQuickSwitch() {
 
         get currentEffort() {
             const model = this.activeModelRef?.model;
-            if (model) {
-                return String(model.thinking_effort || "default").trim().toLowerCase() || "default";
-            }
+            if (model) return modelOptionValue("thinking_effort", model.thinking_effort);
 
             const settings = Alpine.store("settings")?.categories?.model?.settings;
             const custom = String(settings?.custom_reasoning_effort?.value || "").trim();
@@ -183,13 +269,25 @@ function modelQuickSwitch() {
             return preset && preset !== "none" ? preset : "default";
         },
 
-        async setEffort(value) {
-            if (!value || this.effortSaving) return;
+        get effortOptions() {
+            const model = this.activeModelRef?.model ?? { thinking_effort: this.currentEffort };
+            return Alpine.store("modelManager").modelOptionMenu(model, "thinking_effort");
+        },
+
+        get effortBusy() {
+            const manager = Alpine.store("modelManager");
+            const ref = this.activeModelRef;
+            return this.effortSaving || manager.loading || manager.selecting ||
+                Boolean(ref && manager.isSavingOption(ref.prov, ref.model, "thinking_effort"));
+        },
+
+        async setEffort(value, select) {
+            if (!value || this.effortBusy) return;
             this.effortSaving = true;
             try {
                 const ref = this.activeModelRef;
                 if (ref) {
-                    await Alpine.store("modelManager").saveThinkingEffort(ref, value);
+                    await Alpine.store("modelManager").saveModelOption(ref, "thinking_effort", value);
                 } else {
                     // no provider entry (legacy single-endpoint setup): fall
                     // back to the global reasoning effort
@@ -204,6 +302,7 @@ function modelQuickSwitch() {
             } catch (err) {
                 alert("Failed to set reasoning effort: " + err);
             } finally {
+                if (select) select.value = this.currentEffort;
                 this.effortSaving = false;
             }
         }
@@ -559,21 +658,12 @@ function providerManagerComponent() {
             }
         },
 
-        async updateModelContext(prov, model, val) {
-            model.context_length = val;
+        async updateModelChoice(prov, model, field, select) {
             try {
-                const res = await simpleApiPost("/api/provider/model/update", {
-                    provider_id: prov.id,
-                    model_id: model.id,
-                    settings: { context_length: val }
-                });
-                // the response carries the active model's context; only apply it
-                // when the edited model is the one currently in use
-                if (res && res.max_context && this.isSelected(prov, model)) {
-                    syncContextPill(res.max_context);
-                }
-            } catch (e) {
-                alert("Failed to update context length: " + e);
+                await Alpine.store("modelManager").saveModelOption({ prov, model }, field, select.value);
+            } catch (error) {
+                alert("Could not update model setting: " + error);
+                select.value = modelOptionValue(field, model[field]);
             }
         },
 
@@ -589,14 +679,6 @@ function providerManagerComponent() {
             } catch (e) {
                 model.temperature = previous;
                 alert("Failed to update temperature: " + e);
-            }
-        },
-
-        async updateModelThinking(prov, model, val) {
-            try {
-                await Alpine.store("modelManager").saveThinkingEffort({ prov, model }, val);
-            } catch (e) {
-                alert("Failed to update thinking effort: " + e);
             }
         }
     };
