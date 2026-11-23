@@ -1,5 +1,7 @@
 #chat-window {
     #input {
+        /* -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex */
+        --ac-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
         padding: 0;
         background: var(--bg-primary);
         position: relative;
@@ -19,9 +21,7 @@
             border: 1px solid var(--border-color);
             border-radius: var(--radius-sm);
             margin-bottom: 9px;
-            /* floating mode gets a drop shadow (shared with the command
-               popup via --ac-shadow, defined in autocomplete.css) */
-            box-shadow: var(--ac-shadow, 0 6px 20px rgba(0, 0, 0, 0.25));
+            box-shadow: var(--ac-shadow);
 
             /* while the command popup is open it rests on the input's top
                border, so hide that edge (and square the top corners, so they
@@ -48,19 +48,13 @@
                 border-bottom: none;
                 box-shadow: none;
 
-                /* docked = edge to edge: no side borders (matching the
-                   input). the seam clip lives on #autocomplete-anchor in
-                   autocomplete.css and covers this mode too */
-                #autocomplete-anchor {
-                    left: 0;
-                    right: 0;
+            }
 
-                    .autocomplete-dropdown {
-                        border-left: none;
-                        border-right: none;
-                        border-radius: 0;
-                    }
-                }
+            /* Match the docked bar's square, borderless sides. */
+            #autocomplete-anchor .autocomplete-dropdown {
+                border-left: none;
+                border-right: none;
+                border-radius: 0;
             }
 
             #upload {
@@ -72,13 +66,7 @@
             }
         }
 
-        &:not(.docked) {
-            .input-wrapper {
-                background: color-mix(in srgb, var(--bg-primary, #151515) 60%, transparent);
-                backdrop-filter: blur(6px) saturate(1.4);
-                -webkit-backdrop-filter: blur(6px) saturate(1.4);
-            }
-        }
+        /* the floating wrapper's frost lives in frosted.css */
 
         #upload {
             padding: 0;

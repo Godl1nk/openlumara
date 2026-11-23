@@ -57,6 +57,47 @@ function commandAutocomplete() {
         init() {
             CMD_AC = this;
             this.load();
+
+            // the anchor lives outside .input-wrapper (a backdrop-filtered
+            // ancestor would become a backdrop root and kill the popup's
+            // frosted blur), so it must be glued to the wrapper's box by
+            // hand. anything that moves or resizes the wrapper (textarea
+            // autosize, the upload queue appearing, window resizes) resyncs.
+            const wrapper = this.$el.parentElement?.querySelector('.input-wrapper');
+            this._syncPos = () => this.syncPos();
+
+            if (wrapper && typeof ResizeObserver !== 'undefined') {
+                this._posObserver = new ResizeObserver(this._syncPos);
+                this._posObserver.observe(wrapper);
+            }
+
+            window.addEventListener('resize', this._syncPos);
+        },
+
+        // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex
+        destroy() {
+            this._posObserver?.disconnect();
+            window.removeEventListener('resize', this._syncPos);
+            if (CMD_AC?.$el === this.$el) CMD_AC = null;
+        },
+
+        // glue the popup to the wrapper's box: the anchor mirrors the
+        // wrapper's BORDER box 1:1 within #input, and the dropdown hangs
+        // above the wrapper's top edge. measured fresh per sync, so
+        // autosize/queue/theme-width changes need no special casing.
+        syncPos() {
+            const input = this.$el.parentElement;
+            const wrapper = input?.querySelector('.input-wrapper');
+            const dropdown = this.$el.querySelector('.autocomplete-dropdown');
+            if (!wrapper || !dropdown) return;
+
+            const wr = wrapper.getBoundingClientRect();
+            const pr = input.getBoundingClientRect();
+
+            this.$el.style.left = (wr.left - pr.left) + 'px';
+            this.$el.style.width = wr.width + 'px';
+
+            dropdown.style.bottom = (pr.bottom - wr.top) + 'px';
         },
 
         async load() {

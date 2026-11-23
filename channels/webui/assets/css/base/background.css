@@ -49,8 +49,8 @@ html.has-bg.bg-page #chat-window {
 @media (min-width: 769px) {
 
 /* the sidebar floats over the background picture: frosted glass when the
-   setting is on (same treatment as the floating input bar), fully
-   see-through when it is off */
+   setting is on (same treatment as the floating input bar), a solid
+   bg-primary panel when it is off */
 html.has-bg.bg-page #sidebar {
     background-color: color-mix(in srgb, var(--bg-primary) 45%, transparent);
     backdrop-filter: blur(10px) saturate(1.25);
@@ -58,7 +58,7 @@ html.has-bg.bg-page #sidebar {
 }
 
 html.has-bg.bg-page body.no-frosted #sidebar {
-    background-color: transparent;
+    background-color: var(--bg-primary);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
@@ -69,9 +69,7 @@ html.has-bg.bg-page body.no-frosted #sidebar {
    frost - only while the frosted glass setting is on */
 html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .item:hover,
 html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .item.active,
-html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .item.active:hover,
-html.has-bg.bg-page body:not(.no-frosted) #sidebar .sidebar-panel .item:hover,
-html.has-bg.bg-page body:not(.no-frosted) #sidebar .sidebar-panel .item.active {
+html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .item.active:hover {
     background-color: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
     backdrop-filter: blur(5px) saturate(1.1);
     -webkit-backdrop-filter: blur(5px) saturate(1.1);
@@ -86,12 +84,86 @@ html.has-bg.bg-page body:not(.no-frosted) #sidebar .day-header {
 html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .search .forge-field:focus-within,
 html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .search.creating .forge-field,
 html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .action-btn:hover,
-html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .search .filter-cap:hover,
-html.has-bg.bg-page body:not(.no-frosted) #sidebar .category-trigger:hover,
-html.has-bg.bg-page body:not(.no-frosted) #sidebar .category-trigger.open {
+html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .search .filter-cap:hover {
     background-color: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
 }
 
+/* .category-trigger also lives inside module panels (characters), where
+   --bg-secondary is redefined below as already-translucent: read the
+   opaque alias here so both copies mix from the same source */
+html.has-bg.bg-page body:not(.no-frosted) #sidebar .category-trigger:hover,
+html.has-bg.bg-page body:not(.no-frosted) #sidebar .category-trigger.open {
+    background-color: color-mix(in srgb, var(--src-bg-secondary) 55%, transparent);
+}
+
+/* core's own remaining solid touches on the glass: the tabbar footer
+   buttons, the collapsed rail's active tab chip, and the forge create-row
+   hanging under the search line */
+html.has-bg.bg-page body:not(.no-frosted) #sidebar .sidebar-tabbar-footer .sidebar-tab:hover {
+    background-color: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+html.has-bg.bg-page body:not(.no-frosted) #sidebar.collapsed .sidebar-tab.active {
+    background-color: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+}
+
+html.has-bg.bg-page body:not(.no-frosted) #sidebar.collapsed .sidebar-tab.active:hover {
+    background-color: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .search .forge-row {
+    background-color: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+html.has-bg.bg-page body:not(.no-frosted) #sidebar #chat-list .search .forge-row:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--bg-tertiary) 72%, transparent);
+}
+
+/* module sidebar panels (coder, git, characters, memory, scheduler, ...)
+   paint their hovers, inputs and cards with the opaque theme variables,
+   which would sit on the glass as dead patches. their ext CSS loads AFTER
+   this file, so selector overrides lose at equal specificity - instead the
+   variables themselves are redefined scoped to the panel: custom properties
+   resolve at the usage site, so every module's var()-based surface turns
+   translucent instantly, now and for any future user module. the --src-*
+   aliases carry the untouched theme values (declaring them on #sidebar
+   keeps the definitions non-circular, since inheritance resolves them at
+   the parent). literal colors in module CSS are deliberately left alone:
+   intentional art (terminal screens, geocities' retro tab) stays as drawn. */
+html.has-bg.bg-page body:not(.no-frosted) #sidebar {
+    --src-bg-primary: var(--bg-primary);
+    --src-bg-secondary: var(--bg-secondary);
+    --src-bg-tertiary: var(--bg-tertiary);
+}
+
+/* --button-bg/--button-hover stay solid: themes pair them with
+   --button-text, and flattening only one half breaks the contrast */
+html.has-bg.bg-page body:not(.no-frosted) #sidebar .sidebar-panel {
+    --bg-primary: color-mix(in srgb, var(--src-bg-primary) 72%, transparent);
+    --bg-secondary: color-mix(in srgb, var(--src-bg-secondary) 55%, transparent);
+    --bg-tertiary: color-mix(in srgb, var(--src-bg-tertiary) 72%, transparent);
+    --bg-input: color-mix(in srgb, var(--src-bg-primary) 72%, transparent);
+}
+
+/* popovers born inside a panel float over arbitrary content; the git
+   status-dot tooltip stays solid for readability (coder's menu got its own
+   frost pass in frosted.css). the heavy prefix outranks module rules. */
+html.has-bg.bg-page body:not(.no-frosted) #sidebar .sidebar-panel .git-badge::after {
+    background-color: var(--src-bg-primary);
+}
+
+}
+
+/* page mode: AI message bubbles skip the backdrop blur - they span most
+   of the chat, so blurring the big fixed picture behind every response
+   smears it and costs real GPU time for barely a shimmer; the tint alone
+   carries the surface. user bubbles keep their blur (small surfaces where
+   the glass effect actually shows). the doubled .chat-bubbles only exists
+   to outrank the translucent variant in chat_bubbles.css */
+html.has-bg.bg-page body .message.assistant,
+html.has-bg.bg-page body #messages.chat-bubbles.chat-bubbles .message.assistant {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 @keyframes bg-layer-in {

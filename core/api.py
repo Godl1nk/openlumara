@@ -149,6 +149,9 @@ class APIClient():
         # origin of the API when it's a llama.cpp router. enables the model load progress feed.
         self._router_origin = None
 
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex
+        self._extras_rejected = set()
+
     # -------------------
     # HTTP plumbing
     # -------------------
@@ -183,8 +186,8 @@ class APIClient():
 
     async def _probe_connection(self):
         """lightweight connection probe by doing a GET request to /models"""
-        api_config = core.config.get("api", {})
-        return await self._http_get(f"{api_config.get('url')}/models", timeout_total=15)
+        base = core.config.get("api", "url").rstrip("/")
+        return await self._http_get(f"{base}/models", timeout_total=15)
 
     async def _probe_chat_completions(self):
         """fallback probe for servers without GET /models,
@@ -297,6 +300,7 @@ class APIClient():
 
             # validate the connection with a cheap GET /models request
             status, body = await self._probe_connection()
+            model_listing = body if status == 200 else None
             connection_error = None
 
             if status in (404, 405):
@@ -344,8 +348,7 @@ class APIClient():
 
         self.connected = True
 
-        # probe for a llama.cpp router so we can stream model-load progress
-        await self._detect_router()
+        await self._detect_router(model_listing)
 
         if not silent and self.manager:
             self.manager.log("API", "Successfully connected to AI")
@@ -382,6 +385,7 @@ class APIClient():
             # clear per-session state
             self._ssl_ctx = None
             self._router_origin = None
+            self._extras_rejected.clear()
 
             self.connected = False
 
@@ -395,7 +399,7 @@ class APIClient():
     # -------------------
     # llama.cpp router support
     # -------------------
-    async def _detect_router(self):
+    async def _detect_router(self, model_listing=None):
         """
         probe the API to detect if it's a llamacpp instance that's in router mode
         (to support features exclusive to llamacpp, such as
@@ -410,19 +414,23 @@ class APIClient():
             if not parsed.scheme or not parsed.netloc:
                 return
 
-            origin = f"{parsed.scheme}://{parsed.netloc}"
-            status, body = await self._http_get(f"{origin}/models", timeout_total=5.0)
+            # The management endpoints omit /v1, including behind a path prefix.
+            router_path = parsed.path.rstrip("/").removesuffix("/v1")
+            origin = f"{parsed.scheme}://{parsed.netloc}{router_path}"
+            if model_listing is None:
+                status, model_listing = await self._http_get(f"{origin}/models", timeout_total=5.0)
+                if status != 200:
+                    return
 
-            if status != 200:
-                return
-
-            body = json.loads(body)
-            entries = body.get("data")
-
-            if isinstance(entries, list) and any(isinstance(e, dict) and "status" in e for e in entries):
+            body = json.loads(model_listing)
+            entries = body.get("data") if isinstance(body, dict) else None
+            if isinstance(entries, list) and any(
+                isinstance(entry, dict) and isinstance(entry.get("status"), dict)
+                and entry["status"].get("value") for entry in entries
+            ):
                 self._router_origin = origin
 
-        except Exception as e:
+        except (ValueError, TypeError, aiohttp.ClientError, asyncio.TimeoutError):
             pass
 
     async def _wait_for_model_loaded(self, timeout=240.0):
@@ -1064,10 +1072,11 @@ class APIClient():
         provider, model_entry = self.find_provider_for_model(target_model)
         if target_model == self.get_model() and core.config.get("model", "provider_id") and not provider:
             return APIError("Selected chat model or provider is unavailable. Choose an enabled model.")
-        api_url = provider.get("url") if provider else None
+        api_url = provider.get("url") if provider else core.config.get("api", "url")
         if provider and not api_url:
             return APIError("Selected provider has no endpoint URL.")
-        api_key = (provider.get("key") or "") if provider else None
+        api_key = (provider.get("key") if provider else core.config.get("api", "key")) or ""
+        endpoint = ((api_url or "").rstrip("/"), target_model)
 
         req = {
             "model": target_model,
@@ -1158,6 +1167,12 @@ class APIClient():
             # request token usage from the API
             req["stream_options"] = {"include_usage": True}
 
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex
+        llama_extras = ("return_progress", "chat_template_kwargs")
+        if endpoint in self._extras_rejected:
+            for field in llama_extras:
+                req.pop(field, None)
+
         #import rich
         #rich.print(req)
 
@@ -1203,6 +1218,7 @@ class APIClient():
 
         response = None
         attempt = 1
+        retried_without_extras = False
         try:
             # retry loop
             while True:
@@ -1233,9 +1249,18 @@ class APIClient():
                     finally:
                         self._request_task = None
 
+                    if retried_without_extras:
+                        self._extras_rejected.add(endpoint)
                     break
 
                 except (APIHTTPError, aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if (isinstance(e, APIHTTPError) and e.status == 400
+                            and any(field in req for field in llama_extras) and not self.cancel_request):
+                        for field in llama_extras:
+                            req.pop(field, None)
+                        retried_without_extras = True
+                        continue
+
                     if attempt >= self.MAX_API_ATTEMPTS or not self._is_retryable_error(e) or self.cancel_request:
                         raise
 

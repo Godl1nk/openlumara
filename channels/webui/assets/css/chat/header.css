@@ -1,20 +1,47 @@
 header {
-    padding: 6px 12px;
-    background: none;
+    /* the vertical padding lives on the ITEMS (below), not the bar itself:
+       when Alpine's x-show hides every child, hidden items carry no margins
+       and the header collapses to true zero height - padding on the bar
+       would instead leave a hollow strip. horizontal padding is harmless
+       height-wise and stays here. h1 is excluded so the titled header keeps
+       its current rhythm. */
+    padding: 0 12px;
+    /* solid bg-primary by default (frost off); the frosted pass in
+       frosted.css overrides this with translucent glass while the
+       setting is on */
+    background: var(--bg-primary);
+
+    /* floats over the message scrollbox (window.css runs #messages under
+       it), so the frost blurs the bubbles actually passing behind -
+       same arrangement as the floating input bar at the bottom */
+    position: relative;
+    z-index: 41;
+
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
+    min-height: 32px;
     overflow-x: hidden !important;
+
+    .left > :not(h1),
+    .right > :not(h1) {
+        margin-block: 6px;
+    }
 
     .left {
         display: flex;
         align-items: center;
         gap: 14px;
+        /* Equal-width rails keep the title centered. */
+        flex: 1 1 0;
+        min-width: 0;
     }
     .right {
+        flex: 1 1 0;
         display: flex;
         align-items: center;
+        justify-content: flex-end;
         gap: 8px;
 
         .stream-state {
@@ -68,6 +95,10 @@ header {
         font-weight: 700;
         letter-spacing: -0.02em;
         color: var(--text-secondary);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         /*
         background: linear-gradient(135deg, var(--accent) 0%, var(--text-primary) 100%);
         -webkit-background-clip: text;

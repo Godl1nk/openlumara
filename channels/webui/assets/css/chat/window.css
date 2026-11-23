@@ -35,9 +35,16 @@
             visibility: hidden;
         }
         padding: 4px 20px;
+        /* the header floats over the chat (see header.css / init.js): the
+           scrollbox runs under it so bubbles blur behind its frost, and
+           this padding reserves the same strip so content at rest (and at
+           scrollTop 0) stays clear of it. */
+        padding-top: calc(4px + var(--header-height, 0px));
+        scroll-padding-top: var(--header-height, 0px);
         flex-direction: column;
         gap: 4px;
         margin: 0 auto;
+        margin-top: calc(-1 * var(--header-height, 0px));
         margin-bottom: 7px;
         min-height: 0;
 
@@ -216,19 +223,25 @@
     background: none;
 }
 
-/* solid controls inside the frosted wrapper would break the effect */
+/* solid controls inside the frosted wrapper would break the effect
+   (paired with the wrapper's frost in frosted.css) */
 #chat-window #input:not(.docked) #user-input {
     background: transparent;
 }
 
-/* frosted glass disabled (settings toggle): overlays stay, they just go
-   fully opaque instead of blurring what scrolls beneath them */
-body.no-frosted #chat-window #input:not(.docked),
-body.no-frosted #messages .turn.prompt-pinned:not(:has(.editing)) > .message-wrapper.user > .message.user {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: var(--bg-primary, #151515);
+/* upload queue stacked above the floating input: same seamless-seam trick
+   as the command popup (see autocomplete.css) - the wrapper drops its top
+   border and top radius so one shared line remains; the queue squares its
+   bottom, overlaps the seam by 1px, and wears the top corners plus the
+   clipped shadow (see upload.css) */
+#chat-window #input:not(.docked):has(.upload-queue) .input-wrapper {
+    border-top-color: transparent;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    box-shadow: none;
 }
+
+/* all frosted-glass surfaces and the frost-disabled fallback: frosted.css */
 
 /* floating "jump back to the newest message" control, kept clear of the
    input bar whether that bar is docked in-flow or overlaid over the chat */
@@ -247,9 +260,6 @@ body.no-frosted #messages .turn.prompt-pinned:not(:has(.editing)) > .message-wra
     justify-content: center;
 
     border: 1px solid var(--border-color);
-    background: color-mix(in srgb, var(--bg-primary, #151515) 76%, transparent);
-    backdrop-filter: blur(8px) saturate(1.35);
-    -webkit-backdrop-filter: blur(8px) saturate(1.35);
     color: var(--text-secondary);
     cursor: pointer;
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
@@ -276,12 +286,6 @@ body.no-frosted #messages .turn.prompt-pinned:not(:has(.editing)) > .message-wra
     transform: translate(-50%, 0);
 }
 
-body.no-frosted #scroll-to-bottom {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: var(--bg-primary, #151515);
-}
-
 @media (prefers-reduced-motion: reduce) {
     #scroll-to-bottom {
         transition: none;
@@ -295,7 +299,9 @@ body.no-frosted #scroll-to-bottom {
 
 #messages .turn.prompt-pinned:not(:has(.editing)) {
     position: sticky;
-    top: 10px;
+    /* stick below the floating header strip, not under it (see the
+       --header-height padding on #messages) */
+    top: calc(10px + var(--header-height, 0px));
     z-index: 20;
     pointer-events: none;
 }
@@ -312,9 +318,6 @@ body.no-frosted #scroll-to-bottom {
     max-width: 30% !important;
     white-space: nowrap;
     text-overflow: ellipsis;
-    background: color-mix(in srgb, var(--bg-primary, #151515) 28%, transparent);
-    backdrop-filter: blur(5px) saturate(1.4);
-    -webkit-backdrop-filter: blur(5px) saturate(1.4);
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
 }
 
@@ -328,9 +331,5 @@ body.no-frosted #scroll-to-bottom {
     opacity: 0;
     overflow: hidden;
     pointer-events: none;
-}
-
-#messages.chat-bubbles .turn.prompt-pinned:not(:has(.editing)) > .message-wrapper.user > .message.user {
-    background: color-mix(in srgb, var(--bg-message-user, var(--bg-primary, #151515)) 28%, transparent);
 }
 

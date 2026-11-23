@@ -98,18 +98,19 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
             "description": "Because logins are disabled, you need protection from outside intruders (think of this like a firewall). Specify a list of IP ranges that are allowed to request private data from the webui's API. Clients in these ranges get full access while those coming from outside your network are refused. Set it to just your LAN's range (such as `192.168.0.0/24`) to tighten it, or to [] to only ever allow the machine itself.",
             "depends": {"require_login": False}
         },
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex
         "enable_chat_header": {
-            "description": "Whether to enable the header at the top of a chat. Disabling this removes access to all graphical controls, and strips the interface down to a very basic chat. You might want this for public instances!",
+            "description": "Show the chat header with its sidebar toggle, generation speed, and extension controls.",
             "default": True
         },
         "enable_title": {
             "default": True,
-            "description": "Whether to show a fancy title in the header",
+            "description": "Show the active chat title in the header.",
             "depends": "enable_chat_header"
         },
         "title": {
             "default": "Aegis",
-            "depends": {"enable_chat_header": True, "enable_title": True}
+            "description": "Browser tab title and the header fallback when a chat has no title."
         },
         "message_style": {
             "description": "How messages should look",
@@ -133,7 +134,7 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
             "default": True
         },
         "enable_model_switcher": {
-            "description": "Whether to show a model dropdown in the input bar, so you can quickly switch models without opening the settings. Disabled on mobile due to lack of space.",
+            "description": "Show model and thinking effort selectors in the chat composer on desktop and mobile.",
             "default": True,
         },
         "enable_thinking_toggle": {
