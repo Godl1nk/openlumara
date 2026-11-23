@@ -48,6 +48,7 @@ const MODEL_MANAGER_STORE = {
     selecting: false,
     loading: false,
     optionsError: false,
+    modelOptionsRequest: null,
 
     async fetchProviders() {
         this.loading = true;
@@ -69,11 +70,13 @@ const MODEL_MANAGER_STORE = {
             this.loading = false;
         }
     },
-    async loadModelOptions() {
-        const loaded = await this.fetchProviders();
-        const settings = Alpine.store("settings");
-        if (loaded && !this.hasCatalog) await settings.fetchModels();
-        this.optionsError = !loaded || (!this.hasCatalog && Boolean(settings.modelsLoadError));
+    // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex
+    loadModelOptions() {
+        return this.modelOptionsRequest ??= this.fetchProviders().then(async loaded => {
+            const settings = Alpine.store("settings");
+            if (loaded && !this.hasCatalog) await settings.fetchModels();
+            this.optionsError = !loaded || (!this.hasCatalog && Boolean(settings.modelsLoadError));
+        }).finally(() => { this.modelOptionsRequest = null; });
     },
 
     selectedKey(image = false) {

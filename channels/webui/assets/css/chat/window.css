@@ -21,7 +21,13 @@
         background-size: var(--bg-pattern-size);
         */
 
-        overflow-anchor: none;
+        /* native scroll anchoring (the browser default) stays ENABLED here:
+           it is what keeps the viewport perfectly still when older turns
+           are prepended above it (and when far-off turns are dropped below
+           it). setting `overflow-anchor: none` disables that and forces
+           error-prone manual scrollTop compensation - do not re-add it.
+           descendants that should never act as the anchor can still opt out
+           individually with `overflow-anchor: none`. */
 
         /* kept invisible (but laid out, so heights still measure) while a
            freshly loaded chat is scrolled to its end */
@@ -167,6 +173,7 @@
 
 :root {
     interpolate-size: allow-keywords;
+    --floating-input-height: 72px;
 }
 
 /* x-for needs a single root; display:contents keeps it from becoming a box,
@@ -197,7 +204,7 @@
 /* floating (non-docked) input bar: an overlay surface the chat scrolls
    beneath, with the same frosted-glass treatment as the pinned prompt */
 #chat-window:has(#input:not(.docked)) #messages {
-    padding-bottom: 72px;
+    padding-bottom: calc(var(--floating-input-height) + 12px);
 }
 
 #chat-window #input:not(.docked) {
@@ -206,9 +213,7 @@
     left: 0;
     right: 0;
     z-index: 40;
-    background: color-mix(in srgb, var(--bg-primary, #151515) 60%, transparent);
-    backdrop-filter: blur(6px) saturate(1.4);
-    -webkit-backdrop-filter: blur(6px) saturate(1.4);
+    background: none;
 }
 
 /* solid controls inside the frosted wrapper would break the effect */
@@ -223,6 +228,69 @@ body.no-frosted #messages .turn.prompt-pinned:not(:has(.editing)) > .message-wra
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: var(--bg-primary, #151515);
+}
+
+/* floating "jump back to the newest message" control, kept clear of the
+   input bar whether that bar is docked in-flow or overlaid over the chat */
+#scroll-to-bottom {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--floating-input-height, 72px) + 18px);
+    transform: translateX(-50%);
+    z-index: 45;
+
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--bg-primary, #151515) 76%, transparent);
+    backdrop-filter: blur(8px) saturate(1.35);
+    -webkit-backdrop-filter: blur(8px) saturate(1.35);
+    color: var(--text-secondary);
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+
+    transition:
+        color 0.15s ease,
+        border-color 0.15s ease,
+        background-color 0.15s ease,
+        transform 0.15s ease;
+}
+
+#scroll-to-bottom svg {
+    width: 20px;
+    height: 20px;
+}
+
+#scroll-to-bottom:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    transform: translate(-50%, -2px);
+}
+
+#scroll-to-bottom:active {
+    transform: translate(-50%, 0);
+}
+
+body.no-frosted #scroll-to-bottom {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--bg-primary, #151515);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #scroll-to-bottom {
+        transition: none;
+    }
+
+    #scroll-to-bottom:hover,
+    #scroll-to-bottom:active {
+        transform: translateX(-50%);
+    }
 }
 
 #messages .turn.prompt-pinned:not(:has(.editing)) {

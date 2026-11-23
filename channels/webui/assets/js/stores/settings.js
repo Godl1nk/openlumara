@@ -9,7 +9,6 @@ SETTINGS_STORE = {
     changedModuleSettings: new Set(),
     categories: {},
 
-    activeCategory: null,
     loading: false,
 
     // --- Error State ---
@@ -23,6 +22,7 @@ SETTINGS_STORE = {
     
     // --- Model Cache ---
     cachedModels: null,
+    modelsLoading: false,
     modelsLoadError: null,
 
     systemPrompt: '',
@@ -121,7 +121,8 @@ SETTINGS_STORE = {
     async fetchModels() {
         console.log("fetching models..");
 
-        this.loading = true;
+        // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex
+        this.modelsLoading = true;
 
         try {
             const res = await simpleApiFetch('/api/models');
@@ -133,9 +134,9 @@ SETTINGS_STORE = {
             console.error('Failed to fetch models:', err);
             this.modelsLoadError = err || 'Failed to fetch models';
             this.cachedModels = null;
+        } finally {
+            this.modelsLoading = false;
         }
-
-        this.loading = false;
     },
 
     async saveSettings() {

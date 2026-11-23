@@ -16,7 +16,20 @@ UI_STORE = {
     notice: null,
 
     shouldScroll: true,
+    // unlike shouldScroll (which tracks the tight auto-follow tolerance),
+    // this only turns true after a deliberate scroll-up
+    showScrollButton: false,
     scrollToTurnIndex: null,
+
+    // transient feedback bubble for keyboard actions (see #kb-toast in index.html)
+    toastMsg: null,
+    _toastTimer: null,
+
+    toast(msg, ms = 2000) {
+        this.toastMsg = msg;
+        clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(() => { this.toastMsg = null; }, ms);
+    },
 
     _suppressScroll: false,
     _pumpRaf: null,
@@ -26,6 +39,10 @@ UI_STORE = {
     _updateShouldScroll(el) {
         const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
         this.shouldScroll = distFromBottom < this.scrollThreshold;
+
+        // the button only appears once the user has scrolled up a
+        // significant amount: at least most of a viewport above the bottom
+        this.showScrollButton = distFromBottom > Math.max(el.clientHeight * 0.75, 400);
     },
 
     _stopPump() {
@@ -44,12 +61,14 @@ UI_STORE = {
 
         const bottom = el.scrollHeight - el.clientHeight;
         const remaining = bottom - el.scrollTop;
+
         if (remaining <= 1) {
             el.scrollTo({ top: bottom, behavior: 'instant' });
             this._stopPump();
             this._updateShouldScroll(el);
             return false;
         }
+
         el.scrollTo({ top: el.scrollTop + remaining * this._lerpDamp(dt), behavior: 'instant' });
         return true;
     },
@@ -79,6 +98,7 @@ UI_STORE = {
     _pumpScrollToBottom(el) {
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
             this._stopPump();
+            // instant: global scroll-behavior:smooth would animate this jump
             el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
             return;
         }
@@ -95,6 +115,7 @@ UI_STORE = {
 
         this._suppressScroll = true;
         this._pumpEl = el;
+
         if (this._pumpRaf === null) {
             // seed with the current time so the very first hop sees a real
             // frame-sized dt instead of "time since page load"
@@ -173,31 +194,143 @@ UI_STORE = {
     },
 
     expandReasoning: true,
+    _floatingInputObserver: null,
+
+    observeFloatingInput() {
+        const input = document.getElementById('input');
+        if (!input) return;
+
+        let lastHeight = -1;
+        let first = true;
+
+        const update = () => {
+            const height = input.offsetHeight;
+            if (height === lastHeight) return;
+
+            lastHeight = height;
+            document.documentElement.style.setProperty('--floating-input-height', `${height}px`);
+
+            if (!first && this.shouldScroll) {
+                this.forceScrollToBottom('messages');
+            }
+
+            first = false;
+        };
+
+        update();
+
+        if (!this._floatingInputObserver) {
+            this._floatingInputObserver = new ResizeObserver(update);
+        }
+
+        this._floatingInputObserver.observe(input);
+    },
+
+    /*
+     * viewport-driven sidebar visibility. phones always start hidden (the
+     * hamburger owns that state, and a chat tap dismisses the panel), while
+     * a desktop restores whatever Ctrl+B last left it on.
+     */
+    applySidebarViewport() {
+        if (this.isMobile) { this.showSidebar = false; return; }
+
+        this.showSidebar = localStorage.getItem('showSidebar') !== 'false';
+    },
 
     async init() {
         // check if this is a phone
         this.windowWidth = window.innerWidth;
         this.isMobile = window.isMobileViewport();
 
-        // hide sidebar on mobile (in favor of a hamburger button)
-        this.showSidebar = !this.isMobile;
+        // hide sidebar on mobile (in favor of a hamburger button), otherwise
+        // restore the saved show/hide preference
+        this.applySidebarViewport();
 
         // restore the collapsed-sidebar preference (default: expanded)
         this.sidebarCollapsed = localStorage.getItem("sidebarCollapsed") === 'true';
 
         this.expandReasoning = localStorage.getItem("expandReasoning") !== 'false';
 
+        this.observeFloatingInput();
+    },
 
+    // which sidebar panel the tab strip shows ('' = the chat list)
+    sidebarTab: localStorage.getItem('sidebarTab') || '',
+
+    // single source of truth for the rail-collapsed state
+    setSidebarCollapsed(collapsed) {
+        this.sidebarCollapsed = Boolean(collapsed);
+        localStorage.setItem('sidebarCollapsed', String(this.sidebarCollapsed));
+    },
+
+    // the tab strip's tabs in rendered order (the chat list plus any panel a
+    // module contributed). read from the DOM because the set of panels is
+    // decided server-side per boot.
+    sidebarTabs() {
+        return [...document.querySelectorAll('.sidebar-tab-list .sidebar-tab[data-tab]')]
+            .map(b => b.dataset.tab);
+    },
+
+    setSidebarTab(tab) {
+        if (this.sidebarTab !== tab) {
+            this.sidebarTab = tab;
+            localStorage.setItem('sidebarTab', tab);
+        }
+
+        // moving to a different tab always reveals the panel again: the rail
+        // is only ever collapsed on the tab you're already sitting on
+        if (this.sidebarCollapsed) this.setSidebarCollapsed(false);
+    },
+
+    /*
+     * only an explicit desktop change becomes a saved preference: on a phone
+     * the panel is dismissed transiently (hamburger, picking a chat, an edge
+     * swipe), and remembering that would leave the sidebar hidden the next
+     * time the window happens to be desktop-sized.
+     */
+    saveSidebarVisibility() {
+        if (!this.isMobile) localStorage.setItem('showSidebar', String(this.showSidebar));
+    },
+
+    // reveal the sidebar: a keyboard tab switch must never look like a no-op
+    showSidebarPanel() {
+        if (this.showSidebar) return;
+
+        this.showSidebar = true;
+        this.saveSidebarVisibility();
+    },
+
+    // prev/next sidebar tab, wrapping at both ends
+    cycleSidebarTab(direction) {
+        const tabs = this.sidebarTabs();
+        if (tabs.length < 2) { this.toast('No sidebar tabs to cycle through'); return; }
+
+        // Ctrl+B may have hidden the sidebar: revealing it keeps a keyboard
+        // tab switch from appearing to do nothing at all
+        this.showSidebarPanel();
+
+        const idx = tabs.indexOf(this.sidebarTab);
+        if (idx === -1) {
+            // the current tab isn't in the strip anymore (its module went
+            // away): jump to the end we're heading towards
+            this.setSidebarTab(direction < 0 ? tabs[tabs.length - 1] : tabs[0]);
+            return;
+        }
+
+        this.setSidebarTab(tabs[(idx + direction + tabs.length) % tabs.length]);
     },
 
     async toggleSidebar() {
         if (this._sidebarDrag) this._sidebarDrag.cleanup();
         this.showSidebar = !this.showSidebar;
+        this.saveSidebarVisibility();
     },
 
-    async openModal(name, settingsCategory = 'appearance') {
-        // opening another modal while settings is dirty asks first; cancelling
-        // keeps the settings modal open
+    // when set, the settings modal opens straight on this category
+    // (used by the command palette and model settings button)
+    settingsCategory: null,
+
+    async openModal(name, category = null) {
         if (this.currentModal === 'settings' && name !== 'settings') {
             const settings = Alpine.store('settings');
             if (settings.hasChanges &&
@@ -206,9 +339,7 @@ UI_STORE = {
             }
         }
 
-        if (name === 'settings') {
-            Alpine.store('settings').activeCategory = settingsCategory;
-        }
+        this.settingsCategory = (name === 'settings') ? category : null;
         this.currentModal = name;
 
         /*
@@ -261,15 +392,6 @@ UI_STORE = {
         }
     },
 
-    // while the live chain is capped it scrolls itself (x-auto-scroll);
-    // pumping the outer window at the same time makes the two scrollers
-    // fight, so the outer follow stands down until the chain breaks free
-    _chainOwnsScroll() {
-        const body = document.querySelector('.agent-chain.is-streaming .agent-chain-body');
-        if (!body) return false;
-        return body.scrollHeight > body.clientHeight + 1;
-    },
-
     async scrollToBottom(containerId = 'messages', instant = false) {
         if (!this.shouldScroll) return;
 
@@ -278,11 +400,6 @@ UI_STORE = {
 
         if (instant) {
             await this._jumpToBottom(el);
-            return;
-        }
-
-        if (this._chainOwnsScroll()) {
-            this._stopPump();
             return;
         }
 
@@ -298,6 +415,7 @@ UI_STORE = {
         if (!el) return;
 
         this.shouldScroll = true;
+        this.showScrollButton = false;
 
         await this._jumpToBottom(el);
     },

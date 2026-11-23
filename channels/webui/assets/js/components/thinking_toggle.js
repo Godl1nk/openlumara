@@ -19,11 +19,12 @@ function thinkingToggle(initial) {
         },
 
         async toggle() {
-            if (this.saving) return;
+            // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex
+            const manager = Alpine.store('modelManager');
+            if (this.saving || manager.loading) return;
             this.saving = true;
 
             try {
-                const manager = Alpine.store('modelManager');
                 if (manager.globalThinking === null) {
                     await manager.fetchProviders();
                     if (manager.globalThinking === null) throw new Error('Model settings unavailable');

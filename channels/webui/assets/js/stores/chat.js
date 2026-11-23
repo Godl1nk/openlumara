@@ -71,7 +71,7 @@ CHAT_STORE = {
     loadingOlder: false,
     turnPageSize: 5,
     olderTriggerPx: 300,
-    _anchorBusy: false,
+    olderPrefetchPx: 600,
     _olderIntersecting: false,
     _unloadQueued: false,
     _lastUnloadAt: 0,
@@ -94,6 +94,28 @@ CHAT_STORE = {
     // line and then grow back (a collapse-then-grow jolt).
     releasingTurnIndex: null,
     _releaseTimer: null,
+
+    /*
+     * is any user turn currently overlapping the messages viewport? measured
+     * via the pin markers, which always track the turn's true flow position:
+     * a pinned turn is sticky, so its own bounding rect always reports it as
+     * visible. the turn keeps its full flow height while pinned (the min-height
+     * reserve), so marker top + turn offsetHeight is its true flow bottom.
+     */
+    userPromptInView(container) {
+        const rect = container.getBoundingClientRect();
+
+        for (const marker of container.querySelectorAll('.pin-marker')) {
+            const turnEl = marker.nextElementSibling;
+            if (!turnEl || !turnEl.matches('.turn')) continue;
+            if (!turnEl.querySelector(':scope > .message-wrapper.user')) continue;
+
+            const flowTop = marker.getBoundingClientRect().top;
+            if (flowTop < rect.bottom && flowTop + turnEl.offsetHeight > rect.top) return true;
+        }
+
+        return false;
+    },
 
     updatePromptPin(turnIndex, intersecting, marker) {
         if (intersecting) {
@@ -118,6 +140,10 @@ CHAT_STORE = {
         if (!container) return;
 
         if (marker.getBoundingClientRect().top > container.getBoundingClientRect().top) return;
+
+        // the pin only exists to keep context visible while the chat window
+        // shows no user prompt of its own
+        if (this.userPromptInView(container)) return;
 
         /*
          * a prompt can only take the pin if it's NEWER than the current one.
@@ -186,7 +212,9 @@ CHAT_STORE = {
         const container = document.getElementById('messages');
         if (!container) return;
 
-        if (!this.pinnedPromptsEnabled()) {
+        // the pin only shows while no user prompt is in view at all; once
+        // any real prompt is on screen the sticky duplicate is redundant
+        if (!this.pinnedPromptsEnabled() || this.userPromptInView(container)) {
             this.clearPromptPin();
             return;
         }
@@ -341,32 +369,12 @@ CHAT_STORE = {
         this.hasMoreOlder = this.turnStart > 0;
     },
 
-    _anchorGen: 0,
-
-    _anchorScrollTo(el, turnEl, offsetTop) {
-        if (!el || !turnEl || !turnEl.isConnected) return;
-
-        const current = turnEl.getBoundingClientRect().top - el.getBoundingClientRect().top;
-        const shift = current - offsetTop;
-
-        if (Math.abs(shift) > 0.5) {
-            el.scrollTo({ top: el.scrollTop + shift, behavior: 'instant' });
-        }
-    },
-
-    async loadOlderTurns(anchor = true) {
+    async loadOlderTurns() {
         if (this.loadingOlder || !this.hasMoreOlder) return;
 
         this.loadingOlder = true;
 
-        const el = document.getElementById('messages');
-
         try {
-            const firstTurnEl = el?.querySelector('.turn') ?? null;
-            const offsetTop = firstTurnEl
-                ? firstTurnEl.getBoundingClientRect().top - el.getBoundingClientRect().top
-                : 0;
-
             const result = await simpleApiFetch(
                 `/api/chat/turns?before=${this.turnStart}&limit=${this.turnPageSize}`
             );
@@ -378,37 +386,15 @@ CHAT_STORE = {
                 return;
             }
 
+            // pure prepend: native scroll anchoring keeps the viewport exactly
+            // where it is while older content appears above it. this requires
+            // #messages to NOT set overflow-anchor: none (see chat/window.css);
+            // any manual scrollTop correction layered on top would double-move
+            // and reintroduce the jump.
             this.turnHistory = turns.concat(this.turnHistory);
             this.turnStart = result.start;
             this.totalTurns = result.total;
             this.hasMoreOlder = result.start > 0;
-
-            if (anchor && firstTurnEl) {
-                const gen = ++this._anchorGen;
-
-                await Alpine.nextTick();
-                this._anchorScrollTo(el, firstTurnEl, offsetTop);
-
-                let settleFrames = 30;
-                let lastTop = el.scrollTop;
-                this._anchorBusy = true;
-                const settle = () => {
-                    if (gen !== this._anchorGen || settleFrames-- <= 0) {
-                        this._anchorBusy = false;
-                        return;
-                    }
-
-                    if (Math.abs(el.scrollTop - lastTop) > 2) {
-                        this._anchorBusy = false;
-                        return;
-                    }
-
-                    this._anchorScrollTo(el, firstTurnEl, offsetTop);
-                    lastTop = el.scrollTop;
-                    requestAnimationFrame(settle);
-                };
-                requestAnimationFrame(settle);
-            }
         } catch (err) {
             console.warn('loading older turns failed:', err);
         } finally {
@@ -438,7 +424,6 @@ CHAT_STORE = {
     },
 
     loadOlderTurnsFromIntersect() {
-        if (performance.now() - this._lastUnloadAt < 300) return;
         this._olderIntersecting = true;
         this._fillOlderWhileIntersecting();
     },
@@ -448,8 +433,20 @@ CHAT_STORE = {
     },
 
     async _fillOlderWhileIntersecting() {
-        while (this._olderIntersecting && this.hasMoreOlder && !this.loadingOlder) {
-            if (performance.now() - this._lastUnloadAt < 300) return;
+        while (this._olderIntersecting && this.hasMoreOlder) {
+            const sinceUnload = performance.now() - this._lastUnloadAt;
+
+            if (sinceUnload < 300) {
+                await new Promise(resolve => setTimeout(resolve, 300 - sinceUnload + 1));
+                if (!this._olderIntersecting) return;
+                continue;
+            }
+
+            if (this.loadingOlder) {
+                await Alpine.nextTick();
+                continue;
+            }
+
             await this.loadOlderTurns();
             await Alpine.nextTick();
             await new Promise(resolve => requestAnimationFrame(resolve));
@@ -468,7 +465,7 @@ CHAT_STORE = {
     _runUnloadCheck() {
         const messages = document.getElementById('messages');
         if (!messages || messages.classList.contains('anchor-hidden')) return;
-        if (this.loadingOlder || this._anchorBusy) return;
+        if (this.loadingOlder) return;
         if (this.turnHistory.length <= this.turnPageSize) return;
 
         const turnEls = [...messages.querySelectorAll('#messages > .turn-block .turn')];
@@ -484,33 +481,49 @@ CHAT_STORE = {
             maxDrop = Math.min(maxDrop, this.turnHistory.length - 1);
         }
 
+        // never unload past the newest user turn: it owns the response that
+        // may be filling the viewport below it, and the pinned-prompt feature
+        // needs its marker in the DOM long after it scrolled out the top
+        let lastUser = -1;
+        for (let i = this.turnHistory.length - 1; i >= 0; i--) {
+            if (this.turnHistory[i]?.role === 'user') { lastUser = i; break; }
+        }
+        if (lastUser !== -1) maxDrop = Math.min(maxDrop, lastUser);
+
+        const viewTop = messages.getBoundingClientRect().top;
+
         let drop = 0;
-        for (const turnEl of turnEls) {
+        for (let t = 0; t < turnEls.length; t++) {
             if (drop >= maxDrop) break;
 
+            const turnEl = turnEls[t];
             const idx = Number(turnEl.dataset.turnIndex);
             if (!Number.isFinite(idx) || idx !== this.turnStart + drop) break;
 
             if (turnEl.getBoundingClientRect().bottom >= cutLine) break;
+
+            // pin handover: a user turn must stay loaded until the next newer
+            // user turn's flow position has crossed the viewport top (its
+            // marker tracks the true position even while that turn is pinned
+            // sticky). dropping it earlier leaves the response region above
+            // with no prompt left to pin.
+            if (turnEl.querySelector(':scope > .message-wrapper.user')) {
+                const nextUser = turnEls.slice(t + 1).find(e => e.querySelector(':scope > .message-wrapper.user'));
+                const nextMarker = nextUser ? nextUser.previousElementSibling : null;
+
+                if (!nextMarker || nextMarker.getBoundingClientRect().top >= viewTop) break;
+            }
+
             drop++;
         }
         if (drop <= 0) return;
 
-        const keptAbs = this.turnStart + drop;
-        const keptBefore = turnEls[drop].getBoundingClientRect().top;
-
         this._dropPrefixTurns(drop);
         this._lastUnloadAt = performance.now();
 
+        // no scrollTop compensation needed: native scroll anchoring holds
+        // the visual position while the prefix elements disappear
         Alpine.nextTick(() => {
-            const keptNow = messages.querySelector(`[data-turn-index="${keptAbs}"]`);
-            if (!keptNow || !keptNow.isConnected) return;
-
-            const shift = keptNow.getBoundingClientRect().top - keptBefore;
-            if (Math.abs(shift) > 2) {
-                messages.scrollTop += shift;
-            }
-
             Alpine.store('ui')._updateShouldScroll(messages);
         });
     },
@@ -533,7 +546,7 @@ CHAT_STORE = {
 
         let pages = 0;
         while (this.hasMoreOlder && pages < maxPages && el.scrollHeight <= el.clientHeight + 8) {
-            await this.loadOlderTurns(false);
+            await this.loadOlderTurns();
             await Alpine.nextTick();
             pages++;
         }
@@ -1149,7 +1162,8 @@ CHAT_STORE = {
         ? msg.content.filter((b, i) => b?.type === 'text' && b.text && !filenames[i]).map(b => b.text).join('\n\n')
         : msg.content;
 
-      navigator.clipboard.writeText(text)
+      // resolves to whether the write to the clipboard succeeded
+      return navigator.clipboard.writeText(text)
         .then(() => {
             return true;
         })

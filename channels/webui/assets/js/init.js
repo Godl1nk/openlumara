@@ -17,8 +17,23 @@ document.addEventListener('alpine:init', async () => {
     Alpine.store('stream', STREAM_STORE);
     Alpine.store('theme', THEME_STORE);
     Alpine.store('audio', AUDIO_STORE);
+    Alpine.store('background', BACKGROUND_STORE);
     Alpine.store('upload', UPLOAD_STORE);
     Alpine.store('htmlPreview', HTML_PREVIEW_STORE);
+
+    // command palette (Ctrl+K), see components/command_palette.js
+    Alpine.store('palette', PALETTE);
+
+    // load the audio settings from localStorage into the store, then push
+    // them into the AudioManager (must run before any sound can play)
+    Alpine.store('audio').init();
+
+    // restore the background image from IndexedDB and apply its layer
+    Alpine.store('background').init();
+
+    // user-rebindable keyboard shortcuts (localStorage-backed)
+    Alpine.store('keyboard', KEYBOARD_STORE);
+    Alpine.store('keyboard').init();
 
     // start the browser notification system
     Alpine.store('notifications', NOTIFY_STORE);
@@ -39,12 +54,29 @@ document.addEventListener('alpine:init', async () => {
     // toggles .boxed when an element's content overflows its max-height,
     // so tool call values only get the soft background when they scroll
     Alpine.directive('box', (el, modifiers, { cleanup }) => cleanup(boxIfScrolls(el)));
-    Alpine.directive('stream-grow', Alpine.skipDuringClone((el, modifiers, { cleanup }) => cleanup(streamGrow(el))));
+
+    // keeps a scroll container at its tallest-so-far height while the
+    // expression is true (capped by its CSS max-height), releasing it back
+    // to content height once false (see directives/height_ratchet.js)
+    Alpine.directive('height-ratchet', (el, { expression }, { evaluateLater, effect, cleanup }) =>
+        heightRatchet(el, evaluateLater(expression), effect, cleanup));
 
     // watches a flow marker outside a pinned turn for the pinned-prompt feature
     Alpine.directive('prompt-marker', (el, { expression }, { evaluateLater, cleanup }) => {
         const run = evaluateLater(expression);
         cleanup(promptMarker(el, (intersecting) => run(() => {}, { scope: { intersecting } })));
+    });
+
+    // clones a command palette icon (see the #cmd-icons sprite) into the row,
+    // re-resolving whenever the expression changes
+    Alpine.directive('cmd-icon', (el, { expression }, { evaluate }) => {
+        el.replaceChildren();
+
+        const sprite = document.getElementById('cmd-icons');
+        const src = sprite && sprite.querySelector(`[data-cmdi="${evaluate(expression)}"]`);
+        const fallback = sprite && sprite.querySelector('[data-cmdi="sparkle"]');
+
+        if (src || fallback) el.appendChild((src ?? fallback).firstElementChild.cloneNode(true));
     });
 
     self.notice = "Please wait, connecting to backend server..";

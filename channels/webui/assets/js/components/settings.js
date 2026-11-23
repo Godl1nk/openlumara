@@ -117,7 +117,16 @@ function settingsModal() {
             this.themeFamily = Alpine.store('theme').family;
             this.themeMode = Alpine.store('theme').mode;
 
-            this.activeCategory = Alpine.store('settings').activeCategory || "appearance";
+            // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex
+            const ui = Alpine.store('ui');
+            const aimed = ui.settingsCategory;
+            this.activeCategory = aimed || "appearance";
+            ui.settingsCategory = null;
+            this.$watch('$store.ui.settingsCategory', category => {
+                if (!category) return;
+                this.switchCategory(category);
+                ui.settingsCategory = null;
+            });
 
             // restore which sidebar categories were folded away last time
             try {
@@ -133,7 +142,11 @@ function settingsModal() {
 
             // always pull fresh settings from the backend on every open
             if (!window.ADMIN_SETTINGS_DISABLED) {
-                await Alpine.store('settings').load();
+                const settings = Alpine.store('settings');
+                await settings.load();
+                if (this.activeCategory && !settings.categories?.[this.activeCategory] && !settings.error) {
+                    this.switchCategory("appearance");
+                }
             }
         },
 

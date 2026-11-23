@@ -69,20 +69,6 @@
         flex-shrink: 0;
     }
 
-    /* capped viewport so the newest station stays visible even when the
-       chain outgrows the window. only the live chain scrolls internally -
-       history chains expand to their full height */
-    &.is-streaming .agent-chain-body {
-        max-height: 60vh;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        scrollbar-width: none;
-
-        &::-webkit-scrollbar {
-            display: none;
-        }
-    }
-
     /* content-visibility skips rendering for stations outside the viewport
        (it ignores the capped body scroller), making a skipped station report
        its contain-intrinsic-size placeholder instead of its real height -
@@ -268,20 +254,8 @@
         font-size: 0.85rem;
     }
 
-    /* the provisional answer rides in the chain as a station, but must look
-       exactly like a normal answer bubble: the chain widget shrinks itself to
-       0.85rem, which a plain `inherit` cannot undo, so the bubble's root font
-       size is restored explicitly here */
-    .chain-final {
-        font-size: var(--font-size-base);
-        line-height: 1.6;
-        color: var(--text-primary);
-    }
-
-    .chain-final .content {
-        color: var(--text-primary);
-        font-size: var(--font-size-base);
-    }
+    /* The provisional answer used to ride in the chain as a station.
+       It now lives outside the chain as .live-answer. */
 
     .chain-end {
         display: flex;
@@ -298,4 +272,39 @@
             margin-top: -2px;
         }
     }
+}
+
+/* provisional answer for the live turn. It is a sibling of the agent chain,
+   not a chain station, so it must restore the normal message typography. */
+.live-turn-shell {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.live-turn-shell > .agent-chain,
+.live-turn-shell > .live-answer {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+
+
+.live-answer {
+    min-width: 0;
+    color: var(--text-primary);
+    font-size: var(--font-size-base);
+    line-height: 1.6;
+}
+
+.agent-chain + .live-answer {
+    margin-top: 0.45rem;
+}
+
+.live-answer .content {
+    color: var(--text-primary);
+    font-size: var(--font-size-base);
 }

@@ -90,7 +90,7 @@
 
         {{ extension_slot("head") }}
     </head>
-    <body>
+    <body{% if login_enabled %} data-login-enabled{% endif %}>
         <!-- 
             we use alpine stores for data access across the app,
             as putting every possible thing in one massive data object was no fun
@@ -102,7 +102,7 @@
             $store.ui.isMobile = window.isMobileViewport();
 
             if (wasMobile !== $store.ui.isMobile) {
-                $store.ui.showSidebar = !$store.ui.isMobile;
+                $store.ui.applySidebarViewport();
             }
         ">
             {{ extension_slot("above_page") }}
@@ -141,6 +141,9 @@
             </section>
 
             {{ extension_slot("below_page") }}
+
+            <!-- transient feedback bubble for keyboard actions -->
+            <div id="kb-toast" x-show="$store.ui.toastMsg" x-cloak x-text="$store.ui.toastMsg"></div>
         </div>
 
         <!-- utility functions used by everything else -->

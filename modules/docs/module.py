@@ -10,7 +10,7 @@ class Docs(core.module.Module):
     settings = {
         "folders": {
             "description": "The folders to grab docs from. These folders can contain any plaintext files you want, such as txt, markdown, and so on, and it can be a nested folder structure.",
-            "default": ["openlumara_docs"]
+            "default": ["docs"]
         },
         "insert_system_prompt": {
             "description": "Will make your AI aware of all documentation subjects available to it. Stays small in system prompt because it only lists the top-level folders, which are the topics the documentation is about, not the individual pages.",
@@ -18,31 +18,30 @@ class Docs(core.module.Module):
         }
     }
 
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex
+    def _folders(self):
+        folders = self.config.get("folders") or []
+        if "openlumara_docs" in folders and os.path.isdir(core.get_path("docs")):
+            previous = core.get_path("openlumara_docs")
+            if not os.path.exists(previous) or (os.path.isdir(previous) and not os.listdir(previous)):
+                return list(dict.fromkeys("docs" if folder == "openlumara_docs" else folder for folder in folders))
+        return folders
+
     async def on_ready(self):
-        folders = self.config.get("folders")
-        if folders:
-            for folder in folders:
-                os.makedirs(core.get_path(os.path.expanduser(folder)).rstrip(os.path.sep), exist_ok=True)
+        for folder in self._folders():
+            os.makedirs(core.get_path(os.path.expanduser(folder)).rstrip(os.path.sep), exist_ok=True)
 
         if self.config.get("insert_system_prompt"):
             self.disabled_tools.append("get_topics")
 
     async def _get_folder_names(self):
         """translates the folder path list into basenames for the AI"""
-        folders = self.config.get("folders")
-        if not folders:
-            return []
-
-        paths = [f.rstrip(os.path.sep) for f in folders]
+        paths = [folder.rstrip(os.path.sep) for folder in self._folders()]
         return [os.path.basename(f) for f in paths]
 
     async def _get_folder_path(self, folder: str):
         """resolves a folder basename to its full path"""
-        folders = self.config.get("folders")
-        if not folders:
-            return None
-
-        for f in folders:
+        for f in self._folders():
             if os.path.basename(f.rstrip(os.path.sep)) == folder.rstrip(os.path.sep):
                 return core.get_path(os.path.expanduser(f)).rstrip(os.path.sep)
 

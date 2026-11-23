@@ -58,6 +58,9 @@
                         <!-- AUDIO -->
                         {% include 'modals/settings/audio.html' %}
 
+                        <!-- KEYBOARD SHORTCUTS -->
+                        {% include 'modals/settings/keyboard.html' %}
+
                         <!-- SYSTEM PROMPT -->
                         {% include 'modals/settings/system_prompt.html' %}
 
@@ -69,10 +72,11 @@
 
                         {{ extension_slot("settings_page") }}
                         
+                        {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 20:58 +08:00 harness:Codex #}
                         <!-- ALL OTHER $store.settings.categories (core and so on) -->
-                        <template x-if="!activeModule && !activeChannel && 
-                                         !['appearance', 'audio', 'api', 'modules', 'user_modules', 'channels', 'user_channels', 'your_skills', 'system_prompt', 'system_logs'].includes(activeCategory) &&
-                                         activeCategory">
+                        <template x-if="!activeModule && !activeChannel &&
+                                         !['appearance', 'audio', 'keyboard', 'api', 'modules', 'user_modules', 'channels', 'user_channels', 'your_skills', 'system_prompt', 'system_logs'].includes(activeCategory) &&
+                                         $store.settings.categories[activeCategory]">
                             <div class="section">
                                 <h3 class="section-title" x-text="$store.settings.categories[activeCategory].title"></h3>
                                 <p class="section-desc" x-text="$store.settings.categories[activeCategory].description"></p>

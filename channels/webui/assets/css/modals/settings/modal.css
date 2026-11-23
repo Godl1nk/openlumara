@@ -88,7 +88,7 @@
         .sidebar {
             width: 240px;
             min-width: 240px;
-            background: var(--bg-secondary);
+            background: var(--bg-primary);
             border-right: 1px solid var(--border-color);
             overflow-y: auto;
             padding: 12px 0;
@@ -261,6 +261,35 @@
                 flex-direction: column;
                 min-height: 100%;
             }
+
+            /* subheadings on the custom pages (appearance, audio, ...):
+               a rule line under them, room above and below */
+            h4 {
+                margin: 26px 0 14px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid var(--border-color);
+                color: var(--text-primary);
+                font-size: 15px;
+                font-weight: 600;
+                letter-spacing: -0.01em;
+            }
+
+            h4:first-of-type {
+                margin-top: 4px;
+            }
+
+            /* buttons placed inside an h4 sit at the far right edge of
+               the content area, vertically centered on the heading */
+            h4 {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            h4 > button {
+                margin-left: auto;
+                flex-shrink: 0;
+            }
         }
     }
 
@@ -307,7 +336,7 @@
         gap: 12px;
         padding: 12px 24px;
         border-top: 1px solid var(--border-color);
-        background: var(--bg-secondary);
+        background: var(--bg-primary);
         flex-shrink: 0;
 
         .footer-buttons {
