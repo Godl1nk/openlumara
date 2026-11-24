@@ -9,6 +9,11 @@
     max-height: 100%;
     background-color: var(--bg-primary);
 
+    /* -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:51 +08:00 harness:Codex */
+    &:has(> header) {
+        --chat-content-top-gap: 24px;
+    }
+
     #messages {
         /* the area where message bubbles show up.. duh */
         display: flex;
@@ -27,9 +32,9 @@
         &.anchor-hidden {
             visibility: hidden;
         }
-        padding: 4px 20px;
-        padding-top: calc(4px + var(--header-height, 0px));
-        scroll-padding-top: var(--header-height, 0px);
+        --chat-content-top-inset: calc(var(--header-height, 0px) + var(--chat-content-top-gap, 4px));
+        padding: var(--chat-content-top-inset) 20px 4px;
+        scroll-padding-top: var(--chat-content-top-inset);
         flex-direction: column;
         gap: 4px;
         margin: 0 auto;

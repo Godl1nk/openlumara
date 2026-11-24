@@ -39,6 +39,8 @@
 
     /* Chat window takes full width when sidebar is hidden */
     #chat-window {
+        /* -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:51 +08:00 harness:Codex */
+        --chat-content-top-gap: 12px;
         min-width: 100% !important;
         width: 100% !important;
         overflow: hidden !important;
@@ -51,7 +53,6 @@
 
     #messages {
         padding-inline: 8px !important;
-        padding-top: calc(12px + var(--header-height, 0px)) !important;
         min-height: 0 !important;
         flex-shrink: 0 !important;
     }
