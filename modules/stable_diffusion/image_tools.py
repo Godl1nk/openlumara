@@ -186,12 +186,18 @@ class ImageTools:
         img.save(output, "PNG")
         return output.getvalue()
 
-    def _selected_image_endpoint(self):
-        # explicit endpoint setting wins over model-based provider discovery
-        endpoint_name = str(self.config.get("endpoint") or "auto").strip()
-        provider = self._provider_for_endpoint(endpoint_name)
-        if endpoint_name.lower() != "auto" and not provider:
-            raise RuntimeError(f"Image endpoint '{endpoint_name}' is unavailable or ambiguous. Choose a provider in Image Tools settings.")
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 08:07 +08:00 harness:Codex
+    def _configured_image_provider(self, providers=None):
+        endpoint = str(self.config.get("endpoint") or "auto").strip()
+        if not endpoint or endpoint.lower() == "auto":
+            return None
+        provider = self._provider_for_endpoint(endpoint, providers)
+        if not provider:
+            raise RuntimeError("Image endpoint override is unavailable or ambiguous. Check the Stable Diffusion settings.")
+        return provider
+
+    def _selected_image_endpoint(self, provider=None):
+        provider = provider or self._configured_image_provider()
         if not provider and hasattr(self.manager.API, "get_image_model_provider"):
             provider, _ = self.manager.API.get_image_model_provider()
         if provider:
@@ -211,8 +217,8 @@ class ImageTools:
         return api_url.rstrip("/"), api_key
 
     # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:06 +08:00 harness:Codex
-    def _selected_provider_resolution(self, width, height):
-        model = self._get_image_model().lower()
+    def _selected_provider_resolution(self, width, height, model=''):
+        model = (model or self._get_image_model()).lower()
         if model == "dall-e-2":
             side = min((256, 512, 1024), key=lambda size: abs(size - max(width, height)))
             return side, side
@@ -223,10 +229,10 @@ class ImageTools:
             return (long_side, 1024) if width > height else (1024, long_side)
         return width, height
 
-    async def _generate_selected_provider(self, prompt: str, size: str):
+    async def _generate_selected_provider(self, prompt: str, size: str, model='', provider=None):
         """Calls the selected OpenAI-compatible image endpoint."""
-        api_url, api_key = self._selected_image_endpoint()
-        model = self._get_image_model()
+        api_url, api_key = self._selected_image_endpoint(provider)
+        model = model or self._get_image_model()
         endpoint = f"{api_url}/images/generations"
         headers = {
             "Content-Type": "application/json"

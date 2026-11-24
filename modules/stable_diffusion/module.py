@@ -190,8 +190,15 @@ class StableDiffusion(ImageTools, core.module.Module):
     # quick-setting button (must mirror the 'resolution' select options)
     RESOLUTION_TIERS = ('LOW', 'SD', 'HD', 'QHD', '3K', '4K')
 
-    # the manual gallery generation in flight (from the sidebar form), or
-    # None: {'cancel': asyncio.Event, 'job_id': str | None}
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 08:11 +08:00 harness:Codex
+    MODEL_CATALOG_PATHS = {
+        'sdcpp': '/sdcpp/v1/recipes',
+        'a1111': '/sdapi/v1/sd-models',
+        'sdnext': '/sdapi/v1/sd-models',
+        'openai': '/v1/models',
+    }
+
+    # Holds the cancel flag and engine job info for a manual gallery generation.
     _manual_gen = None
 
     @property
@@ -426,7 +433,7 @@ class StableDiffusion(ImageTools, core.module.Module):
             api_url = 'http://' + api_url
         return api_url.rstrip('/')
 
-    def _resolution_for(self, orientation, aspect_ratio=''):
+    def _resolution_for(self, orientation, aspect_ratio='', model=''):
         # (w, h) from the configured tier, the requested orientation and an
         # optional 'W:H' aspect ratio. Base aspect: portrait 512x768,
         # landscape 768x512; a given ratio reshapes the frame while keeping
@@ -471,12 +478,51 @@ class StableDiffusion(ImageTools, core.module.Module):
             w, h = h, w
         # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:06 +08:00 harness:Codex
         if self.config.get("backend") == "selected_provider":
-            return self._selected_provider_resolution(w, h)
+            return self._selected_provider_resolution(w, h, model)
         return w, h
+
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 08:07 +08:00 harness:Codex
+    async def _backend_image_models(self, session, base, backend):
+        path = self.MODEL_CATALOG_PATHS[backend]
+        async with session.get(base + path, timeout=aiohttp.ClientTimeout(total=8)) as response:
+            if response.status in (404, 405, 501):
+                return {}
+            response.raise_for_status()
+            catalog = await response.json(content_type=None)
+
+        if backend == 'sdcpp':
+            recipes = {}
+            for recipe in catalog.get('recipes', []):
+                components = recipe.get('models') or {}
+                if not components or (recipe.get('defaults') or {}).get('video_frames'):
+                    continue
+                if any(not components.get(slot['id']) for slot in recipe['slots'] if slot['required']):
+                    continue
+                if any(not any(components.get(slot) for slot in group) for group in recipe.get('required_any', [])):
+                    continue
+                recipes[recipe['id']] = recipe['name']
+            return recipes
+
+        if backend != 'openai':
+            return {item['title']: item['title'] for item in catalog if item.get('title')}
+
+        registered = {
+            model['id']: model
+            for provider in self.manager.API.get_providers()
+            if provider['enabled'] and (provider.get('url') or '').rstrip('/') == base + '/v1'
+            for model in provider['models']
+        }
+        models = {}
+        for item in catalog.get('data', []):
+            name = item.get('id')
+            model = registered.get(name, {})
+            if name and model.get('enabled', True) and (model.get('is_image') or 'image' in (item.get('labels') or [])):
+                models[name] = name
+        return models
 
     # ---- per-backend generators: each returns raw image bytes ----
 
-    async def _gen_sdcpp(self, session, base, prompt, negative, steps, width, height, cfg, sampler, seed, note=None):
+    async def _gen_sdcpp(self, session, base, prompt, negative, steps, width, height, cfg, sampler, seed, note=None, model=''):
         payload = {
             'prompt': prompt,
             'negative_prompt': negative,
@@ -488,6 +534,8 @@ class StableDiffusion(ImageTools, core.module.Module):
         }
         if sampler:
             payload['sampling_method'] = sampler
+        if model:
+            payload['model'] = {'recipe': model}
         async with session.post(base + '/sdcpp/v1/img_gen', json=payload) as resp:
             resp.raise_for_status()
             job = await resp.json()
@@ -516,9 +564,8 @@ class StableDiffusion(ImageTools, core.module.Module):
                     (job.get('error') or {}).get('message', status)))
         raise RuntimeError('sdcpp job timed out')
 
-    # every generator takes the same shape; 'note' is the sdcpp job-handoff
-    # dict (a plain dict the caller keeps) and the other engines ignore it
-    async def _gen_a1111(self, session, base, prompt, negative, steps, width, height, cfg, sampler, seed, note=None):
+    # 'note' carries the sdcpp job id back to the caller; other engines ignore it.
+    async def _gen_a1111(self, session, base, prompt, negative, steps, width, height, cfg, sampler, seed, note=None, model=''):
         payload = {
             'prompt': prompt,
             'negative_prompt': negative,
@@ -530,6 +577,9 @@ class StableDiffusion(ImageTools, core.module.Module):
         }
         if sampler:
             payload['sampler_name'] = sampler
+        if model:
+            payload['override_settings'] = {'sd_model_checkpoint': model}
+            payload['override_settings_restore_afterwards'] = True
         async with session.post(base + '/sdapi/v1/txt2img', json=payload) as resp:
             resp.raise_for_status()
             data = await resp.json()
@@ -538,14 +588,14 @@ class StableDiffusion(ImageTools, core.module.Module):
             raise RuntimeError('No images returned by the A1111 API.')
         return base64.b64decode(images[0])
 
-    async def _gen_openai(self, session, base, prompt, negative, steps, width, height, cfg, sampler, seed, note=None):
+    async def _gen_openai(self, session, base, prompt, negative, steps, width, height, cfg, sampler, seed, note=None, model=''):
         payload = {
             'prompt': prompt,
             'n': 1,
             'size': '{}x{}'.format(width, height),
             'response_format': 'b64_json',
         }
-        model = self.config.get('model')
+        model = model or self.config.get('model')
         if model:
             payload['model'] = model
         # non-standard extras; servers that know them use them, others ignore
@@ -602,13 +652,15 @@ class StableDiffusion(ImageTools, core.module.Module):
 
     async def _generate_image_internal(self, prompt, negative_prompt='', steps=8, width=1024,
                                        height=1024, cfg_scale=1.0, sampler_name='', seed=-1,
-                                       note=None):
+                                       note=None, model='', provider=None):
         backend = (self.config.get('backend') or 'sdcpp').lower()
+        if model and backend != 'selected_provider' and backend not in self.MODEL_CATALOG_PATHS:
+            return None, "This backend uses its configured image model."
         if backend in ('selected_provider', 'mock'):
             try:
                 if backend == 'mock':
                     return await asyncio.to_thread(self._generate_mock, prompt, (width, height)), None
-                return await self._generate_selected_provider(prompt, f'{width}x{height}'), None
+                return await self._generate_selected_provider(prompt, f'{width}x{height}', model, provider), None
             except Exception as error:
                 return None, str(error)
         base = self._base_url()
@@ -626,9 +678,18 @@ class StableDiffusion(ImageTools, core.module.Module):
         timeout = aiohttp.ClientTimeout(total=300)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
+                model_override = {}
+                if model:
+                    if model not in await self._backend_image_models(session, base, backend):
+                        return None, "Image model is unavailable. Reload the gallery to see available models."
+                    model_override['model'] = model
+                if note is not None:
+                    if note['cancel'].is_set():
+                        return None, None
+                    note['engine'] = (backend, base)
                 image_bytes = await gen(session, base, prompt, negative_prompt, steps,
                                         width, height, cfg_scale, sampler_name, seed,
-                                        note=note)
+                                        note=note, **model_override)
             return image_bytes, None
         except Exception as e:
             return None, str(e)
@@ -712,13 +773,65 @@ class StableDiffusion(ImageTools, core.module.Module):
 
     # ---- manual generation: the gallery sidebar's own generate form ------
 
+    @webui.route('generation_models')
+    async def _route_generation_models(self, body=None, query=None):
+        backend = (self.config.get('backend') or 'sdcpp').lower()
+        if backend == 'selected_provider':
+            api = self.manager.API
+            providers = api.get_providers()
+            fixed = self._configured_image_provider(providers)
+            default_model = self._get_image_model()
+            default_provider_id = fixed['id'] if fixed else api.selected_provider_id(image=True)
+            options = {}
+            for provider in ([fixed] if fixed else providers):
+                if not provider['enabled']:
+                    continue
+                provider_id = provider['id']
+                for model in provider['models']:
+                    name = model['id']
+                    if not model['enabled'] or not model.get('is_image') or api.is_selected_model(name, provider_id):
+                        continue
+                    if (provider_id, name) == (default_provider_id, default_model):
+                        continue
+                    label = f"{name} ({provider.get('name') or provider_id})"
+                    options[(provider_id, name)] = {'name': name, 'provider_id': provider_id, 'label': label}
+            return {'models': list(options.values()), 'default_model': default_model}
+
+        if backend not in self.MODEL_CATALOG_PATHS:
+            return {'models': [], 'default_model': ''}
+        async with aiohttp.ClientSession() as session:
+            models = await self._backend_image_models(session, self._base_url(), backend)
+        default_model = self.config.get('model') if backend == 'openai' else ''
+        models.pop(default_model, None)
+        return {
+            'models': [{'name': name, 'label': label} for name, label in models.items()],
+            'default_model': default_model,
+        }
+
     async def _generate_for_gallery(self, prompt, negative_prompt, state, category,
-                                    orientation='portrait'):
+                                    orientation='portrait', model='', provider_id=''):
         # one manual generation with config-driven defaults (orientation,
         # resolution tier, cfg, steps, sampler). when the cancel flag is
         # raised while the engine works, the finished picture is reaped
         # without ever being saved or announced.
-        parsed = self._resolution_for(orientation, '')
+        if state['cancel'].is_set():
+            return {'cancelled': True}
+        backend = (self.config.get('backend') or 'sdcpp').lower()
+        provider = None
+        if model and backend == 'selected_provider':
+            fixed = self._configured_image_provider()
+            if not provider_id or (fixed and fixed['id'] != provider_id):
+                return self.result("Choose an image model from the configured provider.", success=False)
+            # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 08:26 +08:00 harness:Codex
+            api = self.manager.API
+            provider, image_model = api.find_provider_for_model(model, provider_id)
+            if not image_model or not image_model.get('is_image') or api.is_selected_model(image_model['id'], provider_id):
+                return self.result("Image model is unavailable. Reload the gallery to see available models.", success=False)
+            model = image_model['id']
+        elif provider_id:
+            return self.result("The image backend has changed. Reload the gallery to see available models.", success=False)
+
+        parsed = self._resolution_for(orientation, model=model)
         if parsed is None:
             return self.result("Invalid resolution setting '{}'. Use LOW, SD, HD, QHD, 3K or 4K.".format(
                 self.config.get('resolution')), success=False)
@@ -726,7 +839,6 @@ class StableDiffusion(ImageTools, core.module.Module):
         steps = self.config.get('steps')
         cfg_scale = self.config.get('cfg_scale')
         sampler = self.config.get('sampler')
-        backend = (self.config.get('backend') or 'sdcpp').lower()
         seed = random.randint(0, 2**32 - 1)
         token = self._new_token()
         prompt, negative_prompt = self._apply_global_prompts(prompt, negative_prompt)
@@ -734,7 +846,7 @@ class StableDiffusion(ImageTools, core.module.Module):
             prompt, negative_prompt,
             steps=steps, width=width, height=height,
             cfg_scale=cfg_scale, sampler_name=sampler,
-            seed=seed, note=state
+            seed=seed, note=state, model=model, provider=provider
         )
         png = os.path.join(self.output_dir, token + '.png')
         if err or state['cancel'].is_set():
@@ -758,27 +870,26 @@ class StableDiffusion(ImageTools, core.module.Module):
         # keeps the engine from finishing work nobody wants. servers without
         # such an endpoint keep rendering into the void - the result gets
         # discarded either way, so every failure here is silent on purpose.
-        backend = (self.config.get('backend') or 'sdcpp').lower()
+        backend, base = state['engine']
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
                 if backend in ('a1111', 'sdnext'):
-                    await session.post(self._base_url() + '/sdapi/v1/interrupt')
+                    await session.post(base + '/sdapi/v1/interrupt')
                 elif backend == 'sdcpp' and state.get('job_id'):
                     await session.request('DELETE', '{}/sdcpp/v1/jobs/{}'.format(
-                        self._base_url(), state['job_id']))
+                        base, state['job_id']))
         except Exception:
             pass
 
     @webui.route('generate', method='POST')
     async def _route_generate(self, body=None, query=None):
         """One manual gallery generation: {prompt, negative_prompt?, category?,
-        orientation?}. The cancel flag races the generation, so Cancel
-        answers the UI the moment it lands; a generation that finishes
-        after being cancelled discards its picture instead of showing up
-        on the wall."""
+        orientation?, model?, provider_id?}. Discard images finished after cancellation."""
         if self._manual_gen is not None:
             return self.result("A manual generation is already running.", success=False)
         body = body or {}
+        if not isinstance(body, dict):
+            return self.result("Expected an image generation request object.", success=False)
         prompt = str(body.get('prompt') or '').strip()
         if not prompt:
             return self.result("A prompt is required.", success=False)
@@ -787,24 +898,28 @@ class StableDiffusion(ImageTools, core.module.Module):
         orientation = ('landscape'
                        if str(body.get('orientation') or '').lower() == 'landscape'
                        else 'portrait')
-        state = {'cancel': asyncio.Event(), 'job_id': None}
+        model, provider_id = body.get('model', ''), body.get('provider_id', '')
+        if not isinstance(model, str) or not isinstance(provider_id, str):
+            return self.result("Invalid image model selection.", success=False)
+        state = {'cancel': asyncio.Event(), 'job_id': None, 'engine': None}
         self._manual_gen = state
         task = asyncio.create_task(self._generate_for_gallery(
-            prompt, negative, state, category, orientation))
+            prompt, negative, state, category, orientation, model, provider_id))
         waiter = asyncio.create_task(state['cancel'].wait())
         try:
             done, _ = await asyncio.wait({task, waiter}, return_when=asyncio.FIRST_COMPLETED)
+            if task in done:
+                return task.result()
+            # Keep new gallery jobs from reaching the engine before the interrupt.
+            if state['engine']:
+                await self._interrupt_backend(state)
+            return {'cancelled': True}
         finally:
             waiter.cancel()
-        if task in done:
+            if not task.done():
+                state['cancel'].set()
+            task.add_done_callback(_swallow_task_result)
             self._manual_gen = None
-            return task.result()
-        # cancelled: free the slot right away; the detached task notices
-        # the flag when the engine call returns and reaps the placeholder
-        self._manual_gen = None
-        task.add_done_callback(_swallow_task_result)
-        await self._interrupt_backend(state)
-        return {'cancelled': True}
 
     @webui.route('generate_cancel', method='POST')
     async def _route_generate_cancel(self, body=None, query=None):

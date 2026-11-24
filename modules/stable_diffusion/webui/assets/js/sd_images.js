@@ -494,6 +494,30 @@
             formNegative: "",
             formCategory: "",          // category for the next manual image
             formOrientation: "portrait", // tall or wide, toggled in the header
+            // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 08:07 +08:00 harness:Codex
+            formModel: "",
+            models: [],
+            defaultModelLabel: "Server default",
+            loadingModels: false,
+            modelNotice: "",
+            loadModels: async function () {
+                if (this.loadingModels) return;
+                this.loadingModels = true;
+                this.modelNotice = "";
+                try {
+                    const catalog = await simpleApiFetch("/api/ext/stable_diffusion/generation_models");
+                    this.defaultModelLabel = catalog.default_model ? `Default (${catalog.default_model})` : "Server default";
+                    this.models = catalog.models.map(model => ({ ...model, key: JSON.stringify([model.provider_id || "", model.name]) }));
+                    if (this.formModel && !this.models.some(model => model.key === this.formModel)) {
+                        this.formModel = "";
+                        this.modelNotice = "The selected model is no longer available.";
+                    }
+                } catch {
+                    this.modelNotice = "Could not load image models.";
+                } finally {
+                    this.loadingModels = false;
+                }
+            },
             toggleOrientation: function () {
                 this.formOrientation =
                     this.formOrientation === "portrait" ? "landscape" : "portrait";
@@ -555,11 +579,13 @@
                 this.busy = true;
                 this.note = "";
                 try {
-                    var res = await simpleApiPost("/api/ext/stable_diffusion/generate", {
+                    const selection = this.models.find(model => model.key === this.formModel);
+                    const res = await simpleApiPost("/api/ext/stable_diffusion/generate", {
                         prompt: this.formPrompt,
                         negative_prompt: this.formNegative,
                         category: this.formCategory,
-                        orientation: this.formOrientation
+                        orientation: this.formOrientation,
+                        ...(selection && { model: selection.name, provider_id: selection.provider_id || "" })
                     });
                     if (res && res.cancelled) {
                         this.noteOk = true;

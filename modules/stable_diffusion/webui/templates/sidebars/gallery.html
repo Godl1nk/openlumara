@@ -14,7 +14,7 @@
 {# x-intersect fires every time the tab reveals the panel (and once on
    load when the tab was already selected) - so the wall always re-reads
    the manifest when opened, catching images made elsewhere. #}
-<div class="sd-gal-panel" x-intersect.enter="$store.sdgallery.refresh(); $store.sdgallery.syncBusy(); $store.sdgallery.loadResolution()">
+<div class="sd-gal-panel" x-intersect.enter="$store.sdgallery.refresh(); $store.sdgallery.syncBusy(); $store.sdgallery.loadResolution(); $store.sdgallery.loadModels()">
 
     <div class="sd-gal-head">
         <span class="sd-gal-count" x-text="$store.sdgallery.todayImages().length + ($store.sdgallery.todayImages().length === 1 ? ' image' : ' images')"></span>
@@ -42,12 +42,23 @@
             </button>
             <button type="button" class="sd-gal-refresh" title="Reload the gallery"
                     :disabled="$store.sdgallery.loading"
-                    @click="$store.sdgallery.refresh()">↻</button>
+                    @click="$store.sdgallery.refresh(); $store.sdgallery.loadModels()">↻</button>
         </span>
     </div>
 
-    {# manual generation form: category first, then prompt, then the wall's own make-one button #}
     <div class="sd-gal-gen">
+        {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 08:07 +08:00 harness:Codex #}
+        <label class="sd-gal-model">
+            Image model
+            <select class="sd-gal-input" x-model="$store.sdgallery.formModel"
+                    :disabled="$store.sdgallery.busy || $store.sdgallery.loadingModels || !$store.sdgallery.models.length">
+                <option value="" x-text="$store.sdgallery.loadingModels ? 'Loading models…' : $store.sdgallery.defaultModelLabel"></option>
+                <template x-for="model in $store.sdgallery.models" :key="model.key">
+                    <option :value="model.key" x-text="model.label"></option>
+                </template>
+            </select>
+        </label>
+        <div class="sd-gal-note" role="status" x-show="$store.sdgallery.modelNotice" x-text="$store.sdgallery.modelNotice" x-cloak></div>
         {# free text or a pick from the categories the gallery already knows #}
         <input class="sd-gal-input" list="sd-gal-catlist" placeholder="category (optional)"
                autocomplete="off"

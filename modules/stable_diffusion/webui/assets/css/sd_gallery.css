@@ -81,6 +81,14 @@
     margin-bottom: 12px;
     flex: 0 0 auto;
 }
+/* -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 08:07 +08:00 harness:Codex */
+.sd-gal-model {
+    display: grid;
+    gap: 4px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+.sd-gal-model select { min-width: 0; }
 .sd-gal-input {
     width: 100%;
     box-sizing: border-box;
