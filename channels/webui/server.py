@@ -46,6 +46,10 @@ ADMIN_ONLY_ENDPOINTS = [
     "/api/system/logs",
     "/api/system/restart",
     "/api/system/context_size",
+    "/api/system/update_check",
+    "/api/system/update",
+    "/api/system/entry_updates",
+    "/api/system/update_all",
     
     "/api/libraries/status",
     "/api/libraries/stage",
@@ -112,7 +116,7 @@ async def create_fastapi(channel):
         # who they are with a real login: requests from outside loopback and
         # the trusted_networks ranges are refused here even with auth
         # disabled. uvicorn runs with proxy_headers=True +
-        # forwarded_allow_ips="127.0.0.1", so same-machine tunnels
+        # loopback proxy trust by default, so same-machine tunnels
         # (cloudflared/Caddy/nginx) get their client IP rewritten from
         # X-Forwarded-For and count as remote, while LAN hosts can never
         # forge their way in through XFF. a local process can only ever

@@ -44,14 +44,17 @@ def register(app, channel):
     @app.get("/login")
     async def login_page(request: fastapi.Request):
         """Shows the login form."""
-        if channel.auth_enforced:
-            return channel.templates.TemplateResponse(request, "login.html", {
-                "error": None,
-                "asset_version": utils.asset_version(channel.assets_path),
-                "ext_css_files": channel._ui_asset_urls("css"),
-            })
-        else:
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:29 +08:00 harness:Codex
+        if not channel.auth_enforced or (
+            request.session.get("authenticated")
+            and request.session.get("creds_fp") == channel.credentials_fingerprint
+        ):
             return fastapi.responses.RedirectResponse(url="/", status_code=303)
+        return channel.templates.TemplateResponse(request, "login.html", {
+            "error": None,
+            "asset_version": utils.asset_version(channel.assets_path),
+            "ext_css_files": channel._ui_asset_urls("css"),
+        })
 
     # -- POST
     @app.post("/login")
@@ -86,7 +89,9 @@ def register(app, channel):
             # bind this session to the current credentials (see auth_middleware)
             request.session["creds_fp"] = channel.credentials_fingerprint
 
-            return fastapi.responses.RedirectResponse(url="/", status_code=303)
+            return fastapi.responses.HTMLResponse(
+                content="<script>window.location.replace('/');</script>"
+            )
         
         # on failure, record the login attempt
         if client_ip not in channel.login_attempts:

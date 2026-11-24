@@ -64,16 +64,11 @@ function fadeTextRender(el, { expression }, { evaluateLater, effect, cleanup }, 
             // lastLen roughly synced so re-enabling mid-stream doesn't
             // produce one giant bogus batch off a stale length.
             if (tokenFadeDuration() <= 0) {
-                timeline.record(value.length, performance.now());
+                timeline.record(asHtml ? el.textContent.length : value.length, performance.now());
                 return;
             }
 
-            // count the actually rendered text chars (skipping copy
-            // buttons), so the fade window tracks what's on screen rather
-            // than raw source length
-            const nodes = collectTextNodes(el);
-            let total = 0;
-            for (const n of nodes) total += n.nodeValue.length;
+            const total = asHtml ? el.textContent.length : value.length;
 
             const now = performance.now();
 
@@ -83,7 +78,8 @@ function fadeTextRender(el, { expression }, { evaluateLater, effect, cleanup }, 
             if (shrank) timeline.reset();
 
             const batches = timeline.record(total, now);
-            if (!shrank) {
+            if (!shrank && batches.length) {
+                const nodes = collectTailTextNodes(el, batchCharCount(batches) + 64);
                 for (const b of batches) wrapTailChars(nodes, b.count, b.delay);
             }
         });

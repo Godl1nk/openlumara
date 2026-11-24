@@ -26,8 +26,8 @@ def highlight_query(text, query):
     escaped_text = html_lib.escape(str(text), quote=True)
     if not query:
         return escaped_text
-    
-    candidates = [str(query).strip()] + core.search.normalize_words(query)
+
+    candidates = ([str(query).strip()] + core.search.normalize_words(query))[:12]
     pattern = "|".join(dict.fromkeys(
         re.escape(html_lib.escape(c, quote=True)) for c in candidates if c
     ))

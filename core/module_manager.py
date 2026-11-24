@@ -754,6 +754,14 @@ class ModuleManager:
         if before and before == after:
             return True, f"'{name}' is already up to date", kind, False
 
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:33 +08:00 harness:Codex
+        if kind in ("module", "channel"):
+            package = "user_channels" if kind == "channel" else "user_modules"
+            try:
+                await core.modules.install_module_deps(__import__(package), name, self.manager)
+            except Exception as error:
+                self.log(f"dependency install failed for {name}: {core.detail_error(error)}")
+
         self.log(f"updated {kind} '{name}' to commit {after[:8]}")
         return True, f"updated '{name}' to commit {after[:8]}", kind, True
 

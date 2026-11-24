@@ -97,15 +97,12 @@ function settingsModal() {
         tokenFadeEnabled: localStorage.getItem('tokenFadeEnabled') !== 'false',
         // start the live processing chain collapsed (localStorage; default off)
         collapseChainDefault: localStorage.getItem('collapseChainDefault') === 'true',
-        // keep the last user prompt pinned to the top while its response is
-        // in view (localStorage; default on)
         pinnedPromptsEnabled: localStorage.getItem('pinnedPromptsEnabled') !== 'false',
-        // blur + translucent tint on the pinned prompt and floating input bar
-        // (localStorage; default on)
         frostedGlassEnabled: localStorage.getItem('frostedGlassEnabled') !== 'false',
         // 'Step display mode' dropdown: default | thinking | steps.
         stepDisplayMode: localStorage.getItem('stepDisplayMode') || 'default',
         tokenFadeMs: localStorage.getItem('tokenFadeMs') || '750',
+        autoUpdateCheck: localStorage.getItem('autoUpdateCheck') !== 'false',
 
         get activeNavCategory() {
             return this.activeModule ? 'modules' : 
@@ -142,11 +139,14 @@ function settingsModal() {
 
             // always pull fresh settings from the backend on every open
             if (!window.ADMIN_SETTINGS_DISABLED) {
+                // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:29 +08:00 harness:Codex
                 const settings = Alpine.store('settings');
                 await settings.load();
                 if (this.activeCategory && !settings.categories?.[this.activeCategory] && !settings.error) {
                     this.switchCategory("appearance");
                 }
+
+                if (this.autoUpdateCheck) Alpine.store('system').checkForUpdates();
             }
         },
 
@@ -407,6 +407,13 @@ function settingsModal() {
         handleStepDisplayModeChange(mode) {
             this.stepDisplayMode = mode;
             localStorage.setItem('stepDisplayMode', mode);
+        },
+
+        handleAutoUpdateCheckToggle() {
+            this.autoUpdateCheck = !this.autoUpdateCheck;
+            localStorage.setItem('autoUpdateCheck', this.autoUpdateCheck);
+
+            if (this.autoUpdateCheck) Alpine.store('system').checkForUpdates();
         },
 
         handleTokenFadeSpeed(ms) {

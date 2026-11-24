@@ -92,6 +92,10 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
             "description": "What port to run the WebUI on. Set this to 80 to be able to access it like a normal website, and anything else to access it on that port (for example http://yourdomain.org:3000)",
             "default": 3000
         },
+        "allowed_domains": {
+            "default": [],
+            "description": "Additional browser origins allowed to connect over WebSockets. Include the port for non-default ports, and the scheme if it should match too. Examples: `your-domain`, `your-domain:8080`, `https://your-domain:8080`."
+        },
         "trusted_networks": {
             # defaults include common local networks, and tailscale (100.64.0.0/10)
             "default": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"],
@@ -178,10 +182,6 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
             "description": "How many days to stay logged in for",
             "default": 30,
             "depends": "require_login"
-        },
-        "extra_allowed_origins": {
-            "default": [],
-            "description": "Extra origins allowed to open WebSockets to this webui. You NEED this when Aegis sits behind a reverse proxy or HTTPS tunnel (e.g. https://mybox:8443 fronting 127.0.0.1:3000): the browser sends that public URL as the Origin, which no longer matches the bound host/port, and every websocket gets rejected. Scheme-less entries like \"crystal-ai:8006\" match that host+port over any scheme. Exact matches only - no wildcards."
         }
     }
 
@@ -191,72 +191,68 @@ class Webui(core.channel.Channel, ui_extensions.UiExtensionsMixin):
         localhost and 127.0.0.1 are treated as the same host. Used to reject
         cross-origin WebSocket handshakes
         """
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:32 +08:00 harness:Codex
         try:
             parsed = urllib.parse.urlsplit(origin)
+            origin_host = (parsed.hostname or "").lower()
+            origin_port = parsed.port
         except ValueError:
             return False
-        
-        origin_host = (parsed.hostname or "").lower()
-        
-        # strip the scheme-default port so http://host:80 matches host
-        origin_port = parsed.port
-        if origin_port and (
-            (parsed.scheme == "http" and origin_port == 80)
-            or (parsed.scheme == "https" and origin_port == 443)
-        ):
-            origin_port = None
+
+        if parsed.scheme not in ("http", "https") or not origin_host:
+            return False
+        if origin_host == "localhost":
+            origin_host = "127.0.0.1"
+
+        default_port = 443 if parsed.scheme == "https" else 80
+        if origin_port is None:
+            origin_port = default_port
 
         # allow extra allowed origins, for if you use a custom domain name
         # otherwise, the websocket will refuse the connection
-        for spec in (self.config.get("extra_allowed_origins") or []):
+        for spec in (self.config.get("allowed_domains") or []):
             if not isinstance(spec, str) or not spec.strip():
                 continue
                 
             spec = spec.strip().lower().rstrip("/")
             has_scheme = "://" in spec
-            parsed_spec = urllib.parse.urlsplit(spec if has_scheme else "//" + spec)
-            spec_host = (parsed_spec.hostname or "").lower()
-            
+            try:
+                parsed_spec = urllib.parse.urlsplit(spec if has_scheme else "//" + spec)
+                spec_host = parsed_spec.hostname
+                spec_port = parsed_spec.port
+            except ValueError:
+                continue
+
             if spec_host == "localhost":
                 spec_host = "127.0.0.1"
             if spec_host != origin_host:
                 continue
-                
-            spec_port = parsed_spec.port
-            if spec_port and (
-                (parsed_spec.scheme == "http" and spec_port == 80)
-                or (parsed_spec.scheme == "https" and spec_port == 443)
-            ):
-                spec_port = None
-                
-            if spec_port != origin_port:
-                continue
             if has_scheme and parsed_spec.scheme != parsed.scheme:
                 continue
-                
-            return True
+
+            if (spec_port if spec_port is not None else default_port) == origin_port:
+                return True
 
         if self.host in ("0.0.0.0", "::"):
             if not host_header:
-                return origin_port in (None, self.port)
+                return origin_port in (default_port, self.port)
             try:
                 parsed_hdr = urllib.parse.urlsplit("//" + host_header.strip().lower())
+                hdr_port = parsed_hdr.port
             except ValueError:
                 return False
             
             hdr_host = (parsed_hdr.hostname or "").lower()
             if hdr_host == "localhost":
                 hdr_host = "127.0.0.1"
-            return hdr_host == origin_host and parsed_hdr.port == origin_port
+            return hdr_host == origin_host and (hdr_port if hdr_port is not None else default_port) == origin_port
 
         server_host = (self.host or "").lower()
         if server_host == "localhost":
             server_host = "127.0.0.1"
-        if origin_host == "localhost":
-            origin_host = "127.0.0.1"
         if origin_host != server_host:
             return False
-        return origin_port in (None, self.port)
+        return origin_port in (default_port, self.port)
 
     @property
     def auth_enforced(self) -> bool:
@@ -403,7 +399,8 @@ Edit the config file for this, or use /config
 
             # this makes it work in situations where https and http content are served mixed
             proxy_headers=True,
-            forwarded_allow_ips = "127.0.0.1",
+            # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:32 +08:00 harness:Codex
+            forwarded_allow_ips=os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1,::1"),
 
             ws_ping_interval=20,
             ws_ping_timeout=90,

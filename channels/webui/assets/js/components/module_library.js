@@ -38,12 +38,19 @@ function repoManager(kind) {
         audit: null,
         auditLineHeight: 19,
 
+        updateStatus: {},
+        checkingUpdates: false,
+
         // skills are data, not executed code, so their review dialog uses a
         // friendly single-step confirm; modules/channels get the two-step one
         get auditIsData() { return this.kind === 'skill'; },
 
         async init() {
             await this.refresh();
+
+            if ((this.kind === 'module' || this.kind === 'channel') && Alpine.store('system').autoCheckEnabled()) {
+                this.checkUpdates();
+            }
         },
 
         destroy() {
@@ -134,6 +141,46 @@ function repoManager(kind) {
         repoNameOf(name) {
             const entry = this.entryFor(name);
             return entry ? this.repoLabel(entry) : '';
+        },
+
+        async checkUpdates(force = false) {
+            if (this.checkingUpdates) return;
+
+            const sys = Alpine.store('system').update;
+            if (!force && sys.checkedAt && Date.now() - sys.checkedAt < 60000) {
+                const byName = {};
+                for (const e of (sys.entries || [])) {
+                    if (e.type === this.kind) byName[e.name] = e;
+                }
+                this.updateStatus = byName;
+                return;
+            }
+
+            this.checkingUpdates = true;
+            try {
+                const fresh = await simpleApiFetch('/api/system/entry_updates');
+                const byName = {};
+                for (const e of fresh) {
+                    if (e.type === this.kind) byName[e.name] = e;
+                }
+                this.updateStatus = byName;
+            } catch (err) {
+            } finally {
+                this.checkingUpdates = false;
+            }
+        },
+
+        hasUpdate(name) {
+            const s = this.updateStatus[name];
+            return Boolean(s && s.update_available);
+        },
+
+        statusTitle(name) {
+            const s = this.updateStatus[name];
+            if (!s) return this.checkingUpdates ? 'Checking for updates..' : 'Update from its repo';
+            if (s.note) return s.note;
+            if (s.update_available) return 'Update available: ' + s.behind + ' commit' + (s.behind === 1 ? '' : 's') + ' behind (' + s.commit + ' -> ' + s.remote_commit + ')';
+            return 'Up to date (' + s.commit + ')';
         },
 
         async updateContent(name) {
@@ -319,6 +366,7 @@ function repoManager(kind) {
                 if (data.up_to_date) {
                     this.flash(data.message, 'success');
                     await this.refresh();
+                    this.checkUpdates();
                 } else {
                     // new code came in: reboot straight away, nothing to acknowledge
                     await Alpine.store('system').restart('Restarting the server after updating ' + m.name + '..');

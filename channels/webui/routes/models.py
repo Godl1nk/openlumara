@@ -45,6 +45,8 @@ def register(app, channel):
         except core.api.APIError as error:
             connection_error = str(error)
 
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:32 +08:00 harness:Codex
+        channel.context.invalidate_size_cache()
         await channel.websocket_manager.push_context_update()
         active_model = api.get_model()
         return utils.api_result({
@@ -219,6 +221,8 @@ def register(app, channel):
             model = channel.manager.API.update_model_settings(pid, mid, settings)
         except ValueError as error:
             return utils.api_result(str(error), success=False)
+        if model and channel.manager.API.is_selected_model(mid, pid):
+            channel.context.invalidate_size_cache()
         return utils.api_result({
             "model": model,
             "max_context": channel.manager.API.get_max_context()

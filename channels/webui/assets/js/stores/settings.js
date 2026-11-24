@@ -34,7 +34,8 @@ SETTINGS_STORE = {
 
     get sortedCategories() {
         return Object.entries(this.categories)
-            .filter(([cat]) => cat !== 'model')
+            // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:29 +08:00 harness:Codex
+            .filter(([cat]) => cat !== 'model' && cat !== 'system_updates')
             .sort(([a, catA], [b, catB]) => (catA.order || 0) - (catB.order || 0));
     },
 

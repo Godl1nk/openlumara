@@ -12,10 +12,19 @@ const UPLOAD_STORE = {
     },
 
     readFileAsBase64(file) {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(",")[1]);
-            reader.readAsDataURL(file);
+            reader.onload = () => {
+                const bytes = new Uint8Array(reader.result);
+                const CHUNK = 0x8000;
+                let binary = '';
+                for (let i = 0; i < bytes.length; i += CHUNK) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+                }
+                resolve(btoa(binary));
+            };
+            reader.onerror = () => reject(reader.error);
+            reader.readAsArrayBuffer(file);
         });
     },
 

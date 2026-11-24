@@ -23,6 +23,8 @@ function autoScroll(el) {
   let pumpRaf = null;
   let pumpLast = 0;
 
+  let lastHeight = -1;
+
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   const checkBottom = () => {
@@ -99,6 +101,10 @@ function autoScroll(el) {
 
   const observer = new MutationObserver(() => {
     if (!isAtBottom) return;
+
+    const height = el.scrollHeight;
+    if (height === lastHeight && pumpRaf === null) return;
+    lastHeight = height;
 
     if (reducedMotion.matches) {
       el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });

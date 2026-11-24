@@ -16,9 +16,6 @@ function mergeTurnPage(existing, existingStart, incoming, incomingStart) {
 
     const result = keptPrefix.concat(merged);
 
-    // exactly one live turn may exist, always as the tail: a mid-stream
-    // reload used to leave a stale copy behind (often at the head of the
-    // window), rendering a duplicate agent chain inside an older message
     const liveTails = existing.filter(t => t && t.live === true);
     const live = liveTails.length > 0 ? liveTails[liveTails.length - 1] : null;
 
@@ -55,6 +52,11 @@ CHAT_STORE = {
 
     dayGroups: [],
     chatLimit: 10,
+
+    serverRevision: null,
+
+    _reloadInFlight: false,
+    _reloadQueued: false,
     dayFetchGen: 0,
 
     moveChatTarget: null,
@@ -79,46 +81,57 @@ CHAT_STORE = {
     editingMessageIndex: null,
     editContent: '',
 
-    /*
-     * the user turn currently pinned to the top of the message view.
-     * updated from the flow markers in chat/index.html via x-prompt-marker:
-     * a turn pins itself once it scrolls out through the top edge, and
-     * unpins the moment it scrolls back into view. switching is event-driven
-     * (fires only on intersection changes), never per-frame.
-     */
     pinnedTurnIndex: null,
     pinnedPromptHeight: 0,
 
-    // a turn that just unpinned keeps its height reserve for the duration of
-    // the grow animation, so removing it can't make the turn snap to one
-    // line and then grow back (a collapse-then-grow jolt).
     releasingTurnIndex: null,
     _releaseTimer: null,
 
-    /*
-     * is any user turn currently overlapping the messages viewport? measured
-     * via the pin markers, which always track the turn's true flow position:
-     * a pinned turn is sticky, so its own bounding rect always reports it as
-     * visible. the turn keeps its full flow height while pinned (the min-height
-     * reserve), so marker top + turn offsetHeight is its true flow bottom.
-     */
-    // the strip of the scrollbox hidden behind the floating chat header
-    // (window.css runs #messages under it; --header-height fed by init.js)
     headerInset(container) {
         return parseFloat(getComputedStyle(container).getPropertyValue('--header-height')) || 0;
     },
 
-    userPromptInView(container) {
-        const rect = container.getBoundingClientRect();
-        const visibleTop = rect.top + this.headerInset(container);
+    _markerPos: new Map(),
 
-        for (const marker of container.querySelectorAll('.pin-marker')) {
+    invalidateMarkerPositions() {
+        this._markerPos.clear();
+    },
+
+    _ensureMarkerPos(container) {
+        const markers = container.querySelectorAll('.pin-marker');
+        if (this._markerPos.size === markers.length) return this._markerPos;
+
+        const scrollTop = container.scrollTop;
+        const fresh = new Map();
+        for (const marker of markers) {
             const turnEl = marker.nextElementSibling;
             if (!turnEl || !turnEl.matches('.turn')) continue;
             if (!turnEl.querySelector(':scope > .message-wrapper.user')) continue;
 
-            const flowTop = marker.getBoundingClientRect().top;
-            if (flowTop < rect.bottom && flowTop + turnEl.offsetHeight > visibleTop) return true;
+            const idx = Number(turnEl.dataset.turnIndex);
+            if (!Number.isFinite(idx)) continue;
+
+            fresh.set(idx, {
+                turnEl: turnEl,
+                flowTop: marker.getBoundingClientRect().top + scrollTop,
+                height: turnEl.offsetHeight,
+            });
+        }
+
+        this._markerPos = fresh;
+        return fresh;
+    },
+
+    userPromptInView(container) {
+        const positions = this._ensureMarkerPos(container);
+        if (positions.size === 0) return false;
+
+        const scrollTop = container.scrollTop;
+        const viewTop = scrollTop + this.headerInset(container);
+        const viewBottom = scrollTop + container.clientHeight;
+
+        for (const pos of positions.values()) {
+            if (pos.flowTop < viewBottom && pos.flowTop + pos.height > viewTop) return true;
         }
 
         return false;
@@ -126,6 +139,13 @@ CHAT_STORE = {
 
     updatePromptPin(turnIndex, intersecting, marker) {
         if (intersecting) {
+            const cached = this._markerPos.get(turnIndex);
+            if (cached) {
+                const scroller = document.getElementById('messages');
+                if (scroller) cached.flowTop = marker.getBoundingClientRect().top + scroller.scrollTop;
+                if (cached.turnEl && cached.turnEl.isConnected) cached.height = cached.turnEl.offsetHeight;
+            }
+
             if (this.pinnedTurnIndex !== turnIndex) return;
 
             this.pinnedTurnIndex = null;
@@ -140,26 +160,15 @@ CHAT_STORE = {
 
         if (!this.pinnedPromptsEnabled()) return;
 
-        // leaving, but which way? only pin prompts that left through the
-        // TOP edge - a marker leaving through the bottom means we scrolled
-        // up to older messages, where pinning would be wrong.
         const container = document.getElementById('messages');
         if (!container) return;
 
-        // the visible top edge is the header's bottom, not the scrollport's
-        if (marker.getBoundingClientRect().top > container.getBoundingClientRect().top + this.headerInset(container)) return;
+        const entry = this._ensureMarkerPos(container).get(turnIndex);
+        const markerFlowTop = entry ? entry.flowTop : marker.getBoundingClientRect().top + container.scrollTop;
+        if (markerFlowTop - container.scrollTop > container.getBoundingClientRect().top + this.headerInset(container)) return;
 
-        // the pin only exists to keep context visible while the chat window
-        // shows no user prompt of its own
         if (this.userPromptInView(container)) return;
 
-        /*
-         * a prompt can only take the pin if it's NEWER than the current one.
-         * every marker reports its initial intersection on its own schedule
-         * (on load, and again when older pages get prepended), so "last
-         * callback wins" would let an older prompt steal the pin - turn
-         * index is what decides, not callback order.
-         */
         if (this.pinnedTurnIndex !== null && turnIndex <= this.pinnedTurnIndex) return;
 
         const turnEl = container.querySelector(`[data-turn-index="${turnIndex}"]`);
@@ -168,8 +177,6 @@ CHAT_STORE = {
         const wrapper = turnEl.querySelector(':scope > .message-wrapper.user');
         if (!wrapper) return;
 
-        // reserve the full height BEFORE the class is applied so collapsing
-        // the bubble to a single line doesn't yank the response upward
         this.pinnedPromptHeight = wrapper.offsetHeight;
         this.pinnedTurnIndex = turnIndex;
     },
@@ -178,7 +185,6 @@ CHAT_STORE = {
         return localStorage.getItem('pinnedPromptsEnabled') !== 'false';
     },
 
-    // grow the pinned prompt back open, then drop the pin entirely
     clearPromptPin() {
         if (this.pinnedTurnIndex === null) return;
 
@@ -192,11 +198,6 @@ CHAT_STORE = {
         }, 350);
     },
 
-    /*
-     * throttled entry point from ui.onScroll (itself throttled at 100ms),
-     * coalesced into one frame. pure measurement, so it stays correct even
-     * when no marker ever reported the position change.
-     */
     schedulePromptPinRecompute() {
         if (this._pinRecomputeQueued) return;
 
@@ -207,50 +208,35 @@ CHAT_STORE = {
         });
     },
 
-    /*
-     * resolves the pin by measuring every marker at once: the pin belongs to
-     * the NEWEST user turn that sits above the top edge. needed because
-     * IntersectionObserver only reports state CHANGES: on load the chat is
-     * rendered at the top and then jumped to the bottom, during which only
-     * markers near the top fire (pinning an older prompt), while markers
-     * that were below the fold and are now above it never report anything.
-     * called after anchored loads (see anchorToBottom), not per-frame.
-     */
     recomputePromptPin() {
         const container = document.getElementById('messages');
         if (!container) return;
 
-        // the pin only shows while no user prompt is in view at all; once
-        // any real prompt is on screen the sticky duplicate is redundant
         if (!this.pinnedPromptsEnabled() || this.userPromptInView(container)) {
             this.clearPromptPin();
             return;
         }
 
-        // pin boundary is the header's bottom edge (the scrollport's top
-        // hides behind the floating header - see headerInset)
-        const top = container.getBoundingClientRect().top + this.headerInset(container);
+        const boundary = container.scrollTop + container.getBoundingClientRect().top + this.headerInset(container);
 
         let activeIndex = null;
         let activeWrapper = null;
 
-        for (const marker of container.querySelectorAll('.pin-marker')) {
-            if (marker.getBoundingClientRect().top > top) continue;
+        for (const [idx, pos] of this._ensureMarkerPos(container)) {
+            if (pos.flowTop > boundary) continue;
 
-            // the turn is the marker's next sibling. do NOT bind an index
-            // attribute onto the marker itself: a reactive attribute on the
-            // same element as x-prompt-marker makes Alpine re-run the
-            // directive and respawn its observer on every update.
-            const turnEl = marker.nextElementSibling;
-            if (!turnEl || !turnEl.matches('.turn') || turnEl.querySelector('.editing')) continue;
-
-            const idx = Number(turnEl.dataset.turnIndex);
+            const turnEl = pos.turnEl && pos.turnEl.isConnected
+                ? pos.turnEl
+                : container.querySelector(`[data-turn-index="${idx}"]`);
+            if (!turnEl || turnEl.querySelector('.editing')) continue;
 
             const wrapper = turnEl.querySelector(':scope > .message-wrapper.user');
             if (!wrapper) continue;
 
-            activeIndex = idx;
-            activeWrapper = wrapper;
+            if (activeIndex === null || idx > activeIndex) {
+                activeIndex = idx;
+                activeWrapper = wrapper;
+            }
         }
 
         if (activeIndex === this.pinnedTurnIndex) return;
@@ -342,6 +328,8 @@ CHAT_STORE = {
     },
 
     resetWindow() {
+        this.invalidateMarkerPositions();
+
         this.turnHistory = [];
         this.turnStart = 0;
         this.totalTurns = 0;
@@ -361,6 +349,8 @@ CHAT_STORE = {
     },
 
     applyTurnPage(result, merge) {
+        this.invalidateMarkerPositions();
+
         const incoming = result.turn_history ?? [];
         const page = result.turn_page ?? {};
         const start = typeof page.start === 'number' ? page.start : Math.max(0, incoming.length - this.turnPageSize);
@@ -396,11 +386,6 @@ CHAT_STORE = {
                 return;
             }
 
-            // pure prepend: native scroll anchoring keeps the viewport exactly
-            // where it is while older content appears above it. this requires
-            // #messages to NOT set overflow-anchor: none (see chat/window.css);
-            // any manual scrollTop correction layered on top would double-move
-            // and reintroduce the jump.
             this.turnHistory = turns.concat(this.turnHistory);
             this.turnStart = result.start;
             this.totalTurns = result.total;
@@ -481,8 +466,6 @@ CHAT_STORE = {
         const turnEls = [...messages.querySelectorAll('#messages > .turn-block .turn')];
         if (turnEls.length < 2) return;
 
-        // keep a cushion above the viewport top so unloading never drags
-        // the older-turns loader back into its prefetch margin
         const keepAbove = Math.max(this.olderTriggerPx * 2 + 200, 600);
         const cutLine = messages.getBoundingClientRect().top - keepAbove;
 
@@ -491,9 +474,6 @@ CHAT_STORE = {
             maxDrop = Math.min(maxDrop, this.turnHistory.length - 1);
         }
 
-        // never unload past the newest user turn: it owns the response that
-        // may be filling the viewport below it, and the pinned-prompt feature
-        // needs its marker in the DOM long after it scrolled out the top
         let lastUser = -1;
         for (let i = this.turnHistory.length - 1; i >= 0; i--) {
             if (this.turnHistory[i]?.role === 'user') { lastUser = i; break; }
@@ -512,14 +492,14 @@ CHAT_STORE = {
 
             if (turnEl.getBoundingClientRect().bottom >= cutLine) break;
 
-            // pin handover: a user turn must stay loaded until the next newer
-            // user turn's flow position has crossed the viewport top (its
-            // marker tracks the true position even while that turn is pinned
-            // sticky). dropping it earlier leaves the response region above
-            // with no prompt left to pin.
             if (turnEl.querySelector(':scope > .message-wrapper.user')) {
-                const nextUser = turnEls.slice(t + 1).find(e => e.querySelector(':scope > .message-wrapper.user'));
-                const nextMarker = nextUser ? nextUser.previousElementSibling : null;
+                let nextMarker = null;
+                for (let u = t + 1; u < turnEls.length; u++) {
+                    if (turnEls[u].querySelector(':scope > .message-wrapper.user')) {
+                        nextMarker = turnEls[u].previousElementSibling;
+                        break;
+                    }
+                }
 
                 if (!nextMarker || nextMarker.getBoundingClientRect().top >= viewTop) break;
             }
@@ -531,8 +511,6 @@ CHAT_STORE = {
         this._dropPrefixTurns(drop);
         this._lastUnloadAt = performance.now();
 
-        // no scrollTop compensation needed: native scroll anchoring holds
-        // the visual position while the prefix elements disappear
         Alpine.nextTick(() => {
             Alpine.store('ui')._updateShouldScroll(messages);
         });
@@ -540,6 +518,8 @@ CHAT_STORE = {
 
     _dropPrefixTurns(drop) {
         if (drop <= 0) return;
+
+        this.invalidateMarkerPositions();
 
         if (this.pinnedTurnIndex !== null && this.pinnedTurnIndex - this.turnStart < drop) {
             this.clearPromptPin();
@@ -582,7 +562,7 @@ CHAT_STORE = {
         this.applyTurnPage(result, true);
         this.currentTokenUsage = result.token_usage;
 
-        await this.reloadChats();
+        await this.reloadChats(true);
 
         // ensure the chat exists in the visible sidebar list before scrolling
         await this.ensureChatVisible(this.selectedChat);
@@ -609,10 +589,6 @@ CHAT_STORE = {
             await ui.forceScrollToBottom();
             await this.fillViewport();
 
-            // markers that started below the fold never report their jump to
-            // above the top edge (IO only fires on state changes, and their
-            // state stayed 'not intersecting'), so resolve the pin by hand
-            // once the anchored scroll has landed
             requestAnimationFrame(() => this.recomputePromptPin());
         } finally {
             el.classList.remove('anchor-hidden');
@@ -632,6 +608,7 @@ CHAT_STORE = {
         this.chat = result;
         this.selectedChat = chatId;
         this.selectedCategory = result.category;
+        if (typeof result.revision === 'number') this.serverRevision = result.revision;
         this.applyTurnPage(result, false);
         this.currentTokenUsage = result.token_usage;
 
@@ -832,26 +809,46 @@ CHAT_STORE = {
         // stale: a newer reload superseded this one
         if (gen !== this.dayFetchGen) { return; }
 
-        this.dayGroups = (groupList ?? []).map(g => ({
-            key: g.key,
-            label: g.label,
-            count: g.count,
-            chats: [],
-            offset: 0,
-            hasMore: g.count > 0,
-            loading: false,
-            loaded: false
-        }));
+        const incoming = groupList ?? [];
 
-        const onTab = g => !this.isGroupCollapsed(g) && this.groupTab(g.key) === this.timeTab;
+        const sameStructure = this.dayGroups.length > 0 &&
+            this.dayGroups.length === incoming.length &&
+            this.dayGroups.every((g, i) => g.key === incoming[i].key && g.count === incoming[i].count);
+
+        if (sameStructure) {
+            for (const g of this.dayGroups) {
+                const touched = g.key === this.todayKey() ||
+                    g.chats.some(c => c.id === this.selectedChat);
+                if (!touched) continue;
+
+                g.chats = [];
+                g.offset = 0;
+                g.hasMore = g.count > 0;
+                g.loaded = false;
+            }
+        } else {
+            this.dayGroups = incoming.map(g => ({
+                key: g.key,
+                label: g.label,
+                count: g.count,
+                chats: [],
+                offset: 0,
+                hasMore: g.count > 0,
+                loading: false,
+                loaded: false
+            }));
+        }
+
+        const needsFetch = g => !g.loaded && g.hasMore &&
+            !this.isGroupCollapsed(g) && this.groupTab(g.key) === this.timeTab;
 
         await Promise.all(
-            this.dayGroups.filter(onTab).map(g => this.loadDayChats(g))
+            this.dayGroups.filter(needsFetch).map(g => this.loadDayChats(g))
         );
 
         await Alpine.nextTick();
         await Promise.all(
-            this.dayGroups.filter(onTab).map(g => this.ensureDayChatsFilled(g))
+            this.dayGroups.filter(needsFetch).map(g => this.ensureDayChatsFilled(g))
         );
     },
 
@@ -934,8 +931,8 @@ CHAT_STORE = {
         this.searchLoading = false;
     },
 
-    async reloadChats() {
-        await this.loadTags();
+    async reloadChats(refreshTags = false) {
+        if (refreshTags) { await this.loadTags(); }
         await this.reloadDayGroups();
 
         // refresh search results alongside, so renames/deletes (which
@@ -993,7 +990,7 @@ CHAT_STORE = {
 
         this.collapsedDays[this.todayKey()] = false;
 
-        await this.reloadChats();
+        await this.reloadChats(true);
         await this.reloadChat();
 
         document.getElementById('user-input')?.focus();
@@ -1002,8 +999,6 @@ CHAT_STORE = {
     async renameChat(chat_id, newTitle) {
         await simpleApiPost(`/api/chat/rename/${chat_id}`, {title: newTitle});
 
-        // the header reads this.chat directly: keep it live so renaming the
-        // open chat updates instantly instead of going stale until next load
         if (chat_id === this.selectedChat) { this.chat.title = newTitle; }
 
         await this.reloadChats();
@@ -1018,7 +1013,7 @@ CHAT_STORE = {
         }
 
         await this.reloadCategories();
-        await this.reloadChats();
+        await this.reloadChats(true);
     },
 
     async deleteChat(chat_id) {
@@ -1035,7 +1030,7 @@ CHAT_STORE = {
                 : (cats[0] ?? 'general');
         }
 
-        await this.reloadChats();
+        await this.reloadChats(true);
     },
 
     async deleteCategory(name) {
@@ -1047,7 +1042,7 @@ CHAT_STORE = {
             this.selectedCategory = 'general';
         }
 
-        await this.reloadChats();
+        await this.reloadChats(true);
         await this.reloadChat();
     },
 
@@ -1067,13 +1062,32 @@ CHAT_STORE = {
         this.chat = result;
         this.selectedChat = result.id;
         this.selectedCategory = result.category;
+        if (typeof result.revision === 'number') this.serverRevision = result.revision;
 
         this.applyTurnPage(result, true);
 
         if (result.category !== prevCategory) {
             await this.reloadCategories();
-            await this.reloadChats();
+            await this.reloadChats(true);
             await this.ensureChatVisible(result.id);
+        }
+    },
+
+    async queueReloadChat() {
+        if (this._reloadInFlight) {
+            this._reloadQueued = true;
+            return;
+        }
+
+        this._reloadInFlight = true;
+        try {
+            await this.reloadChat();
+            while (this._reloadQueued) {
+                this._reloadQueued = false;
+                await this.reloadChat();
+            }
+        } finally {
+            this._reloadInFlight = false;
         }
     },
 
@@ -1101,8 +1115,7 @@ CHAT_STORE = {
 
         this.selectedCategory = category;
         // reloadChats() re-runs the sidebar search when active, so the
-        // results are already re-scoped to the new category after this
-        await this.reloadChats();
+        await this.reloadChats(true);
     },
 
     async clearInput() {
@@ -1128,12 +1141,22 @@ CHAT_STORE = {
         let files = null;
 
         if (uploadStore.files.length > 0) {
-            files = await Promise.all(
-                uploadStore.files.map(async (file) => ({
-                    name: file.name,
-                    data: await uploadStore.readFileAsBase64(file)
-                }))
-            );
+            try {
+                files = await Promise.all(
+                    uploadStore.files.map(async (file) => ({
+                        name: file.name,
+                        data: await uploadStore.readFileAsBase64(file)
+                    }))
+                );
+            } catch (err) {
+                console.error('attachment read failed:', err);
+                this.user_input = text;
+                if (!wasSteering) {
+                    Alpine.store("stream").state = 'idle';
+                }
+                Alpine.store("ui").toast('Failed to read an attached file - nothing was sent.');
+                return;
+            }
         }
 
         AudioManager.play("send_message");
@@ -1177,7 +1200,6 @@ CHAT_STORE = {
         ? msg.content.filter((b, i) => b?.type === 'text' && b.text && !filenames[i]).map(b => b.text).join('\n\n')
         : msg.content;
 
-      // resolves to whether the write to the clipboard succeeded
       return navigator.clipboard.writeText(text)
         .then(() => {
             return true;
@@ -1294,8 +1316,6 @@ CHAT_STORE = {
     /* ----------------------
      * chat-specific getters
      * ----------------------- */
-    // chat name for the header, hard-capped at 150 chars (CSS handles
-    // soft truncation when it still doesn't fit the viewport)
     headerTitle() {
         const title = this.chat?.title || '';
         return title.length > 150 ? `${title.slice(0, 150).trimEnd()}…` : title;
@@ -1356,4 +1376,8 @@ CHAT_STORE = {
                 : "Waiting for model…"
         };
     }
-}
+};
+
+window.addEventListener('resize', () => {
+    try { Alpine.store('chat').invalidateMarkerPositions(); } catch (err) {  }
+});

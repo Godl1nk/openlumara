@@ -45,7 +45,7 @@ class Models(core.module.Module):
                 output += "\n\nModels you can switch to using the models_switch() toolcall: "
                 output += ", ".join(available)
 
-        return output
+        return output or None
 
     async def _load_models(self):
         try:

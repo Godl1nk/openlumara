@@ -36,6 +36,7 @@ class Manager:
         self._restart_requested = False
         self._hard_restart_requested = False
         self._prevent_double_shutdown = False
+        self.update_lock = asyncio.Lock()
 
         self.log_buffer = []
         self.started = False
@@ -355,6 +356,23 @@ class Manager:
             return "hard_restart"
 
         return None
+
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:33 +08:00 harness:Codex
+    async def run_update_script(self):
+        command = ["update.bat"] if sys.platform == "win32" else ["sh", "update.sh"]
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                cwd=os.getcwd(),
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            )
+        except OSError as error:
+            return 1, str(error)
+        output, _ = await process.communicate()
+        return process.returncode, output.decode(errors="replace")
 
     async def restart(self, hard=False):
         hard_str = "Hard " if hard else ""

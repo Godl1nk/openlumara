@@ -63,7 +63,7 @@ function markdownRender(el, { expression }, { evaluateLater, effect, cleanup }) 
             // NOTE: [] is truthy, must check length - otherwise a disabled
             // fade still pays for the full subtree walk every frame
             if (batches && batches.length) {
-                const nodes = collectTextNodes(el);
+                const nodes = collectTailTextNodes(el, batchCharCount(batches) + 64);
                 // newest batch first; wrapTailChars skips already-wrapped
                 // nodes, so successive calls peel further back from the tail
                 for (const b of batches) wrapTailChars(nodes, b.count, b.delay);

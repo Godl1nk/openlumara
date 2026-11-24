@@ -109,16 +109,13 @@ def register(app, channel):
         name = (data.get("name") or "").strip()
 
         mm = get_module_manager(channel)
-        success, message, kind, changed = await mm.update_entry(name)
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:33 +08:00 harness:Codex
+        if channel.manager.update_lock.locked():
+            return utils.api_result("An update is already running.", success=False)
+        async with channel.manager.update_lock:
+            success, message, kind, changed = await mm.update_entry(name)
         if not success:
             return utils.api_result(message, success=False)
-
-        if changed and kind in ("module", "channel"):
-            pkg = "user_channels" if kind == "channel" else "user_modules"
-            try:
-                await core.modules.install_module_deps(__import__(pkg), name, channel.manager)
-            except Exception as e:
-                channel.log("libraries", f"dependency install failed for {name}: {core.detail_error(e)}")
 
         return utils.api_result({
             "kind": kind,

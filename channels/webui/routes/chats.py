@@ -71,6 +71,7 @@ def register(app, channel):
         chat = dict(channel.context.chat.get())
         chat.update(_page_info(page, start, total))
         chat["token_usage"] = await channel.context.get_total_tokens()
+        chat["revision"] = getattr(channel.context.chat.messages, "revision", None)
 
         await channel.websocket_manager.push_context_update()
         return utils.api_result(chat, success=True)
@@ -86,6 +87,7 @@ def register(app, channel):
         chat.update(_page_info(page, start, total))
 
         chat["token_usage"] = await channel.context.get_total_tokens()
+        chat["revision"] = getattr(channel.context.chat.messages, "revision", None)
         return utils.api_result(chat)
 
     @app.get("/api/chat/turns")

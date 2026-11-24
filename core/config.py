@@ -1133,6 +1133,16 @@ def load(file_path=None):
 
     raw_config = dict(config) if config else {}
     _migrate_image_tools(raw_config)
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:32 +08:00 harness:Codex
+    webui = raw_config.get("channels", {}).get("settings", {}).get("webui", {})
+    if "extra_allowed_origins" in webui:
+        previous = webui.pop("extra_allowed_origins") or []
+        domains = webui.get("allowed_domains") or []
+        webui["allowed_domains"] = list(dict.fromkeys(
+            origin.strip()
+            for entries in (domains, previous) if isinstance(entries, list)
+            for origin in entries if isinstance(origin, str) and origin.strip()
+        ))
 
     enabled_channels = raw_config.get("channels", {}).get("enabled", [])
     if not enabled_channels and new_config:

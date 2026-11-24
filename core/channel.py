@@ -48,6 +48,9 @@ class Channel:
         self.commands = core.commands.Commands(self)
         self._last_cmd_was_temporary = False
 
+        # cache group_history() results
+        self._grouped_history_cache = {"key": None, "turns": None, "count": 0}
+
         self.queued_message = None # mid-stream steering for the next agentic round
         self.sending_message = False
 
@@ -465,6 +468,14 @@ class Channel:
             if not file_data:
                 continue
 
+            # let module hooks process files in their own way
+            blocks = await self._module_process_upload(filename, file_data)
+            if blocks:
+                for module_name, block in blocks:
+                    content_blocks.append(block)
+                    filenames.append(f"{filename} (processed by {module_name})")
+                continue
+
             mime_type = self._sniff_mime(file_data)
 
             if mime_type.startswith("image/"):
@@ -524,6 +535,24 @@ class Channel:
             return message_dict
 
         return {"role": "user", "content": message}
+
+    async def _module_process_upload(self, filename: str, file_data: bytes):
+        """let modules replace multimodal content blocks with their own processed versions"""
+        block_mods = []
+
+        for module_name, module in self.manager.modules.items():
+            try:
+                # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:38 +08:00 harness:Codex
+                hook = getattr(module, "on_upload", None)
+                if hook is None:
+                    continue
+                block = await hook(filename, file_data) if asyncio.iscoroutinefunction(hook) else hook(filename, file_data)
+                if isinstance(block, dict) and block.get("type"):
+                    block_mods.append((module_name, block))
+            except Exception as error:
+                self.log("module error", f"{module_name}: in on_upload(): {core.detail_error(error)}")
+
+        return block_mods
 
     def format_message(self, orig_message: dict):
         formatted = ""
@@ -1315,4 +1344,36 @@ class Channel:
         takes a list of messages and turns it into turns that are identical to the ones shown by get_turns_stream()
         for displaying message history in the same grouped turns format
         """
-        return await self.turncollector.group_history(await self.context.chat.messages.get())
+        messages = self.context.chat.messages
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:38 +08:00 harness:Codex
+        key = (messages, messages.revision, messages.last_edit_revision)
+        cache = self._grouped_history_cache
+
+        if cache["key"] == key:
+            return cache["turns"]
+
+        data = await messages.get()
+        turns = None
+
+        if (cache["key"] is not None and cache["key"][0] is messages
+                and cache["key"][2] == messages.last_edit_revision and len(data) >= cache["count"]):
+            if cache["turns"] and cache["turns"][-1]["role"] == "assistant":
+                boundary = cache["turns"][-1]["first_message_index"]
+                prefix = cache["turns"][:-1]
+            else:
+                boundary = cache["count"]
+                prefix = cache["turns"]
+
+            tail = await self.turncollector.group_history(data[boundary:], offset=boundary)
+            turns = prefix + tail
+
+        if turns is None:
+            # no usable cache, a chat switch, or a mid-history mutation
+            turns = await self.turncollector.group_history(data)
+
+        self._grouped_history_cache = {
+            "key": key,
+            "turns": turns,
+            "count": len(data),
+        }
+        return turns

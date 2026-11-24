@@ -1,34 +1,17 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 :: Switch to the directory where this .bat file is located
 cd /d "%~dp0"
 
-:: Ensure origin points to Godl1nk repository
-git remote set-url origin https://github.com/Godl1nk/openlumara.git >nul 2>nul
+:: -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:33 +08:00 harness:Codex
+git remote get-url origin >nul 2>nul
+if errorlevel 1 git remote add origin https://github.com/Godl1nk/openlumara.git >nul 2>nul
 
 :: 1. Smart auto-update
 echo checking for updates...
-git fetch origin >nul 2>nul
-if !errorlevel! equ 0 (
-    :: Get local HEAD
-    for /f "tokens=*" %%i in ('git rev-parse HEAD') do set LOCAL=%%i
-
-    :: Get remote HEAD (using @{u} for upstream)
-    set REMOTE=
-    for /f "tokens=*" %%i in ('git rev-parse @{u} 2^>nul') do set REMOTE=%%i
-
-    if "!REMOTE!"=="" (
-        echo no upstream configured, skipping update check.
-    ) else if "!LOCAL!" NEQ "!REMOTE!" (
-        echo updates available! pulling changes...
-        git pull
-    ) else (
-        echo already up to date.
-    )
-) else (
-    echo warning: git fetch failed. skipping update check.
-)
+git pull --ff-only
+if errorlevel 1 exit /b 1
 
 :: 2. Ensure dependencies are up to date
 echo ensuring dependencies are up to date...

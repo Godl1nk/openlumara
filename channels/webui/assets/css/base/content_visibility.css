@@ -1,0 +1,45 @@
+
+.turn:not(.prompt-pinned) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 400px;
+}
+
+.day-group {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
+}
+
+.global-search-result {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 70px;
+}
+
+.system-logs .entry {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 28px;
+}
+
+.unified-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 90px;
+}
+
+.library-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 80px;
+}
+
+.setting-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 70px;
+}
+
+.chain-station {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 60px;
+}
+
+.tool-call-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 48px;
+}

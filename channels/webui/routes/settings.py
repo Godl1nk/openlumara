@@ -171,6 +171,7 @@ def register(app, channel):
         if old_webui != new_webui:
             await channel.websocket_manager.broadcast({"type": "refresh_page"})
 
+        channel.context.invalidate_size_cache()
         await channel.websocket_manager.push_context_update()
 
         return utils.api_result({
@@ -186,6 +187,7 @@ def register(app, channel):
         except core.api.APIError as e:
             return utils.api_result(str(e), success=False)
 
+        channel.context.invalidate_size_cache()
         await channel.websocket_manager.push_context_update()
 
         return utils.api_result(success=True)

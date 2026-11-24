@@ -14,6 +14,15 @@ class Messages:
         self.path = os.path.join(self.chat.path, "history", self.chat.get("id"))
         self.data = core.storage.StorageList(self.path, "json")
 
+        # whether to use indentation in the json or not (saves disk space)
+        self.data.pretty = False
+
+        # bumped on every mutation of the history, for use with caching
+        self.revision = 0
+
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-25 07:38 +08:00 harness:Codex
+        self.last_edit_revision = 0
+
         # for index in range(len(self.data) - 1, -1, -1):
         #     chat = self.data[index]
         #     messages = chat.get("messages", [])
@@ -48,7 +57,7 @@ class Messages:
         # if no index is specified, just return the entire message history
         return self.data
 
-    async def add(self, message: dict, cmd=False, ghost = False):
+    async def add(self, message: dict, cmd=False, ghost = False, hide = False):
         """add message to current chat"""
         # make a copy so we don't modify the original reference
         new_message = message.copy()
@@ -71,6 +80,10 @@ class Messages:
         # ghost messages are invisible to the AI
         if ghost:
             new_message["_metadata"]["ghost"] = True
+
+        # use the hide flag to hide messages from the UI. needs to be implemented by a channel, most included channels support it
+        if hide:
+            new_message["_metadata"]["hide"] = True
 
         if cmd:
             # if the message is a command (or command response), mark it as such
@@ -98,6 +111,9 @@ class Messages:
 
         self.data.append(new_message)
 
+        # -- AI GENERATED CODE (Qwen3.8-Flash-Next-Gufo) :: (2026-11-24) harness:openlumara
+        self.revision += 1
+
         index = len(self.data) - 1
         await self.save()
         return True
@@ -108,11 +124,13 @@ class Messages:
             return False
 
         self.data[index] = message
+        self._mark_history_edit()
         await self.save()
 
     async def delete(self, index: int):
         """delete message from current chat"""
         self.data.pop(index)
+        self._mark_history_edit()
         index = len(self.data) - 1
         await self.save()
 
@@ -129,12 +147,18 @@ class Messages:
         new_messages = self.data[:index]
 
         self.data.load(new_messages)
+        self._mark_history_edit()
         await self.save()
         return True
 
     async def clear(self):
         self.data.clear()
+        self._mark_history_edit()
         return True
+
+    def _mark_history_edit(self):
+        self.revision += 1
+        self.last_edit_revision = self.revision
 
     async def get_last_message_with_role(self, role: str, cutoff_index: int = None):
         """gets the latest message with the specified role"""

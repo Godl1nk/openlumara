@@ -43,19 +43,13 @@ document.addEventListener('alpine:init', async () => {
     Alpine.store('background', BACKGROUND_STORE);
     Alpine.store('upload', UPLOAD_STORE);
     Alpine.store('htmlPreview', HTML_PREVIEW_STORE);
-
-    // command palette (Ctrl+K), see components/command_palette.js
     Alpine.store('palette', PALETTE);
 
-    // load the audio settings from localStorage into the store, then push
-    // them into the AudioManager (must run before any sound can play)
     Alpine.store('audio').init();
-
-    // restore the background image from IndexedDB and apply its layer
     Alpine.store('background').init();
 
-    // user-rebindable keyboard shortcuts (localStorage-backed)
     Alpine.store('keyboard', KEYBOARD_STORE);
+
     Alpine.store('keyboard').init();
 
     // start the browser notification system
@@ -78,20 +72,19 @@ document.addEventListener('alpine:init', async () => {
     // so tool call values only get the soft background when they scroll
     Alpine.directive('box', (el, modifiers, { cleanup }) => cleanup(boxIfScrolls(el)));
 
-    // keeps a scroll container at its tallest-so-far height while the
-    // expression is true (capped by its CSS max-height), releasing it back
-    // to content height once false (see directives/height_ratchet.js)
+    // make sure message bubbles only ever grow during a stream, never shrink
+    // makes frequent automatic collapsing and expanding of steps and toolcalls look seamless
     Alpine.directive('height-ratchet', (el, { expression }, { evaluateLater, effect, cleanup }) =>
         heightRatchet(el, evaluateLater(expression), effect, cleanup));
 
-    // watches a flow marker outside a pinned turn for the pinned-prompt feature
+    // pinned prompt (which shows the user message above the assistant message currently being viewed)
+    // as a sticky element floating above the assistant message
     Alpine.directive('prompt-marker', (el, { expression }, { evaluateLater, cleanup }) => {
         const run = evaluateLater(expression);
         cleanup(promptMarker(el, (intersecting) => run(() => {}, { scope: { intersecting } })));
     });
 
-    // clones a command palette icon (see the #cmd-icons sprite) into the row,
-    // re-resolving whenever the expression changes
+    // icons for the command palette
     Alpine.directive('cmd-icon', (el, { expression }, { evaluate }) => {
         el.replaceChildren();
 
@@ -127,6 +120,11 @@ document.addEventListener('alpine:init', async () => {
 
     // fetch any relevant system data (like system logs, max context, etc)
     await Alpine.store('system').loadData();
+
+    // check for updates
+    if (!window.ADMIN_SETTINGS_DISABLED && SYSTEM_STORE.autoCheckEnabled()) {
+        setTimeout(() => Alpine.store('system').checkForUpdates(), 4000);
+    }
 
     // fetch current chat
     try {

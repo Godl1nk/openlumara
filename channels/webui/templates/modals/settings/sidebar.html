@@ -21,8 +21,8 @@
                     <hr class="nav-divider">
                 </template>
 
-                <button 
-                    :class="{ active: activeNavCategory === cat }"
+                <button
+                    :class="{ active: activeNavCategory === cat, 'update-available': cat === 'system_updates' && $store.system.update.anyUpdates }"
                     @click="await switchCategory(cat)"
                     class="item"
                 >
@@ -32,6 +32,7 @@
                         {%- endfor %}
                     </span>
                     <span x-text="data.title"></span>
+                    <span class="update-dot" x-show="cat === 'system_updates' && $store.system.update.anyUpdates" x-cloak></span>
                 </button>
 
                 <!-- Module/Channel sub-lists -->
@@ -73,6 +74,16 @@
 
         {{ extension_slot("buttons") }}
 
+        <button
+            :class="{ active: activeNavCategory === 'system_updates', 'update-available': $store.system.update.anyUpdates }"
+            @click="await switchCategory('system_updates')"
+            class="item"
+        >
+            <span class="item-icon">{% include 'svg/regenerate.svg' %}</span>
+            <span x-text="$store.settings.categories?.system_updates?.title || 'Updates'"></span>
+            <span class="update-dot" x-show="$store.system.update.anyUpdates" x-cloak></span>
+        </button>
+
         <button 
             class="item" 
             @click="await $store.system.restart()"
@@ -86,6 +97,7 @@
                 class="item"
                 @click="if(confirm('Log out?')) window.location.href='/logout'"
             >
+                <span class="item-icon">{% include 'svg/logout.svg' %}</span>
                 <span>Logout</span>
             </button>
         {% endif %}

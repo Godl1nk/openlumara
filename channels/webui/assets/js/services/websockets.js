@@ -6,6 +6,7 @@ let serverShutdownSeen = false;
 let wsClosedAt = null;
 
 let wsHeartbeatTimer = null;
+let wsReconnectTimer = null;
 window.wsLastRx = Date.now();
 
 // intended to be used to queue up messages for sending to the backend in case the
@@ -17,6 +18,8 @@ let streamFinalizing = false;
 
 
 async function connectWebSocket() {
+    wsReconnecting = false;
+
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = window.apiToken || '';
     const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
@@ -114,8 +117,12 @@ async function connectWebSocket() {
 }
 
 async function scheduleWsReconnect() {
+    if (wsReconnectTimer !== null) return;
+
+    wsReconnecting = true;
     console.log(`attempting to reconnect to websocket..`);
-    setTimeout(function () {
+    wsReconnectTimer = setTimeout(function () {
+        wsReconnectTimer = null;
         connectWebSocket();
     }, 1000);
 }
@@ -179,7 +186,7 @@ async function handleWebSocketMessage(data) {
             stream.userMsg = data.message;
 
             // reload chat from backend so that the new user message shows up
-            await chat.reloadChat();
+            await chat.queueReloadChat();
 
             // force scroll to bottom
             await ui.forceScrollToBottom();
@@ -190,18 +197,12 @@ async function handleWebSocketMessage(data) {
 
         case "turn_step":
         case "turn_final": {
-            // step-based stream. stream.turn is an object once a turn is
-            // in flight, so `.length` can never answer "do I own one?" -
-            // and a reconnect replay used to answer it wrong, creating a
-            // second live turn beside the one already in the window
             const isLive = (t) => t && t.live === true;
 
             if (!isLive(stream.turn)) {
                 const last = chat.turnHistory[chat.turnHistory.length - 1];
 
                 if (isLive(last) && (last.steps ?? []).length > 0) {
-                    // a live turn already on screen (mid-stream reload or
-                    // replay after refresh): adopt it instead of cloning it
                     stream.turn = last;
                 }
                 else {
@@ -216,7 +217,6 @@ async function handleWebSocketMessage(data) {
                 }
             }
             else if (!chat.turnHistory.includes(stream.turn)) {
-                // we own a live turn a chat reload dropped off the window
                 chat.turnHistory.push(stream.turn);
             }
 
@@ -500,20 +500,16 @@ async function handleWebSocketMessage(data) {
              * this prevents UI flicker that comes from re-rendering the entire turn history
              */
 
+            if (typeof data.revision === 'number') chat.serverRevision = data.revision;
+
             streamFinalizing = true;
 
             const foldEl = document.querySelector('.agent-chain.is-streaming .agent-chain-body');
             if (foldEl && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 const foldMsgs = document.getElementById('messages');
                 foldEl.style.overflow = 'hidden';
-                // the bubble-level height ratchet (x-height-ratchet) would floor
-                // this fold at its pinned peak - this IS the intended final
-                // collapse, so release the pin up front
                 const foldBubble = foldEl.closest('.message.assistant');
                 if (foldBubble) { foldBubble.style.minHeight = ''; }
-                // the height ratchet (x-height-ratchet) would floor this fold at
-                // its pinned peak - this IS the intended final collapse, so
-                // release the pin up front
                 foldEl.style.minHeight = '';
                 const fold = foldEl.animate(
                     [{ height: foldEl.offsetHeight + 'px' }, { height: '0px' }],
@@ -572,7 +568,7 @@ async function handleWebSocketMessage(data) {
             await ui.scrollToBottom('messages');
 
             // and finally, sync back up with the backend
-            await chat.reloadChat();
+            await chat.queueReloadChat();
             await chat.reloadChats();
 
             await ui.scrollToBottom('messages');

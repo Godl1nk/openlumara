@@ -16,10 +16,6 @@
     transition: none;
 }
 
-/* solid surfaces by default. they only need to give way to a background
-   picture (html.has-bg.bg-page) - the frosted overrides in background.css
-   then take over. with no picture (or a chat-mode one, which the opaque
-   chat window covers anyway), the sidebar's parts stay solid bg-primary */
 html:not(.has-bg) .sidebar-tabbar,
 html:not(.has-bg) .sidebar-panel,
 html:not(.has-bg) #chat-list,
@@ -257,8 +253,14 @@ body:has(.sidebar-resizer:active) {
         margin-top: 0;
         margin-left: auto;
         padding-top: 0;
-        padding-left: 6px;
+        padding-left: 8px;
         width: auto;
+        gap: 0;
+        border-left: 1px dashed color-mix(in srgb, var(--border-color) 75%, transparent);
+    }
+
+    .sidebar-tabbar-footer .sidebar-tab {
+        width: 34px;
     }
 
     .sidebar-tab {
