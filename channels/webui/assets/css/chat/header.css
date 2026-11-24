@@ -35,7 +35,7 @@ header {
         gap: 14px;
         /* Equal-width rails keep the title centered. */
         flex: 1 1 0;
-        min-width: 0;
+        min-width: min-content;
     }
     .right {
         flex: 1 1 0;
@@ -90,21 +90,21 @@ header {
         }
     }
 
+    /* -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:52 +08:00 harness:Codex */
     h1 {
+        margin-inline: clamp(8px, 1.25vw, 20px);
+        padding: 3px 9px;
+        border-inline-start: 2px solid color-mix(in srgb, var(--accent) 60%, var(--border-color));
+        border-radius: var(--radius-sm);
+        background: color-mix(in srgb, var(--accent) 7%, var(--bg-secondary));
         font-size: 1.1rem;
         font-weight: 700;
         letter-spacing: -0.02em;
-        color: var(--text-secondary);
+        color: var(--text-primary);
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        /*
-        background: linear-gradient(135deg, var(--accent) 0%, var(--text-primary) 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        */
     }
 
     .btn {
