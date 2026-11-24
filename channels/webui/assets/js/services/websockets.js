@@ -154,7 +154,6 @@ async function handleWebSocketMessage(data) {
     // process based on broadcast type
     switch (data_type) {
         case "stream_state":
-            // a new turn starts: drop the previous turn's speed samples
             if (data.state === "message_sending") stream.resetTokenRate();
             stream.state = data.state;
             break;
@@ -447,13 +446,10 @@ async function handleWebSocketMessage(data) {
                 case "token_usage":
                     chat.currentTokenUsage = token_content;
                     break;
+                // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 09:29 +08:00 harness:Codex
                 case "timings":
-                    // exact generation speed from llama.cpp-style servers
-                    stream.applyServerTimings(token_content);
-                    break;
-                case "content":
-                case "reasoning":
-                    stream.recordToken(token);
+                    if (token_content === null) stream.resetTokenRate();
+                    else stream.applyServerTimings(token_content);
                     break;
                 case "tool_call_delta":
                     stream.processing = {};

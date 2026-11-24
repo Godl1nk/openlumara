@@ -4,10 +4,48 @@ import aiohttp
 import asyncio
 import copy
 import json
+import math
 import ssl
 import time
 import urllib.parse
 import ulid
+
+# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 09:29 +08:00 harness:Codex
+def _positive_number(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def _generation_timings(packet):
+    raw = packet.get("timings")
+    timings = dict(raw) if isinstance(raw, dict) else {}
+    rate = _positive_number(timings.pop("predicted_per_second", None))
+    if rate is None:
+        count = _positive_number(timings.get("predicted_n"))
+        elapsed = _positive_number(timings.get("predicted_ms"))
+        if count and elapsed:
+            rate = _positive_number(count / elapsed * 1000)
+
+    metrics, usage = packet.get("metrics"), packet.get("usage")
+    if rate is None and isinstance(metrics, dict) and isinstance(usage, dict):
+        elapsed = _positive_number(metrics.get("generation_time_ms"))
+        count = usage.get("completion_tokens")
+        # vLLM measures from the first token to the last, so there are count - 1 intervals.
+        intervals = _positive_number(count - 1) if type(count) is int else None
+        if elapsed and intervals:
+            rate = _positive_number(intervals / elapsed * 1000)
+            if rate is not None:
+                timings["predicted_ms"] = elapsed
+
+    if rate is not None:
+        timings["predicted_per_second"] = rate
+    return timings
+
 
 # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-23 21:59 +08:00 harness:Codex
 MODEL_OPTION_DEFAULTS = {
@@ -151,6 +189,8 @@ class APIClient():
 
         # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex
         self._extras_rejected = set()
+        self._live_timings_base = None
+        self._live_timings_rejected = set()
 
     # -------------------
     # HTTP plumbing
@@ -386,6 +426,8 @@ class APIClient():
             self._ssl_ctx = None
             self._router_origin = None
             self._extras_rejected.clear()
+            self._live_timings_base = None
+            self._live_timings_rejected.clear()
 
             self.connected = False
 
@@ -406,6 +448,7 @@ class APIClient():
         model loading progress bars, prompt progress, and so on)
         """
         self._router_origin = None
+        self._live_timings_base = None
 
         try:
             api_url = core.config.get("api", "url") or ""
@@ -424,10 +467,12 @@ class APIClient():
 
             body = json.loads(model_listing)
             entries = body.get("data") if isinstance(body, dict) else None
-            if isinstance(entries, list) and any(
-                isinstance(entry, dict) and isinstance(entry.get("status"), dict)
-                and entry["status"].get("value") for entry in entries
-            ):
+            if not isinstance(entries, list):
+                return
+            entries = [entry for entry in entries if isinstance(entry, dict)]
+            if any(entry.get("owned_by") in ("llamacpp", "llama-swap") for entry in entries):
+                self._live_timings_base = api_url.rstrip("/")
+            if any(isinstance(entry.get("status"), dict) and entry["status"].get("value") for entry in entries):
                 self._router_origin = origin
 
         except (ValueError, TypeError, aiohttp.ClientError, asyncio.TimeoutError):
@@ -1166,6 +1211,10 @@ class APIClient():
         if stream:
             # request token usage from the API
             req["stream_options"] = {"include_usage": True}
+        auto_timings = (stream and endpoint[0] == self._live_timings_base
+                        and endpoint not in self._live_timings_rejected and "timings_per_token" not in req)
+        if auto_timings:
+            req["timings_per_token"] = True
 
         # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex
         llama_extras = ("return_progress", "chat_template_kwargs")
@@ -1219,6 +1268,7 @@ class APIClient():
         response = None
         attempt = 1
         retried_without_extras = False
+        retried_without_timings = False
         try:
             # retry loop
             while True:
@@ -1251,15 +1301,22 @@ class APIClient():
 
                     if retried_without_extras:
                         self._extras_rejected.add(endpoint)
+                    if retried_without_timings:
+                        self._live_timings_rejected.add(endpoint)
                     break
 
                 except (APIHTTPError, aiohttp.ClientError, asyncio.TimeoutError) as e:
-                    if (isinstance(e, APIHTTPError) and e.status == 400
-                            and any(field in req for field in llama_extras) and not self.cancel_request):
-                        for field in llama_extras:
-                            req.pop(field, None)
-                        retried_without_extras = True
-                        continue
+                    if isinstance(e, APIHTTPError) and e.status == 400 and not self.cancel_request:
+                        # A proxy can forward to engines that reject live timings.
+                        if auto_timings and "timings_per_token" in req:
+                            req.pop("timings_per_token")
+                            retried_without_timings = True
+                            continue
+                        if any(field in req for field in llama_extras):
+                            for field in llama_extras:
+                                req.pop(field, None)
+                            retried_without_extras = True
+                            continue
 
                     if attempt >= self.MAX_API_ATTEMPTS or not self._is_retryable_error(e) or self.cancel_request:
                         raise
@@ -1302,6 +1359,8 @@ class APIClient():
 #         if core.debug:
 #             self.manager.log("debug:response", str(response))
 
+        if isinstance(response, dict) and (timings := _generation_timings(response)):
+            response["timings"] = timings
         return response
 
     async def send(self, context: list, system_prompt=True, use_tools=True, tools=None, use_thinking=True, **kwargs):
@@ -1334,6 +1393,8 @@ class APIClient():
         """send a message to the LLM. is an iterable async generator"""
 
         self.cancel_request = False
+        # Each model call, including a tool follow-up, starts with an empty decode rate.
+        yield {"type": "timings", "content": None}
 
         # attempt auto-reconnect once
         try:
@@ -1522,7 +1583,7 @@ class APIClient():
         token_usage = None
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        last_token_time = 0
+        last_timing_at = -math.inf
 
         # llama.cpp router load-banner detection (see the reasoning branch below)
         loader_probe = ""
@@ -1575,13 +1636,9 @@ class APIClient():
                         "content": chunk.get("prompt_progress")
                     }
 
-                # Calculate time delta for real-time stats
-                current_time = time.time()
-                delta_ms = (current_time - last_token_time) * 1000
-                last_token_time = current_time
-
-                if chunk.get("choices"):
-                    streamed_token = chunk["choices"][0].get("delta") or {}
+                choices = chunk.get("choices") or []
+                if choices:
+                    streamed_token = choices[0].get("delta") or {}
 
                     content_part = streamed_token.get("content")
                     reason_part = streamed_token.get("reasoning_content") or streamed_token.get("reasoning")
@@ -1611,21 +1668,6 @@ class APIClient():
                         emitted.append({"type": "reasoning", "content": reason_part})
                     if content_part:
                         emitted.append({"type": "content", "content": content_part})
-
-                    # add timing data to the yielded token
-                    if emitted:
-                        # Send timing data: Use native if available, otherwise calculate
-                        native_timings = chunk.get("timings")
-                        if native_timings:
-                            emitted[0]["timings"] = native_timings
-
-                        else:
-                            # Fallback: Calculate tokens/s based on time between chunks
-                            if delta_ms > 1: # Only yield if significant time passed
-                                emitted[0]["timings"] = {
-                                    "predicted_ms": delta_ms,
-                                    "predicted_n": 1
-                                }
 
                     # and finally, yield the content token
                     for token in emitted:
@@ -1672,10 +1714,17 @@ class APIClient():
                                         "tool_calls": [copy.deepcopy(tool_call_buffer[index])]
                                     }
 
-                # if response has usage data, save it so we can use it to show to the user and to trim context
-                if chunk.get("usage") is not None:
-                    usage = chunk["usage"]
+                if chunk.get("timings") or chunk.get("metrics"):
+                    now = time.monotonic()
+                    final = not choices or choices[0].get("finish_reason") is not None
+                    if final or now - last_timing_at >= 0.25:
+                        if timings := _generation_timings(chunk):
+                            yield {"type": "timings", "content": timings}
+                            last_timing_at = now
 
+                # Keep the existing context count and forward the provider's usage breakdown.
+                usage = chunk.get("usage")
+                if isinstance(usage, dict):
                     if usage.get("prompt_tokens") is not None:
                         total_prompt_tokens = usage["prompt_tokens"]
                     if usage.get("completion_tokens") is not None:
@@ -1689,10 +1738,7 @@ class APIClient():
                         token_usage = total_completion_tokens
 
                     if token_usage > 0:
-                        yield {"type": "token_usage", "content": token_usage, "source": "API"}
-
-                if chunk.get("timings") is not None:
-                    yield {"type": "timings", "content": chunk["timings"]}
+                        yield {"type": "token_usage", "content": token_usage, "source": "API", "usage": usage}
 
             if use_tools:
                 for index in sorted(tool_call_buffer.keys()):

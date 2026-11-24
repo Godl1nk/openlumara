@@ -30,15 +30,16 @@
         <!-- extension slot: modules fill this via a right() macro in <module>/chat/header.html -->
         {{ extension_slot("right") }}
 
-        <!-- generation speed: always present, shows the last measured value -->
+        {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 09:29 +08:00 harness:Codex #}
         <span id="tok-rate"
               x-cloak
-              :class="{ 'is-empty': !($store.stream.tokens_per_second > 0) }"
-              :title="($store.stream.tokens_per_second > 0)
-                  ? 'Generation speed — ' + ($store.stream.tokens_per_second_source === 'server' ? 'measured by the server' : 'estimated from streamed text')
-                  : 'Generation speed — no data yet'"
-              :aria-label="'Generation speed: ' + $store.stream.tokens_per_second + ' tokens per second'">
-            <span class="tok-rate-value" x-text="$store.stream.tokens_per_second > 0 ? $store.stream.tokens_per_second : '—'"></span>
+              :class="{ 'is-empty': $store.stream.tokens_per_second === null }"
+              :title="$store.stream.tokens_per_second !== null ? 'Server-measured decode rate' :
+                  $store.stream.state === 'idle' ? 'Decode rate unavailable' : 'Waiting for server decode timing'"
+              :aria-label="$store.stream.tokens_per_second !== null
+                  ? 'Decode rate ' + $store.stream.tokens_per_second.toFixed(1) + ' tokens per second'
+                  : 'Decode rate unavailable'">
+            <span class="tok-rate-value" x-text="$store.stream.tokens_per_second?.toFixed(1) ?? '—'"></span>
             <span class="tok-rate-unit">tok/s</span>
         </span>
 
