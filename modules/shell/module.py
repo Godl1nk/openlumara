@@ -177,12 +177,6 @@ class Shell(core.module.Module):
         return_code = process.returncode if process.returncode is not None else -1
         return bytes(stdout_buf), bytes(stderr_buf), return_code, timed_out
 
-    async def on_system_prompt(self):
-        prompt = "".join(self._get_setup())
-
-        if "coder" in self.manager.modules:
-            prompt += "\nNOTE: shell sandbox is NOT coder sandbox. they are seperate."
-
     def _resolve_dockerfile_path(self, dockerfile_path):
         if not dockerfile_path:
             return None

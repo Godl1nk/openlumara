@@ -1,6 +1,56 @@
 const UPLOAD_STORE = {
     files: [],
 
+    // drag & drop state: dragging drives the chat-window overlay,
+    // _dragDepth counters child enter/leave so moving over inner elements
+    // never flickers the overlay away
+    dragging: false,
+    _dragDepth: 0,
+
+    // -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-26 07:38 +08:00 harness:Codex
+    init() {
+        if (!document.body.hasAttribute('data-file-upload')) return;
+
+        const preventFileNavigation = event => {
+            if (!event.defaultPrevented && this.isFileDrag(event)) event.preventDefault();
+        };
+        window.addEventListener('dragover', preventFileNavigation);
+        window.addEventListener('drop', preventFileNavigation);
+    },
+
+    isFileDrag(event) {
+        return event.dataTransfer?.types?.includes('Files') ?? false;
+    },
+
+    onDragEnter(event) {
+        if (!this.isFileDrag(event)) return;
+        event.preventDefault();
+        this._dragDepth += 1;
+        this.dragging = true;
+    },
+
+    onDragOver(event) {
+        if (!this.isFileDrag(event)) return;
+        event.preventDefault(); // marks the window as an accepted drop target
+        event.dataTransfer.dropEffect = 'copy';
+    },
+
+    onDragLeave(event) {
+        if (!this.isFileDrag(event)) return;
+        this._dragDepth = Math.max(0, this._dragDepth - 1);
+        if (this._dragDepth === 0) this.dragging = false;
+    },
+
+    onDrop(event) {
+        this._dragDepth = 0;
+        this.dragging = false;
+        if (!this.isFileDrag(event)) return; // let text drops keep native behavior (e.g. into the textarea)
+        event.preventDefault();
+
+        const files = event.dataTransfer?.files;
+        if (files?.length) this.files.push(...files);
+    },
+
     addFile(event) {
         this.files.push(...event.target.files);
         if (this.files.length === 0) return;
@@ -56,5 +106,7 @@ const UPLOAD_STORE = {
     clear() {
         this.files = [];
         this.processed = [];
+        this.dragging = false;
+        this._dragDepth = 0;
     }
 };

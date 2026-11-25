@@ -284,12 +284,19 @@ class Coder(core.module.Module):
 
                     final_output.append(output_str)
 
-        if (
-            "shell" in self.manager.modules
-            and
-            self.manager.modules["shell"].config.get("sandbox_path") not in self.config.get("sandbox_paths")
-        ):
-            final_output.append("NEVER run shell commands against coder sandboxes. coder sandboxes and shell sandbox are seperate.")
+        # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-26 07:39 +08:00 harness:Codex
+        shell = self.manager.modules.get("shell")
+        if shell and not getattr(shell, "passthrough", False):
+            shell_workspace = getattr(shell, "host_workspace", None)
+            shared_workspace = False
+            if shell_workspace and shell.config.get("persistent_data", default=True):
+                shell_workspace = os.path.normcase(os.path.realpath(shell_workspace))
+                shared_workspace = any(
+                    os.path.normcase(os.path.realpath(os.path.expanduser(path))) == shell_workspace
+                    for path in (self.config.get("sandbox_paths") or [])
+                )
+            if not shared_workspace:
+                final_output.append("Use coder tools in coder sandboxes. Keep shell commands inside the separate shell sandbox.")
 
         if self.config.get("use_coding_prompt") and self.config.get("coding_prompt"):
             final_output.append(f"## Coding Guidelines\nYOU MUST ALWAYS follow these guidelines while using the coder:\n{self.config.get('coding_prompt')}")
