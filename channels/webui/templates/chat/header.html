@@ -1,12 +1,11 @@
 {# -- AI GENERATED CODE (GPT-6) :: 2026-11-21 16:39:24 +08:00 harness:Codex #}
 <header>
     <div class="left">
-        <!-- also shown on desktop while the sidebar is hidden (it now persists
-             across reloads), so there is always a mouse path back to it -->
-        {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-24 07:36 +08:00 harness:Codex #}
+        {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-27 08:37 +08:00 harness:Codex #}
         {% if config.get('enable_sidebar') %}
         <button type="button" class="menu-btn" title="Toggle sidebar (Ctrl+B)" aria-label="Toggle sidebar"
-                @click="$store.ui.toggleSidebar()" x-show="$store.ui.isMobile || !$store.ui.showSidebar" x-cloak>
+                @click="$store.ui.toggleSidebar()"
+                x-show="!$store.ui.showSidebar{% if config.get('enable_floating_sidebar_button', true) %} && !$store.ui.isMobile{% endif %}" x-cloak>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
             </svg>

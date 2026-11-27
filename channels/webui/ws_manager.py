@@ -19,21 +19,51 @@ class WebSocketManager:
         self.active_stream_task = None
         self.webui_ready = False
         self.stream_state = "idle"
-        self.turn_steps = {}
-        self.turn_final = []
+        # one buffer per live on_stream invocation (the root answer turn plus
+        # any nested compaction/subagent streams), keyed by stream id. sharing
+        # one buffer let a nested stream clobber the main chain's steps/final
+        # because both number their steps from 1.
+        self.streams = {}
+        self._next_stream_id = 0
+        self.stack = []          # currently-open stream ids, root at index 0
 
-    def record_step_snapshot(self, step: dict):
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-27 08:40 +08:00 harness:Codex
+    def begin_stream(self):
+        """Open a stream buffer and return its routing metadata."""
+        self._next_stream_id += 1
+        stream_id = self._next_stream_id
+        lane = {"stream_id": stream_id}
+        if self.stack:
+            parent = self.stack[-1]
+            parent_steps = self.streams[parent]["steps"]
+            lane.update(parent_id=parent, root_stream_id=self.stack[0], attach_step=max(parent_steps, default=0))
+        self.streams[stream_id] = {"steps": {}, "final": [], "lane": lane}
+        self.stack.append(stream_id)
+        return lane
+
+    def end_stream(self, stream_id):
+        if stream_id in self.stack:
+            self.stack.remove(stream_id)
+
+    def reset_streams(self):
+        self.streams = {}
+        self.stack = []
+
+    def _buffer(self, stream_id):
+        return self.streams[stream_id]
+
+    def record_step_snapshot(self, stream_id, step: dict):
         """track the newest snapshot of one streaming step (upsert by number)"""
-        self.turn_steps[step.get("step")] = step
+        self._buffer(stream_id)["steps"][step.get("step")] = step
 
-    def record_final_snapshot(self, messages: list):
+    def record_final_snapshot(self, stream_id, messages: list):
         """track the newest final-bubble snapshot"""
-        self.turn_final = messages
+        self._buffer(stream_id)["final"] = messages
 
-    def apply_step_delta(self, delta: dict):
+    def apply_step_delta(self, stream_id, delta: dict):
         """fold a streaming append into the stored step snapshot, so a
         mid-stream reconnect replay stays current between checkpoints"""
-        step = self.turn_steps.get(delta.get("step"))
+        step = self._buffer(stream_id)["steps"].get(delta.get("step"))
         if step is None:
             return
 
@@ -47,10 +77,11 @@ class WebSocketManager:
                         meta["response"] = (meta.get("response") or "") + append["text"]
                         break
 
-    def apply_final_delta(self, delta: dict):
-        if not self.turn_final:
+    def apply_final_delta(self, stream_id, delta: dict):
+        final = self._buffer(stream_id)["final"]
+        if not final:
             return
-        last = self.turn_final[-1]
+        last = final[-1]
         last["content"] = (last.get("content") or "") + delta["text"]
 
     async def push_context_update(self, connection=None):
@@ -77,10 +108,8 @@ class WebSocketManager:
             return
         self.stream_state = state
 
-        if state in ("message_sending", "idle"):
-            # reset the buffers
-            self.turn_steps = {}
-            self.turn_final = []
+        if state == "idle" or (state == "message_sending" and not self.stack):
+            self.reset_streams()
 
         await self.broadcast({"type": "stream_state", "state": state})
 
@@ -101,17 +130,28 @@ class WebSocketManager:
             "state": self.stream_state
         })
 
-        # when reconnecting mid-stream, replay every step so far to the client
-        if self.stream_state != "idle" and (self.turn_steps or self.turn_final):
-            for step_num in sorted(self.turn_steps):
+        # when reconnecting mid-stream, replay every lane so far, in creation
+        # order, tagged with its stream id / parent / attach_step so nested
+        # chains rebuild inline under the step that spawned them
+        if self.stream_state != "idle":
+            for stream_id in list(self.streams):
+                buf = self.streams.get(stream_id)
+                if not buf:
+                    continue
+                lane = buf["lane"]
+                for step_num in sorted(buf["steps"]):
+                    await websocket.send_json({
+                        "type": "turn_step",
+                        "step": buf["steps"][step_num],
+                        **lane,
+                    })
                 await websocket.send_json({
-                    "type": "turn_step",
-                    "step": self.turn_steps[step_num]
+                    "type": "turn_final",
+                    "messages": buf["final"],
+                    **lane,
                 })
-            await websocket.send_json({
-                "type": "turn_final",
-                "messages": self.turn_final
-            })
+                if "parent_id" in lane and stream_id not in self.stack:
+                    await websocket.send_json({"type": "turn_lane_end", "stream_id": stream_id})
 
         await self.push_context_update(connection=websocket)
 
@@ -159,10 +199,11 @@ class WebSocketManager:
             except Exception:
                 pass
 
-    async def _stream_task(self, message: str, index, files: list = None):
-        self.channel._ws_stream_index = index
-
+    # -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-27 08:49 +08:00 harness:Codex
+    async def _stream_task(self, message: str, files: list = None):
         try:
+            await self.set_stream_state("message_sending")
+            self.channel._ws_stream_index = len(await self.channel.context.chat.messages.get())
             await self.channel.push_stream(
                 self.channel.send_stream(
                     message=message,
@@ -205,12 +246,8 @@ class WebSocketManager:
                 })
             return
 
-        await self.set_stream_state("message_sending")
-
-        next_index = len(await channel.context.chat.messages.get())
-
         try:
-            self.active_stream_task = asyncio.create_task(self._stream_task(message, next_index, files=files))
+            self.active_stream_task = asyncio.create_task(self._stream_task(message, files=files))
         except asyncio.CancelledError:
             pass
         except Exception as e:

@@ -42,10 +42,13 @@
         }
     "
     @focus="if ($store.chat.user_input) $autosize($el)"
-    @blur="$el.style.height = '48px'"
+    @blur="$autosize($el)"
 ></textarea>
 
 {{ extension_slot("after_input") }}
+
+{# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-27 08:37 +08:00 harness:Codex #}
+<div class="input-actions">
 
 {% if config.get("enable_model_switcher") and config.get("enable_admin_settings") %}
 {# -- AI GENERATED CODE (GPT-6.2-Sol) :: 2026-11-21 21:34 +08:00 harness:Codex #}
@@ -106,7 +109,7 @@
         if (!$store.chat.user_input) { return; }
 
         await $store.chat.send($store.chat.user_input);
-        $el.style.height = '48px';
+        if ($refs['user-input']) $refs['user-input'].style.height = '48px';
     "
     :class="{ 'mid-row': !!$store.askUser?.current }"
 >{% include 'svg/send.svg' %}</button>
@@ -138,3 +141,5 @@ await stopActiveStream()
     </span>
     -->
 </button>
+
+</div><!-- /.input-actions -->
